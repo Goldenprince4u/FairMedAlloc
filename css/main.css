@@ -624,7 +624,12 @@ tr:hover td {
     justify-content: center;
     padding: 2rem;
     background: white;
+    height: 100%;
+    /* Full height of container */
+    overflow-y: auto;
+    /* Allow scrolling for long forms */
 }
+
 
 .auth-box {
     width: 100%;
