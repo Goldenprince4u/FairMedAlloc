@@ -11,6 +11,12 @@ def calculate_score(student):
     Core scoring logic for a single student.
     """
     try:
+        # Check for manual/pre-set score first
+        if 'urgency_score' in student and student['urgency_score'] is not None:
+            val = float(student['urgency_score'])
+            if val > 0:
+                return val
+
         condition = student.get('condition', 'None')
         mobility = student.get('mobility', 'Normal')
         severity = int(student.get('severity', 0))

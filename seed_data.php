@@ -43,21 +43,23 @@ $conn->query("SET FOREIGN_KEY_CHECKS = 1");
 echo "<br>";
 
 // 2. Seed Hostels
+// 2. Seed Hostels
 $hostels = [
-    // [Name, Block, Gender, Proximal?, Capacity]
-    ['Prophet Moses Hall', 'Block A', 'Male', 0, 500],
-    ['Prophet Moses Hall', 'Block B (Science)', 'Male', 0, 300],
-    ['Daniel Hall', 'Main Block', 'Male', 1, 150], // Proximal
-    ['Queen Esther Hall', 'Block A', 'Female', 0, 600],
-    ['Queen Esther Hall', 'Block C (Science)', 'Female', 0, 400],
-    ['Mary Hall', 'Main Block', 'Female', 1, 200]  // Proximal
+    // [Name, Block, Gender, Proximal?, Capacity, Faculty]
+    ['Prophet Moses Hall', 'Main Block', 'Male', 1, 500, 'General'],
+    ['Prophet Moses Extension Hall', 'Main Block', 'Male', 1, 300, 'General'],
+    ['Prophet Moses Engineering Hall', 'Main Block', 'Male', 0, 400, 'Engineering'],
+    
+    ['Queen Esther Extension Hall', 'Main Block', 'Female', 1, 400, 'General'],
+    ['Queen Esther Main Hall', 'Main Block', 'Female', 0, 600, 'General'],
+    ['Queen Esther Engineering Hall', 'Main Block', 'Female', 0, 400, 'Engineering'],
+    ['Guest House', 'Main Block', 'Female', 0, 100, 'General']
 ];
 
 $stmt = $conn->prepare("INSERT INTO hostels (name, block_name, gender_allowed, is_proximal, total_capacity, proximal_faculty) VALUES (?, ?, ?, ?, ?, ?)");
 
 foreach ($hostels as $h) {
-    $fac = (strpos($h[1], 'Science') !== false) ? 'Science' : 'General';
-    $stmt->bind_param("sssiis", $h[0], $h[1], $h[2], $h[3], $h[4], $fac);
+    $stmt->bind_param("sssiis", $h[0], $h[1], $h[2], $h[3], $h[4], $h[5]);
     $stmt->execute();
     $hid = $conn->insert_id;
     

@@ -14,16 +14,51 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_FILES['csv_file'])) {
     if ($_FILES['csv_file']['error'] === 0) {
         $file = fopen($_FILES['csv_file']['tmp_name'], 'r');
         $count = 0;
+        $duplicates = 0;
+        
         // Skip header
         fgetcsv($file);
         
+        // Prepare Statements
+        $stmt_check = $conn->prepare("SELECT user_id FROM users WHERE username = ?");
+        $stmt_user = $conn->prepare("INSERT INTO users (username, password_hash, role) VALUES (?, ?, 'student')");
+        $stmt_profile = $conn->prepare("INSERT INTO student_profiles (user_id, matric_no, full_name, level, faculty, department, gender) VALUES (?, ?, ?, ?, ?, ?, ?)");
+        
         while (($row = fgetcsv($file)) !== false) {
-            // Process Row
-            // Assume format: Matric, Name, Level, Faculty, Dept
-            $count++;
+            // Expected CSV: Matric No, Full Name, Level, Faculty, Department, Gender
+            if (count($row) < 6) continue; // Skip invalid rows
+            
+            $matric = trim($row[0]);
+            $name   = trim($row[1]);
+            $level  = (int)trim($row[2]);
+            $faculty = trim($row[3]);
+            $dept   = trim($row[4]);
+            $gender = trim($row[5]); // Added Gender column requirement
+            
+            // Check Duplicate
+            $stmt_check->bind_param("s", $matric);
+            $stmt_check->execute();
+            if ($stmt_check->get_result()->num_rows > 0) {
+                $duplicates++;
+                continue; 
+            }
+            
+            // Create User (Password = lowercase matric, e.g. "run/cmp/...")
+            $password = strtolower($matric); 
+            $hash = password_hash($password, PASSWORD_DEFAULT);
+            
+            $stmt_user->bind_param("ss", $matric, $hash);
+            if ($stmt_user->execute()) {
+                $uid = $conn->insert_id;
+                
+                // Create Profile
+                $stmt_profile->bind_param("ississs", $uid, $matric, $name, $level, $faculty, $dept, $gender);
+                $stmt_profile->execute();
+                $count++;
+            }
         }
         fclose($file);
-        $msg = "Successfully processed $count records.";
+        $msg = "Processed: $count students registered. Duplicates skipped: $duplicates.";
     } else {
         $msg = "File upload error.";
     }
