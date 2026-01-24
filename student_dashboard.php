@@ -130,7 +130,7 @@ require_once 'includes/header.php';
         </script>
 
         <!-- Bottom Grid: Profile & Notices -->
-        <div class="grid grid-dashboard-custom">
+        <div class="grid grid-cols-2 gap-6">
             
             <!-- My Profile Preview -->
             <div class="glass-card">
@@ -141,7 +141,7 @@ require_once 'includes/header.php';
 
                 <div class="flex items-start gap-6">
                     <!-- Profile Pic -->
-                     <img src="uploads/profile_pics/<?php echo $student['profile_pic'] ?: 'default.png'; ?>" class="rounded-full object-cover border-4 border-slate-50" style="width: 80px; height: 80px; border-radius: 50%;">
+                     <img src="uploads/profile_pics/<?php echo $student['profile_pic'] ?: 'default.png'; ?>" class="rounded-full object-cover border-4 border-slate-50 w-20 h-20 shadow-sm">
 
                      <!-- Details List -->
                      <div class="flex-1">
@@ -155,7 +155,6 @@ require_once 'includes/header.php';
                             <div class="text-muted">Department:</div>
                             <div><?php echo htmlspecialchars($student['department'] ?: $student['faculty']); ?></div>
 
-                            <div class="text-muted">Health:</div>
                             <div class="text-muted">Health:</div>
                             <?php if ($student['condition_category'] && $student['condition_category'] !== 'None'): ?>
                                 <div class="text-danger fw-700"><?php echo htmlspecialchars($student['condition_category']); ?></div>
@@ -179,9 +178,9 @@ require_once 'includes/header.php';
 
                 if (count($notices) > 0) {
                     foreach ($notices as $notice) {
-                        echo '<div class="mb-4 p-3 bg-blue-50 border-l-4 border-primary rounded text-sm">';
-                        echo '<div class="fw-700 text-primary mb-1"><i class="fa-solid fa-bell mr-2"></i>New Alert</div>';
-                        echo '<p class="text-slate-700">' . htmlspecialchars($notice['message']) . '</p>';
+                        echo '<div class="alert alert-info mb-4 text-sm">';
+                        echo '<div class="fw-700 mb-1"><i class="fa-solid fa-bell mr-2"></i>New Alert</div>';
+                        echo '<p>' . htmlspecialchars($notice['message']) . '</p>';
                         echo '<div class="text-xs text-muted mt-1">' . date('M d, H:i', strtotime($notice['created_at'])) . '</div>';
                         echo '</div>';
                     }
@@ -190,7 +189,7 @@ require_once 'includes/header.php';
                 }
                 ?>
 
-                <div class="mt-6 border-t pt-4">
+                <div class="mt-4 border-t border-gray-100 pt-4">
                     <div class="flex items-center gap-2 mb-1 text-primary fw-700">
                         <i class="fa-solid fa-bullhorn"></i> General Info
                     </div>

@@ -56,20 +56,18 @@ require_once 'includes/header.php';
     <main class="main-content">
         <div class="flex justify-between items-center mb-8">
             <div>
-                <h1 class="serif mb-1 text-3xl">Allocation Matrix</h1>
+                <h1 class="serif mb-1">Allocation Matrix</h1>
                 <p class="text-muted">Master list of student data and allocation decisions.</p>
             </div>
             
             <div class="flex gap-3">
-            <div class="flex gap-3">
                 <div class="relative">
                     <i class="fa-solid fa-search absolute left-3 top-3 text-muted"></i>
-                    <input type="text" id="searchInput" placeholder="Search Matrix..." class="input pl-10 w-[250px]">
+                    <input type="text" id="searchInput" placeholder="Search Matrix..." class="input-auth w-[250px] pl-10" style="padding-left: 2.5rem; width: 300px;">
                 </div>
                 <button id="exportBtn" class="btn btn-primary">
                     <i class="fa-solid fa-download"></i> Export CSV
                 </button>
-            </div>
             </div>
         </div>
 
@@ -119,16 +117,16 @@ require_once 'includes/header.php';
                                             </div>
                                             <div class="text-xs text-muted">Room <?php echo htmlspecialchars($row['room_number']); ?></div>
                                         <?php else: ?>
-                                            <span class="text-xs text-muted" style="font-style: italic;">Pending Allocation</span>
+                                            <span class="text-xs text-muted italic">Pending Allocation</span>
                                         <?php endif; ?>
                                     </td>
                                     <td class="text-right">
                                         <button type="button" 
-                                                class="btn btn-sm btn-outline text-primary btn-assign-trigger relative z-10" 
+                                                class="btn btn-sm btn-secondary btn-assign-trigger" 
                                                 data-id="<?php echo $row['user_id']; ?>" 
                                                 data-name="<?php echo htmlspecialchars($row['full_name']); ?>"
                                                 title="Manual Allocation">
-                                            <i class="fa-solid fa-bed"></i> Assign Room
+                                            <i class="fa-solid fa-bed text-primary"></i> Assign
                                         </button>
                                     </td>
                                 </tr>
@@ -136,7 +134,7 @@ require_once 'includes/header.php';
                         <?php else: ?>
                             <tr>
                                 <td colspan="5" class="text-center py-8 text-muted">
-                                    <i class="fa-regular fa-folder-open mb-2" style="font-size: 2rem; opacity: 0.5;"></i>
+                                    <i class="fa-regular fa-folder-open mb-2 text-3xl opacity-50"></i>
                                     <p>No student data found for the current session.</p>
                                 </td>
                             </tr>
@@ -146,7 +144,7 @@ require_once 'includes/header.php';
             </div>
             
             <!-- Pagination -->
-            <div class="p-4 flex justify-between items-center text-xs text-muted" style="border-top: 1px solid var(--c-border);">
+            <div class="p-4 flex justify-between items-center text-xs text-muted border-t border-gray-100">
                 <div>
                     Showing <?php echo ($offset + 1); ?>-<?php echo min($offset + $limit, $total_rows); ?> of <?php echo $total_rows; ?> entries
                 </div>
@@ -166,8 +164,8 @@ require_once 'includes/header.php';
 </div>
 
 <!-- Manual Allocation Modal -->
-<div id="assignModal" class="modal-overlay hidden" style="position: fixed; inset: 0; background: rgba(0,0,0,0.5); z-index: 50; display: flex; align-items: center; justify-content: center;">
-    <div class="card p-6 w-full max-w-md bg-white shadow-xl rounded-lg">
+<div id="assignModal" class="fixed inset-0 bg-black/50 z-50 hidden flex items-center justify-center">
+    <div class="card p-6 w-full max-w-md bg-white shadow-xl rounded-lg animate-fade-in">
         <h3 class="text-xl font-bold mb-4">Manual Room Allocation</h3>
         <p class="text-sm text-muted mb-4">Assigning room for: <strong id="assignStudentName">...</strong></p>
         
@@ -176,7 +174,7 @@ require_once 'includes/header.php';
             
             <div class="mb-4">
                 <label class="block text-sm font-bold mb-2">Select Hostel</label>
-                <select id="assignHostel" class="input w-full" required>
+                <select id="assignHostel" class="input-auth w-full" required>
                     <option value="">-- Choose Hostel --</option>
                     <?php foreach($hostels as $h): ?>
                         <option value="<?php echo $h['hostel_id']; ?>"><?php echo htmlspecialchars($h['name']); ?></option>
@@ -186,13 +184,13 @@ require_once 'includes/header.php';
             
             <div class="mb-6">
                 <label class="block text-sm font-bold mb-2">Select Room</label>
-                <select id="assignRoom" class="input w-full" disabled required>
+                <select id="assignRoom" class="input-auth w-full" disabled required>
                     <option value="">-- Select Hostel First --</option>
                 </select>
             </div>
             
             <div class="flex justify-end gap-3">
-                <button type="button" id="closeModalBtn" class="btn btn-outline">Cancel</button>
+                <button type="button" id="closeModalBtn" class="btn btn-secondary">Cancel</button>
                 <button type="submit" class="btn btn-primary">Assign Room</button>
             </div>
         </form>
