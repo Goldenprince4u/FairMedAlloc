@@ -21,22 +21,22 @@ require_once 'includes/header.php';
             
             <!-- Control Panel (White) -->
             <div class="card p-8">
-                <h3 class="serif mb-4" style="font-size: 1.5rem; font-weight: 700;">Control Panel</h3>
+                <h3 class="serif mb-4 text-2xl font-bold">Control Panel</h3>
                 <p class="text-muted mb-4 text-sm">This process will:</p>
-                <ul class="text-muted text-sm mb-8 space-y-2" style="list-style: disc; padding-left: 1.5rem; line-height: 1.6;">
+                <ul class="list-instructions">
                     <li>Clear all existing allocations.</li>
                     <li>Fetch latest student medical scores.</li>
                     <li>Prioritize high-risk students for proximal hostels.</li>
                     <li>Fill remaining spots with general population.</li>
                 </ul>
 
-                <button class="btn btn-primary w-full py-3" onclick="startAllocation()" style="background: #002147; border-radius: 8px;">
+                <button class="btn btn-primary w-full py-3 rounded-lg" onclick="startAllocation()">
                     <i class="fa-solid fa-play mr-2"></i> Start Allocation Engine
                 </button>
             </div>
 
             <!-- Process Log (Dark Blue) -->
-            <div class="card p-8" style="background: #1e293b; color: #cbd5e1; font-family: 'Space Mono', monospace; min-height: 500px; border: none; border-radius: 12px;">
+            <div class="card-console">
                 <h3 class="serif mb-6 text-white text-lg font-bold border-b border-gray-700 pb-4">Process Log</h3>
                 <div id="console" class="text-xs font-mono tracking-wide leading-loose">
                     <div class="mb-2 opacity-50">Waiting to start...</div>

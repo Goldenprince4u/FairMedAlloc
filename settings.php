@@ -74,7 +74,7 @@ require_once 'includes/header.php';
                 </div>
 
                 <div>
-                    <button class="btn btn-primary px-6 py-3 rounded-lg" style="background: #002147;">
+                    <button class="btn btn-primary px-6 py-3 rounded-lg">
                         Save Changes
                     </button>
                 </div>

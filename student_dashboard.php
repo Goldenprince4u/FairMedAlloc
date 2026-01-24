@@ -42,14 +42,14 @@ require_once 'includes/header.php';
         <!-- Allocation Status Card -->
         <div class="glass-card mb-8 p-0 overflow-hidden relative"> <!-- Used glass-card -->
             <?php if ($alloc): ?>
-                <div class="absolute left-0 top-0 bottom-0 w-2 bg-green-500" style="width: 6px; background-color: #16a34a;"></div>
+                <div class="absolute left-0 top-0 bottom-0 w-2 bg-success"></div>
                 <div class="p-8">
                     <h3 class="serif mb-4 text-xl">Allocation Status</h3>
                     
                     <div class="flex items-start gap-4 mb-6">
-                        <i class="fa-solid fa-circle-check text-green-600 text-xl mt-1" style="color: var(--c-success);"></i>
+                        <i class="fa-solid fa-circle-check text-success text-xl mt-1"></i>
                         <div>
-                            <div class="fw-700 text-green-700 text-lg mb-2" style="color: var(--c-success);">Allocation Successful</div>
+                            <div class="fw-700 text-success text-lg mb-2">Allocation Successful</div>
                             <p class="text-muted">You have been placed in <strong class="text-slate-800"><?php echo htmlspecialchars($alloc['hostel_name']); ?></strong>.</p>
                         </div>
                     </div>
@@ -66,21 +66,21 @@ require_once 'includes/header.php';
                     </div>
                 </div>
             <?php else: ?>
-                <div class="absolute left-0 top-0 bottom-0 w-2 bg-yellow-500" style="width: 6px; background-color: #eab308;"></div>
+                <div class="absolute left-0 top-0 bottom-0 w-2 bg-warning"></div>
                 <div class="p-8">
                     <h3 class="serif mb-4 text-xl">Allocation Status</h3>
                     
                     <div class="flex items-start gap-4 mb-6">
-                        <i class="fa-solid fa-clock text-yellow-600 text-xl mt-1" style="color: var(--c-warning);"></i>
+                        <i class="fa-solid fa-clock text-warning text-xl mt-1"></i>
                         <div>
-                            <div class="fw-700 text-yellow-700 text-lg mb-2" style="color: var(--c-warning);">Allocation Pending</div>
+                            <div class="fw-700 text-warning text-lg mb-2">Allocation Pending</div>
                             <p class="text-muted">Your room allocation is currently being processed by the algorithm.</p>
                         </div>
                     </div>
                     
                      <div class="border border-dashed border-gray-300 rounded p-4 bg-slate-50 inline-block min-w-[200px] mb-6">
                         <div class="text-xs text-muted uppercase tracking-wider mb-1">STATUS</div>
-                        <div class="text-3xl fw-700 text-yellow-600" style="color: var(--c-warning);">Waiting...</div>
+                        <div class="text-3xl fw-700 text-warning">Waiting...</div>
                     </div>
                 </div>
             <?php endif; ?>
@@ -113,10 +113,11 @@ require_once 'includes/header.php';
                             <div><?php echo htmlspecialchars($student['department'] ?: $student['faculty']); ?></div>
 
                             <div class="text-muted">Health:</div>
+                            <div class="text-muted">Health:</div>
                             <?php if ($student['condition_category'] && $student['condition_category'] !== 'None'): ?>
-                                <div class="text-red-600 fw-700" style="color: var(--c-danger);"><?php echo htmlspecialchars($student['condition_category']); ?></div>
+                                <div class="text-danger fw-700"><?php echo htmlspecialchars($student['condition_category']); ?></div>
                             <?php else: ?>
-                                <div class="text-green-600 fw-700" style="color: var(--c-success);">No declared conditions</div>
+                                <div class="text-success fw-700">No declared conditions</div>
                             <?php endif; ?>
                         </div>
                      </div>

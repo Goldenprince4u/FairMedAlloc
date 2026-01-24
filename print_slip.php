@@ -81,7 +81,7 @@ if (!$data) {
     </style>
 </head>
 <body>
-    <button class="btn-print" onclick="window.print()" style="margin-bottom: 20px; padding: 10px 20px; cursor: pointer;">Print this Slip</button>
+    <button class="btn-print" onclick="window.print()">Print this Slip</button>
     
     <div class="slip-container">
         <div class="header">

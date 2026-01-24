@@ -76,17 +76,18 @@ require_once 'includes/header.php';
 
 <div class="auth-container">
     <!-- Left: Brand (Blue Gradient) -->
+    <!-- Left: Brand (Blue Gradient) -->
     <div class="auth-left text-center">
-        <!-- Blobs for animation (Keeping subtle background) -->
-        <div class="hero-blob" style="width: 400px; height: 400px; top: -100px; left: -100px; opacity: 0.2;"></div>
+        <!-- Blobs for animation -->
+        <div class="hero-blob opacity-20 w-[400px] h-[400px] -top-24 -left-24 absolute rounded-full bg-white blur-3xl"></div>
         
         <div class="brand-content relative z-10 animate-fade-in text-left pl-12">
-            <h1 class="serif mb-2" style="font-size: 3.5rem; line-height: 1.1; color: white; font-weight: 700;">Student<br>Registration</h1>
+            <h1 class="serif mb-2 text-white font-bold leading-none text-6xl">Student<br>Registration</h1>
             <p class="mb-12 text-sm text-gray-300 tracking-widest uppercase font-semibold">Redeemer's University</p>
             
-            <div style="border-left: 4px solid var(--c-accent); padding-left: 1.5rem;">
+            <div class="brand-border">
                 <p class="text-white text-lg font-light leading-relaxed mb-6">Join the unified portal for fair and transparent hostel allocation.</p>
-                <ul class="text-white text-sm font-light space-y-4" style="list-style: none;">
+                <ul class="text-white text-sm font-light space-y-4 list-none">
                     <li class="flex items-center gap-3"><i class="fa-solid fa-check text-accent"></i> Secure Data Handling</li>
                     <li class="flex items-center gap-3"><i class="fa-solid fa-check text-accent"></i> Automated Medical Scoring</li>
                     <li class="flex items-center gap-3"><i class="fa-solid fa-check text-accent"></i> Fair Hostel Placement</li>
@@ -96,11 +97,11 @@ require_once 'includes/header.php';
     </div>
 
     <!-- Right: Form -->
-    <div class="auth-right" style="background: white;">
-        <div class="auth-box animate-fade-in" style="max-width: 600px;">
+    <div class="auth-right">
+        <div class="auth-box animate-fade-in max-w-[600px]">
             <div class="mb-8">
-                <span class="badge badge-info mb-4" style="background: #eff6ff; color: #3b82f6; border-radius: 4px; padding: 4px 8px; font-size: 0.75rem; font-weight: 700;">NEW ACCOUNT</span>
-                <h2 class="mb-2 text-primary serif" style="font-size: 2.25rem;">Create Profile</h2>
+                <span class="badge badge-info mb-4">NEW ACCOUNT</span>
+                <h2 class="mb-2 text-primary serif text-4xl">Create Profile</h2>
                 <p class="text-muted text-lg">Fill in your academic details to get started.</p>
             </div>
 
@@ -115,17 +116,17 @@ require_once 'includes/header.php';
 
                 <div class="form-group mb-4">
                     <label class="text-sm font-bold text-slate-700 mb-2">Full Name</label>
-                    <input type="text" name="full_name" placeholder="Surname Firstname Middle" required style="background: #eff6ff; border-color: transparent; padding: 1rem;">
+                    <input type="text" name="full_name" placeholder="Surname Firstname Middle" required class="input-auth">
                 </div>
 
                 <div class="grid grid-cols-2 gap-4 mb-4">
                     <div class="form-group">
                        <label class="text-sm font-bold text-slate-700 mb-2">Matric Number</label>
-                       <input type="text" name="matric_no" placeholder="RUN/CMP/22/..." required style="background: #eff6ff; border-color: transparent; padding: 1rem;">
+                       <input type="text" name="matric_no" placeholder="RUN/CMP/22/..." required class="input-auth">
                     </div>
                     <div class="form-group">
                         <label class="text-sm font-bold text-slate-700 mb-2">Level</label>
-                        <select name="level" style="background: #eff6ff; border-color: transparent; padding: 1rem;">
+                        <select name="level" class="input-auth">
                             <option value="100">100 Level</option>
                             <option value="200">200 Level</option>
                             <option value="300">300 Level</option>
@@ -138,7 +139,7 @@ require_once 'includes/header.php';
                 <div class="grid grid-cols-2 gap-4 mb-4">
                     <div class="form-group">
                         <label class="text-sm font-bold text-slate-700 mb-2">Faculty</label>
-                        <select name="faculty" id="facultySelect" required onchange="updateDepartments()" style="background: #eff6ff; border-color: transparent; padding: 1rem;">
+                        <select name="faculty" id="facultySelect" required onchange="updateDepartments()" class="input-auth">
                             <option value="">Select...</option>
                             <option value="Faculty of Computing and Digital Technologies">Faculty of Computing and Digital Technologies</option>
                             <option value="Natural Sciences">Natural Sciences</option>
@@ -151,7 +152,7 @@ require_once 'includes/header.php';
                     </div>
                     <div class="form-group">
                         <label class="text-sm font-bold text-slate-700 mb-2">Department</label>
-                        <select name="department" id="deptSelect" required style="background: #eff6ff; border-color: transparent; padding: 1rem;">
+                        <select name="department" id="deptSelect" required class="input-auth">
                             <option value="">Select Faculty First</option>
                         </select>
                     </div>
@@ -186,18 +187,18 @@ require_once 'includes/header.php';
 
                 <div class="form-group mb-4">
                     <label class="text-sm font-bold text-slate-700 mb-2">Email Address</label>
-                    <input type="email" name="email" required style="background: #eff6ff; border-color: transparent; padding: 1rem;">
+                    <input type="email" name="email" required class="input-auth">
                 </div>
 
                 <div class="form-group mb-8">
                     <label class="text-sm font-bold text-slate-700 mb-2">Password</label>
-                    <input type="password" name="password" placeholder="Create a strong password" required style="background: #eff6ff; border-color: transparent; padding: 1rem;">
+                    <input type="password" name="password" placeholder="Create a strong password" required class="input-auth">
                 </div>
 
                 <button class="btn btn-primary w-full mb-4">Register Account</button>
                 
                 <div class="text-center text-sm">
-                    Already have an account? <a href="login.php" style="color: var(--c-primary); font-weight: 600;">Sign In</a>
+                    Already have an account? <a href="login.php" class="text-primary fw-700">Sign In</a>
                 </div>
             </form>
         </div>

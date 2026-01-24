@@ -105,19 +105,19 @@ require_once 'includes/header.php';
         <div class="glass-card max-w-4xl mx-auto p-0 mb-8">
              
              <!-- Header Banner -->
-             <div class="p-8 relative overflow-hidden" style="background: linear-gradient(135deg, var(--c-primary) 0%, var(--c-primary-dark) 100%); color: white; border-radius: var(--radius-md) var(--radius-md) 0 0;">
+             <div class="p-8 relative overflow-hidden bg-gradient-brand text-white rounded-t-lg">
                   
                   <div class="relative z-10 flex items-center gap-6">
                        <div class="relative group">
                            <img src="uploads/profile_pics/<?php echo $student['profile_pic'] ?: 'default.png'; ?>" 
-                                class="avatar" style="width: 100px; height: 100px; border: 4px solid white;">
-                           <label class="absolute bottom-0 right-0 bg-white text-primary p-2 rounded-full cursor-pointer shadow-md hover:bg-gray-100 transition-colors" style="width: 32px; height: 32px; display: flex; align-items: center; justify-content: center;">
+                                class="avatar w-[100px] h-[100px] border-4 border-white">
+                           <label class="absolute bottom-0 right-0 bg-white text-primary p-2 rounded-full cursor-pointer shadow-md hover:bg-gray-100 transition-colors w-8 h-8 flex items-center justify-center">
                                <i class="fa-solid fa-camera"></i>
-                               <input type="file" name="profile_pic" class="hidden" style="display:none;" onchange="this.form.submit()" form="profileForm">
+                               <input type="file" name="profile_pic" class="hidden" onchange="this.form.submit()" form="profileForm">
                            </label>
                        </div>
                        <div>
-                           <h2 class="serializer" style="font-size: 1.75rem; color: white; margin-bottom: 0.5rem;"><?php echo htmlspecialchars($student['full_name']); ?></h2>
+                           <h2 class="serif text-3xl text-white mb-2"><?php echo htmlspecialchars($student['full_name']); ?></h2>
                            <div class="opacity-90 text-sm mt-1 flex gap-4">
                                <span><i class="fa-solid fa-id-card mr-1"></i> <?php echo htmlspecialchars($student['matric_no']); ?></span>
                                <span><i class="fa-solid fa-layer-group mr-1"></i> <?php echo htmlspecialchars($student['level']); ?> Lvl</span>
@@ -130,8 +130,8 @@ require_once 'includes/header.php';
                 
                 <!-- Academic Section -->
                 <div class="mb-10">
-                    <h3 class="flex items-center gap-3 text-lg font-bold mb-6 pb-2" style="color: var(--c-text-head); border-bottom: 1px solid var(--c-border);">
-                        <span style="display:inline-flex; width: 32px; height: 32px; background: #eff6ff; color: var(--c-primary); border-radius: 4px; align-items: center; justify-content: center;"><i class="fa-solid fa-graduation-cap"></i></span>
+                    <h3 class="flex items-center gap-3 text-lg font-bold mb-6 pb-2 text-head border-b border-border">
+                        <span class="inline-flex w-8 h-8 bg-blue-50 text-primary rounded items-center justify-center"><i class="fa-solid fa-graduation-cap"></i></span>
                         Academic Information
                     </h3>
 
@@ -177,8 +177,8 @@ require_once 'includes/header.php';
 
                 <!-- Medical Section -->
                 <div class="mb-8">
-                    <h3 class="flex items-center gap-3 text-lg font-bold mb-6 pb-2" style="color: #991b1b; border-bottom: 1px solid #fee2e2;">
-                        <span style="display:inline-flex; width: 32px; height: 32px; background: #fef2f2; color: #dc2626; border-radius: 4px; align-items: center; justify-content: center;"><i class="fa-solid fa-heart-pulse"></i></span>
+                    <h3 class="flex items-center gap-3 text-lg font-bold mb-6 pb-2 text-danger border-b border-red-100">
+                        <span class="inline-flex w-8 h-8 bg-red-50 text-danger rounded items-center justify-center"><i class="fa-solid fa-heart-pulse"></i></span>
                         Medical & Health Status
                     </h3>
 

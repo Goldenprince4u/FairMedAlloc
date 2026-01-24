@@ -47,24 +47,24 @@ require_once 'includes/header.php';
 <div class="auth-container">
     <!-- Left: Brand (Blue Gradient) -->
     <div class="auth-left text-center">
-        <!-- Blobs for animation (Keeping subtle background) -->
-        <div class="hero-blob" style="width: 400px; height: 400px; top: -100px; left: -100px; opacity: 0.2;"></div>
+        <!-- Blobs for animation -->
+        <div class="hero-blob opacity-20 w-[400px] h-[400px] -top-24 -left-24 absolute rounded-full bg-white blur-3xl"></div>
         
         <div class="brand-content relative z-10 animate-fade-in text-left pl-12">
-            <h1 class="serif mb-2" style="font-size: 3.5rem; line-height: 1.1; color: white; font-weight: 700;">FairMedAlloc<br>System</h1>
+            <h1 class="serif mb-2 text-white font-bold leading-none text-6xl">FairMedAlloc<br>System</h1>
             <p class="mb-12 text-sm text-gray-300 tracking-widest uppercase font-semibold">Redeemer's University</p>
             
-            <div style="border-left: 4px solid var(--c-accent); padding-left: 1.5rem;">
+            <div class="brand-border">
                 <p class="text-white text-lg font-light leading-relaxed">Prioritizing Student Health & Safety through Algorithmic Fairness.<br>A Final Year Computer Science Research Project.</p>
             </div>
         </div>
     </div>
 
-    <div class="auth-right" style="background: white;">
+    <div class="auth-right">
         <div class="auth-box animate-fade-in">
             <div class="mb-8">
-                <span class="badge badge-info mb-4" style="background: #eff6ff; color: #3b82f6; border-radius: 4px; padding: 4px 8px; font-size: 0.75rem; font-weight: 700;">UNIFIED PORTAL</span>
-                <h2 class="mb-2 text-primary serif" style="font-size: 2.25rem;">Welcome Back</h2>
+                <span class="badge badge-info mb-4">UNIFIED PORTAL</span>
+                <h2 class="mb-2 text-primary serif text-4xl">Welcome Back</h2>
                 <p class="text-muted text-lg">Enter your credentials to access the system.</p>
             </div>
 
@@ -77,18 +77,18 @@ require_once 'includes/header.php';
                 
                 <div class="form-group">
                     <label class="text-sm font-bold text-slate-700 mb-2">User ID (Matric No or Username)</label>
-                    <input type="text" name="username" placeholder="admin" required style="background: #eff6ff; border-color: transparent; padding: 1rem;">
+                    <input type="text" name="username" placeholder="admin" required class="input-auth">
                 </div>
                 
                 <div class="form-group">
                     <label class="text-sm font-bold text-slate-700 mb-2">Password</label>
-                    <input type="password" name="password" placeholder="••••••••" required style="background: #eff6ff; border-color: transparent; padding: 1rem;">
+                    <input type="password" name="password" placeholder="••••••••" required class="input-auth">
                 </div>
                 
                 <button class="btn btn-primary w-full mb-4">Sign In</button>
                 
                 <div class="flex justify-between text-sm mt-4">
-                    <a href="signup.php" style="color: var(--c-primary); font-weight: 600;">New Student? Create Account</a>
+                    <a href="signup.php" class="text-primary fw-700">New Student? Create Account</a>
                     <a href="forgot_password.php" class="text-muted">Forgot Password?</a>
                 </div>
             </form>

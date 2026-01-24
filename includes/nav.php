@@ -13,7 +13,7 @@ function active($p) { global $current_page; return $current_page == $p ? 'active
         <span>Redeemer's University</span>
     </div>
 
-    <nav class="nav-links" style="flex: 1;">
+    <nav class="nav-links flex-1">
         <a href="<?php echo $role; ?>_dashboard.php" class="nav-item <?php echo active($role.'_dashboard.php'); ?>">
             <i class="fa-solid fa-gauge-high"></i> Dashboard
         </a>
@@ -53,7 +53,7 @@ function active($p) { global $current_page; return $current_page == $p ? 'active
     ?>
     <div class="sidebar-footer flex items-center gap-3 mt-auto p-4 border-t border-gray-100">
         <div class="avatar-initials"><?php echo $initials; ?></div>
-        <div style="flex:1;">
+        <div class="flex-1">
             <div class="fw-700 text-sm leading-tight"><?php echo htmlspecialchars($_SESSION['username']); ?></div>
             <div class="text-xs text-muted capitalize"><?php echo $role; ?></div>
         </div>

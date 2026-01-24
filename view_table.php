@@ -61,13 +61,15 @@ require_once 'includes/header.php';
             </div>
             
             <div class="flex gap-3">
+            <div class="flex gap-3">
                 <div class="relative">
                     <i class="fa-solid fa-search absolute left-3 top-3 text-muted"></i>
-                    <input type="text" id="searchInput" onkeyup="filterTable()" placeholder="Search Matrix..." class="input pl-10" style="padding-left: 2.5rem; width: 250px;">
+                    <input type="text" id="searchInput" placeholder="Search Matrix..." class="input pl-10 w-[250px]">
                 </div>
-                <button id="exportBtn" onclick="exportTableToCSV('allocation_matrix.csv')" class="btn btn-primary">
+                <button id="exportBtn" class="btn btn-primary">
                     <i class="fa-solid fa-download"></i> Export CSV
                 </button>
+            </div>
             </div>
         </div>
 
@@ -120,8 +122,12 @@ require_once 'includes/header.php';
                                             <span class="text-xs text-muted" style="font-style: italic;">Pending Allocation</span>
                                         <?php endif; ?>
                                     </td>
-                                    <td>
-                                        <button type="button" onclick='openAssignModal(<?php echo $row["user_id"]; ?>, <?php echo json_encode($row["full_name"]); ?>)' class="btn btn-sm btn-outline text-primary" title="Manual Allocation" style="cursor: pointer; position: relative; z-index: 10;">
+                                    <td class="text-right">
+                                        <button type="button" 
+                                                class="btn btn-sm btn-outline text-primary btn-assign-trigger relative z-10" 
+                                                data-id="<?php echo $row['user_id']; ?>" 
+                                                data-name="<?php echo htmlspecialchars($row['full_name']); ?>"
+                                                title="Manual Allocation">
                                             <i class="fa-solid fa-bed"></i> Assign Room
                                         </button>
                                     </td>
@@ -165,12 +171,12 @@ require_once 'includes/header.php';
         <h3 class="text-xl font-bold mb-4">Manual Room Allocation</h3>
         <p class="text-sm text-muted mb-4">Assigning room for: <strong id="assignStudentName">...</strong></p>
         
-        <form id="assignForm" onsubmit="event.preventDefault(); submitAssignment();">
+        <form id="assignForm">
             <input type="hidden" id="assignStudentId" name="student_id">
             
             <div class="mb-4">
                 <label class="block text-sm font-bold mb-2">Select Hostel</label>
-                <select id="assignHostel" class="input w-full" onchange="fetchRooms(this.value)" required>
+                <select id="assignHostel" class="input w-full" required>
                     <option value="">-- Choose Hostel --</option>
                     <?php foreach($hostels as $h): ?>
                         <option value="<?php echo $h['hostel_id']; ?>"><?php echo htmlspecialchars($h['name']); ?></option>
@@ -186,7 +192,7 @@ require_once 'includes/header.php';
             </div>
             
             <div class="flex justify-end gap-3">
-                <button type="button" onclick="closeAssignModal()" class="btn btn-outline">Cancel</button>
+                <button type="button" id="closeModalBtn" class="btn btn-outline">Cancel</button>
                 <button type="submit" class="btn btn-primary">Assign Room</button>
             </div>
         </form>
@@ -194,6 +200,56 @@ require_once 'includes/header.php';
 </div>
 
 <script>
+document.addEventListener('DOMContentLoaded', () => {
+    
+    // --- 1. Event Delegation for dynamic buttons ---
+    document.body.addEventListener('click', (e) => {
+        
+        // Open Assign Modal
+        const assignBtn = e.target.closest('.btn-assign-trigger');
+        if (assignBtn) {
+            const id = assignBtn.dataset.id;
+            const name = assignBtn.dataset.name;
+            openAssignModal(id, name);
+        }
+
+        // Close Modal via Backdrop or Cancel Button
+        if (e.target.id === 'assignModal' || e.target.id === 'closeModalBtn') {
+            closeAssignModal();
+        }
+
+        // Export CSV
+        if (e.target.closest('#exportBtn')) {
+            exportTableToCSV('allocation_matrix.csv');
+        }
+    });
+
+    // --- 2. Input Listeners ---
+    
+    // Search Filter
+    const searchInput = document.getElementById('searchInput');
+    if(searchInput) {
+        searchInput.addEventListener('keyup', filterTable);
+    }
+
+    // Hostel Select Change
+    const hostelSelect = document.getElementById('assignHostel');
+    if(hostelSelect) {
+        hostelSelect.addEventListener('change', (e) => fetchRooms(e.target.value));
+    }
+
+    // Form Submit
+    const assignForm = document.getElementById('assignForm');
+    if(assignForm) {
+        assignForm.addEventListener('submit', (e) => {
+            e.preventDefault();
+            submitAssignment();
+        });
+    }
+});
+
+// --- Logic Functions ---
+
 function openAssignModal(id, name) {
     document.getElementById('assignStudentId').value = id;
     document.getElementById('assignStudentName').textContent = name;
@@ -233,11 +289,7 @@ function fetchRooms(hostelId) {
 function submitAssignment() {
     const form = document.getElementById('assignForm');
     const formData = new FormData(form);
-    
-    // Manual construction to ensure keys match API
-    const data = new URLSearchParams();
-    data.append('student_id', document.getElementById('assignStudentId').value);
-    data.append('room_id', document.getElementById('assignRoom').value);
+    const data = new URLSearchParams(formData);
 
     fetch('api/manual_assign.php', {
         method: 'POST',
@@ -256,28 +308,32 @@ function submitAssignment() {
     .catch(err => alert('Network error'));
 }
 
-// --- Admin Actions Features ---
+function filterTable() {
+    const input = document.getElementById("searchInput");
+    const filter = input.value.toUpperCase();
+    const rows = document.querySelectorAll("table tbody tr");
 
-// --- Admin Actions Features ---
+    rows.forEach(row => {
+        const text = row.textContent || row.innerText;
+        row.style.display = text.toUpperCase().includes(filter) ? "" : "none";
+    });
+}
 
-// 1. Export CSV (Robust)
 function exportTableToCSV(filename) {
     const csv = [];
     const rows = document.querySelectorAll("table tr");
     
     for (let i = 0; i < rows.length; i++) {
-        const row = [], cols = rows[i].querySelectorAll("td, th");
-        
+        if (rows[i].style.display === 'none') continue; // Skip filtered rows
+
+        const cols = rows[i].querySelectorAll("td, th");
         let rowData = [];
         // Skip last column (Actions)
         const colCount = cols.length - 1; 
 
         for (let j = 0; j < colCount; j++) {
-            // Get text, replace newlines with space, trim
             let data = cols[j].innerText.replace(/(\r\n|\n|\r)/gm, " ").trim();
-            // Escape double quotes
             data = data.replace(/"/g, '""');
-            // Wrap in quotes
             rowData.push(`"${data}"`);
         }
         if(rowData.length > 0) csv.push(rowData.join(","));
@@ -291,26 +347,7 @@ function exportTableToCSV(filename) {
     document.body.appendChild(downloadLink);
     downloadLink.click();
 }
-
-// 2. Filter Table (Single Search)
-function filterTable() {
-    const input = document.getElementById("searchInput");
-    const filter = input.value.toUpperCase();
-    const table = document.querySelector("table");
-    const tr = table.getElementsByTagName("tr");
-
-    // Loop through all table rows, and hide those who don't match the search query
-    // Start from 1 to skip header
-    for (let i = 1; i < tr.length; i++) {
-        let txtValue = tr[i].textContent || tr[i].innerText;
-        if (txtValue.toUpperCase().indexOf(filter) > -1) {
-            tr[i].style.display = "";
-        } else {
-            tr[i].style.display = "none";
-        }
-    }
-}
-
+</script>
 
 </body>
 </html>

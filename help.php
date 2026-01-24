@@ -18,7 +18,7 @@ $role = $_SESSION['role'] ?? 'guest';
         <h1 class="serif mb-2">Help Center</h1>
         <p class="text-muted mb-8">Guides and FAQs for <?php echo ucfirst($role); ?>s.</p>
 
-        <div class="grid" style="display: grid; grid-template-columns: 2fr 1fr; gap: 2rem;">
+        <div class="grid-help">
             
             <!-- FAQ Section -->
             <div class="card">

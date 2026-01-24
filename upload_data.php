@@ -76,17 +76,17 @@ require_once 'includes/header.php';
         <p class="text-muted mb-8">Bulk student registration via CSV.</p>
 
         <?php if($msg): ?>
-            <div class="badge badge-green mb-6 w-full"><?php echo $msg; ?></div>
+            <div class="badge badge-success mb-6 w-full"><?php echo $msg; ?></div>
         <?php endif; ?>
 
-        <div class="card" style="padding: 4rem; text-align: center; border: 2px dashed var(--c-border);">
-            <i class="fa-solid fa-cloud-arrow-up text-4xl text-muted mb-4" style="font-size: 3rem;"></i>
+        <div class="card upload-zone">
+            <i class="fa-solid fa-cloud-arrow-up text-4xl text-muted mb-4 text-5xl"></i>
             <h3 class="mb-2">Drag Configuration File Here</h3>
             <p class="text-muted mb-6">or click to browse local storage</p>
 
             <form method="post" enctype="multipart/form-data">
                 <?php csrf_field(); ?>
-                <input type="file" name="csv_file" id="fileIn" class="hidden" style="display:none;" onchange="this.form.submit()">
+                <input type="file" name="csv_file" id="fileIn" class="hidden" onchange="this.form.submit()">
                 <label for="fileIn" class="btn btn-primary">
                     Select CSV File
                 </label>

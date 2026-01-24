@@ -106,19 +106,18 @@ require_once 'includes/header.php';
             </div>
         <?php endif; ?>
 
-        <div class="grid grid-cols-[300px_1fr] gap-6" style="grid-template-columns: 300px 1fr;">
+        <div class="grid-profile">
             
             <!-- Profile Card -->
             <div class="card text-center p-8">
                 <div class="relative inline-block mb-6 group">
                     <img src="uploads/profile_pics/<?php echo $_SESSION['profile_pic'] ?? 'default.png'; ?>" 
-                         class="avatar" 
-                         style="width: 150px; height: 150px; border: 4px solid #fff; box-shadow: var(--shadow-lg);">
+                         class="avatar-lg bg-white">
                     
                     <form method="post" enctype="multipart/form-data" id="picForm">
-                        <label class="absolute bottom-0 right-0 bg-primary text-white p-2 rounded-full cursor-pointer hover:bg-blue-800 transition-colors shadow-md" title="Change Photo" style="width:36px; height:36px; display:flex; align-items:center; justify-content:center;">
+                        <label class="absolute bottom-0 right-0 bg-primary text-white p-2 rounded-full cursor-pointer hover:bg-blue-800 transition-colors shadow-md w-9 h-9 flex items-center justify-center" title="Change Photo">
                             <i class="fa-solid fa-camera"></i>
-                            <input type="file" name="profile_pic" class="hidden" style="display:none;" onchange="document.getElementById('picForm').submit()">
+                            <input type="file" name="profile_pic" class="hidden" onchange="document.getElementById('picForm').submit()">
                         </label>
                     </form>
                 </div>
@@ -139,7 +138,7 @@ require_once 'includes/header.php';
             <!-- Security Settings -->
             <div class="card p-8">
                 <div class="flex items-center gap-4 mb-8 pb-4 border-b border-gray-100">
-                    <div class="w-12 h-12 rounded-full flex items-center justify-center text-primary text-xl" style="background: #eff6ff; width: 48px; height: 48px;">
+                    <div class="w-12 h-12 rounded-full flex items-center justify-center text-primary text-xl bg-blue-50">
                         <i class="fa-solid fa-shield-halved"></i>
                     </div>
                     <div>
@@ -148,12 +147,12 @@ require_once 'includes/header.php';
                     </div>
                 </div>
 
-                <form method="post" style="max-width: 600px;">
+                <form method="post" class="max-w-[600px]">
                     <div class="form-group mb-6">
                         <label class="block mb-2 font-bold">Current Password</label>
-                        <div class="relative" style="position: relative;">
-                            <span class="absolute left-3 top-3 text-gray-400" style="position: absolute; left: 12px; top: 12px; opacity: 0.5;"><i class="fa-solid fa-lock"></i></span>
-                            <input type="password" name="current_pass" placeholder="Enter current password" style="padding-left: 2.5rem;">
+                        <div class="relative">
+                            <span class="absolute left-3 top-3 text-gray-400 opacity-50"><i class="fa-solid fa-lock"></i></span>
+                            <input type="password" name="current_pass" placeholder="Enter current password" class="pl-10">
                         </div>
                     </div>
                     
