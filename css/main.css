@@ -820,3 +820,22 @@ tr:hover td {
     font-weight: 600;
     font-size: 1rem;
 }
+
+/* Utility Classes */
+.hidden {
+    display: none !important;
+}
+
+.modal-overlay {
+    animation: fadeIn 0.2s ease-out;
+}
+
+@keyframes fadeIn {
+    from {
+        opacity: 0;
+    }
+
+    to {
+        opacity: 1;
+    }
+}
