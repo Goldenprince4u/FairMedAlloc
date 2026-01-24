@@ -98,11 +98,11 @@ require_once 'includes/header.php';
 
     <!-- Right: Form -->
     <div class="auth-right">
-        <div class="auth-box animate-fade-in w-full max-w-[500px]"> <!-- Increased width for signup -->
+        <div class="auth-box animate-fade-in max-w-[600px]">
             <div class="mb-8">
                 <span class="badge badge-info mb-4">NEW ACCOUNT</span>
-                <h2 class="mb-2 text-primary serif text-3xl">Create Profile</h2>
-                <p class="text-muted">Fill in your academic details to get started.</p>
+                <h2 class="mb-2 text-primary serif text-4xl">Create Profile</h2>
+                <p class="text-muted text-lg">Fill in your academic details to get started.</p>
             </div>
 
             <?php if($msg): ?>

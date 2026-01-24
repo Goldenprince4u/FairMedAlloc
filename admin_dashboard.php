@@ -37,44 +37,37 @@ require_once 'includes/header.php';
     <?php require_once 'includes/nav.php'; ?>
 
     <main class="main-content">
-        <div class="flex justify-between items-center mb-8">
-            <div>
-                <h1 class="serif mb-1">System Overview</h1>
-                <p class="text-muted">Real-time usage statistics and management controls.</p>
-            </div>
-            <a href="run_allocation.php" class="btn btn-primary shadow-lg">
-                <i class="fa-solid fa-wand-magic-sparkles"></i> Run Algorithm
-            </a>
-        </div>
+        <h1 class="serif mb-2">System Overview</h1>
+        <p class="text-muted mb-8">Real-time usage statistics and management controls.</p>
 
         <!-- Stats Row -->
-        <div class="stats-grid">
-            <div class="stat-card">
-                <div class="stat-icon text-info"><i class="fa-solid fa-users"></i></div>
+        <div class="grid grid-cols-4 mb-8">
+            <div class="card stat-card">
+                <div class="stat-icon bg-blue-50 text-info"><i class="fa-solid fa-users"></i></div>
                 <div class="stat-info">
                     <h3><?php echo $total_students; ?></h3>
                     <p>Total Students</p>
                 </div>
             </div>
 
-            <div class="stat-card">
-                 <div class="stat-icon text-danger"><i class="fa-solid fa-heart-pulse"></i></div>
+            <div class="card stat-card">
+                 <div class="stat-icon bg-red-50 text-danger"><i class="fa-solid fa-heart-pulse"></i></div>
                 <div class="stat-info">
                     <h3><?php echo $medical_cases; ?></h3>
                     <p>High Priority</p>
                 </div>
             </div>
 
-            <div class="stat-card">
-                 <div class="stat-icon text-success"><i class="fa-solid fa-bed"></i></div>
+            <div class="card stat-card">
+                 <div class="stat-icon bg-green-50 text-success"><i class="fa-solid fa-bed"></i></div>
                 <div class="stat-info">
                     <h3><?php echo $total_alloc; ?></h3>
                     <p>Allocated Beds</p>
                 </div>
             </div>
 
-            <div class="stat-card">
-                 <div class="stat-icon text-warning"><i class="fa-solid fa-door-open"></i></div>
+            <div class="card stat-card">
+                 <div class="stat-icon bg-yellow-50 text-warning"><i class="fa-solid fa-door-open"></i></div>
                 <div class="stat-info">
                     <h3><?php echo $available_beds; ?></h3>
                     <p>Available Spaces</p>
@@ -82,25 +75,34 @@ require_once 'includes/header.php';
             </div>
         </div>
 
+        <!-- Action Bar -->
+        <div style="position: absolute; top: 3rem; right: 4rem;">
+            <a href="run_allocation.php" class="btn btn-primary shadow-lg">
+                <i class="fa-solid fa-wand-magic-sparkles"></i> Run Algorithm
+            </a>
+        </div>
+
         <!-- Management Modules -->
         <h3 class="serif mb-4">Management Modules</h3>
-        <div class="grid grid-cols-2 gap-6">
+        <div class="grid grid-cols-2">
             
-            <a href="view_table.php" class="card p-6 flex items-start gap-4 hover:bg-slate-50 transition-colors group">
-                 <div class="stat-icon text-info group-hover:bg-blue-100 transition-colors"><i class="fa-solid fa-table-list"></i></div>
+            <div class="card glass-card flex items-start gap-4 hover:bg-slate-50 transition-colors">
+                 <div class="stat-icon bg-blue-50 text-info"><i class="fa-solid fa-table-list"></i></div>
                 <div>
-                    <h4 class="mb-2 text-primary group-hover:underline">Allocation Matrix</h4>
-                    <p class="text-muted text-sm">View comprehensive list of all students and their allocation status.</p>
+                    <h4 class="mb-2">Allocation Matrix</h4>
+                    <p class="text-muted text-sm mb-4">View comprehensive list of all students and their allocation status.</p>
+                    <a href="view_table.php" class="text-primary text-sm fw-700 hover:underline">Open Matrix &rarr;</a>
                 </div>
-            </a>
+            </div>
 
-            <a href="settings.php" class="card p-6 flex items-start gap-4 hover:bg-slate-50 transition-colors group">
-                 <div class="stat-icon text-info group-hover:bg-blue-100 transition-colors"><i class="fa-solid fa-gears"></i></div>
+            <div class="card glass-card flex items-start gap-4 hover:bg-slate-50 transition-colors">
+                 <div class="stat-icon bg-blue-50 text-info"><i class="fa-solid fa-gears"></i></div>
                 <div>
-                    <h4 class="mb-2 text-primary group-hover:underline">System Settings</h4>
-                    <p class="text-muted text-sm">Configure academic session and allocation thresholds.</p>
+                    <h4 class="mb-2">System Settings</h4>
+                    <p class="text-muted text-sm mb-4">Configure academic session and allocation thresholds.</p>
+                    <a href="settings.php" class="text-primary text-sm fw-700 hover:underline">Manage Settings &rarr;</a>
                 </div>
-            </a>
+            </div>
 
         </div>
 
