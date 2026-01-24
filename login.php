@@ -15,29 +15,52 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
     $password = trim($_POST['password']);
     
     // Auth Logic
-    $stmt = $conn->prepare("SELECT user_id, username, password_hash, role FROM users WHERE username = ?");
+    $stmt = $conn->prepare("SELECT user_id, username, password_hash, role, login_attempts, lock_until FROM users WHERE username = ?");
     $stmt->bind_param("s", $username);
     $stmt->execute();
     $res = $stmt->get_result();
     
     if ($res->num_rows === 1) {
         $user = $res->fetch_assoc();
-        if (password_verify($password, $user['password_hash'])) {
-            $_SESSION['logged_in'] = true;
-            $_SESSION['user_id'] = $user['user_id'];
-            $_SESSION['role'] = $user['role'];
-            $_SESSION['username'] = $user['username'];
-            
-            // Profile Pic
-            $pid = $user['user_id'];
-            $pic = $conn->query("SELECT profile_pic FROM users WHERE user_id=$pid")->fetch_assoc();
-            $_SESSION['profile_pic'] = $pic['profile_pic'] ?? 'default.png';
 
-            header("Location: " . ($user['role'] === 'admin' ? 'admin_dashboard.php' : 'student_dashboard.php'));
-            exit();
+        // 1. Check Lockout
+        if ($user['lock_until'] && strtotime($user['lock_until']) > time()) {
+            $remaining = ceil((strtotime($user['lock_until']) - time()) / 60);
+            $error = "Account locked due to too many failed attempts. Try again in $remaining minutes.";
+        } else {
+            // 2. Verify Password
+            if (password_verify($password, $user['password_hash'])) {
+                // Success: Reset Attempts
+                $conn->query("UPDATE users SET login_attempts = 0, lock_until = NULL WHERE user_id = " . $user['user_id']);
+
+                $_SESSION['logged_in'] = true;
+                $_SESSION['user_id'] = $user['user_id'];
+                $_SESSION['role'] = $user['role'];
+                $_SESSION['username'] = $user['username'];
+                
+                // Profile Pic
+                $pid = $user['user_id'];
+                $pic = $conn->query("SELECT profile_pic FROM users WHERE user_id=$pid")->fetch_assoc();
+                $_SESSION['profile_pic'] = $pic['profile_pic'] ?? 'default.png';
+
+                header("Location: " . ($user['role'] === 'admin' ? 'admin_dashboard.php' : 'student_dashboard.php'));
+                exit();
+            } else {
+                // Failure: Increment Attempts
+                $attempts = $user['login_attempts'] + 1;
+                
+                if ($attempts >= 5) {
+                    $conn->query("UPDATE users SET login_attempts = $attempts, lock_until = DATE_ADD(NOW(), INTERVAL 15 MINUTE) WHERE user_id = " . $user['user_id']);
+                    $error = "Too many failed attempts. Account locked for 15 minutes.";
+                } else {
+                    $conn->query("UPDATE users SET login_attempts = $attempts WHERE user_id = " . $user['user_id']);
+                    $error = "Invalid credentials provided. ($attempts/5 attempts)";
+                }
+            }
         }
+    } else {
+        $error = "Invalid credentials provided.";
     }
-    $error = "Invalid credentials provided.";
 }
 
 $page_title = "Login | FairMedAlloc";

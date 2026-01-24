@@ -30,6 +30,19 @@ CREATE TABLE users (
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
+-- 1b. Payments Table (Normalization)
+-- Tracks financial status independent of allocation
+CREATE TABLE payments (
+    payment_id INT AUTO_INCREMENT PRIMARY KEY,
+    student_id INT NOT NULL,
+    amount DECIMAL(10, 2) DEFAULT 0.00,
+    reference_no VARCHAR(50) UNIQUE NOT NULL,
+    status ENUM('paid', 'pending', 'failed') DEFAULT 'paid',
+    paid_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    
+    FOREIGN KEY (student_id) REFERENCES users(user_id) ON DELETE CASCADE
+);
+
 -- Default Admin (Password: fairmed2026)
 INSERT INTO users (username, password_hash, role) 
 VALUES ('AbdulQuadri', '$2y$10$8sA.N/e/P/x/R/w/y/z/0.1/2/3/4/5/6/7/8/9/0/1/2/3/4/5/6', 'admin'); 

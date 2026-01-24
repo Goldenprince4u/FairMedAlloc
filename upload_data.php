@@ -54,6 +54,25 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_FILES['csv_file'])) {
                 // Create Profile
                 $stmt_profile->bind_param("ississs", $uid, $matric, $name, $level, $faculty, $dept, $gender);
                 $stmt_profile->execute();
+                
+                // NEW: Medical Record from CSV
+                // Format: ..., Gender, Condition, Severity(1-10)
+                if (!empty($row[6])) {
+                    $condition = trim($row[6]);
+                    $severity = !empty($row[7]) ? (int)trim($row[7]) : 5;
+                    
+                    if ($condition && strtolower($condition) !== 'none') {
+                        $stmt_med = $conn->prepare("INSERT INTO medical_records (student_id, condition_category, condition_details, severity_level, urgency_score) VALUES (?, ?, ?, ?, ?)");
+                        
+                        // Simple heuristic score for now (Model will update it later)
+                        $score = ($severity * 10); 
+                        $details = "$condition (Imported)";
+                        
+                        $stmt_med->bind_param("issid", $uid, $condition, $details, $severity, $score);
+                        $stmt_med->execute();
+                    }
+                }
+
                 $count++;
             }
         }

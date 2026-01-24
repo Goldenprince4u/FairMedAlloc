@@ -22,6 +22,9 @@ function active($p) { global $current_page; return $current_page == $p ? 'active
             <a href="view_table.php" class="nav-item <?php echo active('view_table.php'); ?>">
                 <i class="fa-solid fa-table-cells"></i> View All Data
             </a>
+            <a href="admin_reports.php" class="nav-item <?php echo active('admin_reports.php'); ?>">
+                <i class="fa-solid fa-chart-pie"></i> System Reports
+            </a>
             <a href="run_allocation.php" class="nav-item <?php echo active('run_allocation.php'); ?>">
                 <i class="fa-solid fa-wand-magic-sparkles"></i> Run Allocation
             </a>

@@ -6,27 +6,20 @@
 session_start();
 require_once 'db_config.php';
 
+require_once 'includes/Student.php';
+
 if (!isset($_SESSION['logged_in']) || ($_SESSION['role'] ?? '') !== 'student') { 
     header("Location: login.php"); 
     exit(); 
 }
 
 $user_id = $_SESSION['user_id'];
+$studentObj = new Student($conn, $user_id);
 
-// Fetch Profile
-$stmt = $conn->prepare("SELECT p.*, m.condition_category, u.profile_pic FROM student_profiles p JOIN users u ON p.user_id = u.user_id LEFT JOIN medical_records m ON p.user_id = m.student_id WHERE p.user_id = ?");
-$stmt->bind_param("i", $user_id);
-if ($stmt->execute()) {
-    $student = $stmt->get_result()->fetch_assoc();
-}
-$stmt->close();
-
-// Fetch Allocation
-$stmt = $conn->prepare("SELECT a.*, r.room_number, h.name as hostel_name FROM allocations a JOIN rooms r ON a.room_id = r.room_id JOIN hostels h ON r.hostel_id = h.hostel_id WHERE a.student_id = ?");
-$stmt->bind_param("i", $user_id);
-$stmt->execute();
-$alloc = $stmt->get_result()->fetch_assoc();
-$stmt->close();
+// Fetch Data using Model
+$student = $studentObj->getProfile();
+$alloc = $studentObj->getAllocation();
+$has_paid = $studentObj->hasPaid();
 
 $page_title = "Dashboard | FairMedAlloc";
 require_once 'includes/header.php';
@@ -41,50 +34,100 @@ require_once 'includes/header.php';
 
         <!-- Allocation Status Card -->
         <div class="glass-card mb-8 p-0 overflow-hidden relative"> <!-- Used glass-card -->
-            <?php if ($alloc): ?>
-                <div class="absolute left-0 top-0 bottom-0 w-2 bg-success"></div>
-                <div class="p-8">
-                    <h3 class="serif mb-4 text-xl">Allocation Status</h3>
-                    
-                    <div class="flex items-start gap-4 mb-6">
-                        <i class="fa-solid fa-circle-check text-success text-xl mt-1"></i>
+            <?php if ($has_paid): ?>
+                <?php if ($alloc): ?>
+                    <div class="absolute left-0 top-0 bottom-0 w-2 bg-success"></div>
+                    <div class="p-8">
+                        <h3 class="serif mb-4 text-xl">Allocation Status</h3>
+                        
+                        <div class="flex items-start gap-4 mb-6">
+                            <i class="fa-solid fa-circle-check text-success text-xl mt-1"></i>
+                            <div>
+                                <div class="fw-700 text-success text-lg mb-2">Allocation Successful</div>
+                                <p class="text-muted">You have been placed in <strong class="text-slate-800"><?php echo htmlspecialchars($alloc['hostel_name']); ?></strong>.</p>
+                            </div>
+                        </div>
+
+                        <div class="border border-dashed border-gray-300 rounded p-4 bg-slate-50 inline-block min-w-[200px] mb-6">
+                            <div class="text-xs text-muted uppercase tracking-wider mb-1">ROOM NUMBER</div>
+                            <div class="text-3xl fw-700 text-primary">Rm <?php echo htmlspecialchars($alloc['room_number']); ?></div>
+                        </div>
+
                         <div>
-                            <div class="fw-700 text-success text-lg mb-2">Allocation Successful</div>
-                            <p class="text-muted">You have been placed in <strong class="text-slate-800"><?php echo htmlspecialchars($alloc['hostel_name']); ?></strong>.</p>
+                            <a href="print_slip.php" target="_blank" class="btn btn-secondary text-primary hover:bg-blue-50">
+                                <i class="fa-solid fa-print mr-2"></i> Print Official Slip
+                            </a>
                         </div>
                     </div>
-
-                    <div class="border border-dashed border-gray-300 rounded p-4 bg-slate-50 inline-block min-w-[200px] mb-6">
-                        <div class="text-xs text-muted uppercase tracking-wider mb-1">ROOM NUMBER</div>
-                        <div class="text-3xl fw-700 text-primary">Rm <?php echo htmlspecialchars($alloc['room_number']); ?></div>
+                <?php else: ?>
+                    <div class="absolute left-0 top-0 bottom-0 w-2 bg-warning"></div>
+                    <div class="p-8">
+                        <div class="flex justify-between items-start">
+                            <div>
+                                <h3 class="serif mb-4 text-xl">Allocation Status</h3>
+                                <div class="flex items-start gap-4 mb-6">
+                                    <i class="fa-solid fa-clock text-warning text-xl mt-1"></i>
+                                    <div>
+                                        <div class="fw-700 text-warning text-lg mb-2">Allocation Pending</div>
+                                        <p class="text-muted">Payment verified. Your room allocation is being processed.</p>
+                                    </div>
+                                </div>
+                            </div>
+                            <span class="badge badge-success px-4 py-2"><i class="fa-solid fa-check mr-2"></i>School Fees Paid</span>
+                        </div>
+                        
+                         <div class="border border-dashed border-gray-300 rounded p-4 bg-slate-50 inline-block min-w-[200px] mb-6">
+                            <div class="text-xs text-muted uppercase tracking-wider mb-1">STATUS</div>
+                            <div class="text-3xl fw-700 text-warning">Waiting...</div>
+                        </div>
                     </div>
-
-                    <div>
-                        <a href="print_slip.php" target="_blank" class="btn btn-secondary text-primary hover:bg-blue-50">
-                            <i class="fa-solid fa-print mr-2"></i> Print Official Slip
-                        </a>
-                    </div>
-                </div>
+                <?php endif; ?>
             <?php else: ?>
-                <div class="absolute left-0 top-0 bottom-0 w-2 bg-warning"></div>
+                <!-- NOT PAID STATE -->
+                <div class="absolute left-0 top-0 bottom-0 w-2 bg-danger"></div>
                 <div class="p-8">
                     <h3 class="serif mb-4 text-xl">Allocation Status</h3>
                     
                     <div class="flex items-start gap-4 mb-6">
-                        <i class="fa-solid fa-clock text-warning text-xl mt-1"></i>
+                        <i class="fa-solid fa-circle-exclamation text-danger text-xl mt-1"></i>
                         <div>
-                            <div class="fw-700 text-warning text-lg mb-2">Allocation Pending</div>
-                            <p class="text-muted">Your room allocation is currently being processed by the algorithm.</p>
+                            <div class="fw-700 text-danger text-lg mb-2">Action Required</div>
+                            <p class="text-muted">You must pay your school fees before a room can be allocated to you.</p>
                         </div>
                     </div>
-                    
-                     <div class="border border-dashed border-gray-300 rounded p-4 bg-slate-50 inline-block min-w-[200px] mb-6">
-                        <div class="text-xs text-muted uppercase tracking-wider mb-1">STATUS</div>
-                        <div class="text-3xl fw-700 text-warning">Waiting...</div>
-                    </div>
+
+                    <button onclick="payFees()" id="payBtn" class="btn btn-primary">
+                        <i class="fa-solid fa-credit-card mr-2"></i> Pay School Fees (₦50,000)
+                    </button>
+                    <div id="payMsg" class="mt-4 hidden"></div>
                 </div>
             <?php endif; ?>
         </div>
+        
+        <script>
+        function payFees() {
+            const btn = document.getElementById('payBtn');
+            const msg = document.getElementById('payMsg');
+            btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin mr-2"></i> Processing...';
+            btn.disabled = true;
+
+            fetch('api/pay_simulation.php')
+                .then(res => res.json())
+                .then(data => {
+                    if(data.status === 'success') {
+                        btn.innerHTML = '<i class="fa-solid fa-check mr-2"></i> Paid Successfully';
+                        btn.classList.remove('btn-primary');
+                        btn.classList.add('bg-green-600', 'text-white');
+                        setTimeout(() => window.location.reload(), 1500);
+                    } else {
+                        btn.innerHTML = 'Try Again';
+                        btn.disabled = false;
+                        msg.innerHTML = `<span class="text-danger">${data.message}</span>`;
+                        msg.classList.remove('hidden');
+                    }
+                });
+        }
+        </script>
 
         <!-- Bottom Grid: Profile & Notices -->
         <div class="grid grid-dashboard-custom">
@@ -128,21 +171,31 @@ require_once 'includes/header.php';
             <div class="glass-card">
                 <h3 class="serif text-xl mb-6">Notices</h3>
 
-                <div class="mb-6">
+                <!-- Dynamic Notifications -->
+                <?php
+                require_once 'includes/NotificationManager.php';
+                $notifier = new NotificationManager($conn);
+                $notices = $notifier->getUnread($user_id);
+
+                if (count($notices) > 0) {
+                    foreach ($notices as $notice) {
+                        echo '<div class="mb-4 p-3 bg-blue-50 border-l-4 border-primary rounded text-sm">';
+                        echo '<div class="fw-700 text-primary mb-1"><i class="fa-solid fa-bell mr-2"></i>New Alert</div>';
+                        echo '<p class="text-slate-700">' . htmlspecialchars($notice['message']) . '</p>';
+                        echo '<div class="text-xs text-muted mt-1">' . date('M d, H:i', strtotime($notice['created_at'])) . '</div>';
+                        echo '</div>';
+                    }
+                } else {
+                    echo '<p class="text-muted text-sm italic">No new notifications.</p>';
+                }
+                ?>
+
+                <div class="mt-6 border-t pt-4">
                     <div class="flex items-center gap-2 mb-1 text-primary fw-700">
-                        <i class="fa-solid fa-bullhorn"></i> Registration Closing
+                        <i class="fa-solid fa-bullhorn"></i> General Info
                     </div>
                     <p class="text-sm text-muted leading-relaxed">
                         Hostel portal closes on Friday. Ensure all medical documents are verified before the deadline.
-                    </p>
-                </div>
-
-                <div class="mb-4">
-                    <div class="flex items-center gap-2 mb-1 text-primary fw-700">
-                         <i class="fa-solid fa-user-doctor"></i> Health Center
-                    </div>
-                    <p class="text-sm text-muted leading-relaxed">
-                        Students with severe mobility constraints should visit the clinic for manual verification.
                     </p>
                 </div>
             </div>
