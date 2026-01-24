@@ -27,6 +27,8 @@ CREATE TABLE users (
     role ENUM('student', 'admin', 'medical_officer') NOT NULL DEFAULT 'student',
     profile_pic VARCHAR(255) DEFAULT 'default.png',
     last_login TIMESTAMP NULL,
+    login_attempts INT DEFAULT 0,
+    lock_until TIMESTAMP NULL,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
@@ -195,3 +197,13 @@ INSERT INTO faqs (question, answer) VALUES
 ('How is the "Urgency Score" calculated?', 'The system uses a Machine Learning algorithm (XGBoost) trained on historical medical data given by the school clinic. It considers your reported medical conditions, mobility status, and severity level to assign a priority score (0-100).'),
 ('What if my allocation is pending?', 'Allocations are done in batches. If your status is "Pending", the admin has likely not run the final allocation for the session yet. Ensure your profile is up to date.'),
 ('How do I correct a wrong medical entry?', 'You can edit your profile via the "Student Dashboard > Edit Profile" link. However, false claims are subject to physical verification at the University Health Center.');
+
+-- 10. Notifications
+CREATE TABLE notifications (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    user_id INT NOT NULL,
+    message TEXT NOT NULL,
+    is_read BOOLEAN DEFAULT FALSE,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (user_id) REFERENCES users(user_id) ON DELETE CASCADE
+);
