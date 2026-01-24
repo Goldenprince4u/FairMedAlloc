@@ -49,7 +49,7 @@ require_once 'includes/header.php';
 
 <script>
 document.addEventListener('DOMContentLoaded', () => {
-    fetch('api/admin_analytics.php')
+    fetch('api/admin_api.php?action=analytics')
         .then(res => res.json())
         .then(data => {
             if(data.status !== 'success') return;

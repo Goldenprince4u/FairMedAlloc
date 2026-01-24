@@ -271,7 +271,7 @@ function fetchRooms(hostelId) {
     roomSelect.innerHTML = '<option>Loading...</option>';
     roomSelect.disabled = true;
     
-    fetch(`api/get_rooms.php?hostel_id=${hostelId}`)
+    fetch(`api/admin_api.php?action=get_rooms&hostel_id=${hostelId}`)
         .then(res => res.json())
         .then(data => {
             roomSelect.innerHTML = '<option value="">-- Select Room --</option>';
@@ -291,7 +291,7 @@ function submitAssignment() {
     const formData = new FormData(form);
     const data = new URLSearchParams(formData);
 
-    fetch('api/manual_assign.php', {
+    fetch('api/admin_api.php?action=manual_assign', {
         method: 'POST',
         headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
         body: data

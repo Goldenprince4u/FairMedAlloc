@@ -61,7 +61,7 @@ function startAllocation() {
         console.innerHTML += '<div class="mb-2">Connecting to XGBoost Model (Simulation)...</div>';
         
         // Actual AJAX Call
-        fetch('api/run_algorithm.php')
+        fetch('api/admin_api.php?action=run_algorithm')
             .then(response => response.json())
             .then(data => {
                 if(data.status === 'success') {
