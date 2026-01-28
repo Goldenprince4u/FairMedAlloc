@@ -59,7 +59,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
         if (password_verify($current, $res['password_hash'])) {
             if ($new === $confirm) {
-                if (strlen($new) >= 6) {
+                // complex: at least 8 chars, 1 num, 1 upper, 1 lower
+                if (strlen($new) >= 8 && preg_match('/[A-Z]/', $new) && preg_match('/[a-z]/', $new) && preg_match('/[0-9]/', $new)) {
                     $new_hash = password_hash($new, PASSWORD_DEFAULT);
                     $update = $conn->prepare("UPDATE users SET password_hash = ? WHERE user_id = ?");
                     $update->bind_param("si", $new_hash, $user_id);
@@ -71,7 +72,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         $msg_type = "error";
                     }
                 } else {
-                    $msg = "New password must be at least 6 characters.";
+                    $msg = "New password must be at least 8 characters and include uppercase, lowercase, and numbers.";
                     $msg_type = "error";
                 }
             } else {
@@ -169,7 +170,7 @@ require_once 'includes/header.php';
                     
                     <div class="alert alert-info mb-6 flex gap-3">
                          <i class="fa-solid fa-circle-info mt-1"></i>
-                         <p>For security, please ensure your password is at least 6 characters long and includes a mix of letters and numbers.</p>
+                         <p>For security, please ensure your password is at least 8 characters long and includes a mix of letters and numbers.</p>
                     </div>
 
                     <div class="text-right">

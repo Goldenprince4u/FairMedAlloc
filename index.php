@@ -32,7 +32,7 @@ session_start();
         <div class="hero-blob blob-2"></div>
 
         <div class="hero-content animate-fade-in">
-            <div class="badge badge-warning mb-6" style="background: rgba(255, 215, 0, 0.1); color: #ffd700; border: 1px solid rgba(255,215,0,0.3);">
+            <div class="badge badge-warning mb-6 badge-final-year">
                 <i class="fa-solid fa-star mr-2"></i> Final Year Project 2026
             </div>
             

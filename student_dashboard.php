@@ -96,6 +96,12 @@ require_once 'includes/header.php';
                         </div>
                     </div>
 
+                    <div class="alert alert-info mb-4">
+                        <i class="fa-solid fa-info-circle mr-2"></i> Fee: ₦50,000
+                    </div>
+
+                    <?php require_once 'includes/security_helper.php'; csrf_field(); ?>
+
                     <button onclick="payFees()" id="payBtn" class="btn btn-primary">
                         <i class="fa-solid fa-credit-card mr-2"></i> Pay School Fees (₦50,000)
                     </button>
@@ -111,14 +117,27 @@ require_once 'includes/header.php';
             btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin mr-2"></i> Processing...';
             btn.disabled = true;
 
-            fetch('api/pay_simulation.php')
+            fetch('api/pay_simulation.php', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    csrf_token: document.querySelector('input[name="csrf_token"]').value
+                })
+            })
                 .then(res => res.json())
                 .then(data => {
                     if(data.status === 'success') {
                         btn.innerHTML = '<i class="fa-solid fa-check mr-2"></i> Paid Successfully';
                         btn.classList.remove('btn-primary');
                         btn.classList.add('bg-green-600', 'text-white');
-                        setTimeout(() => window.location.reload(), 1500);
+                        
+                        // Show detailed allocation message
+                        msg.innerHTML = `<span class="text-success">${data.message}</span>`;
+                        msg.classList.remove('hidden');
+                        
+                        setTimeout(() => window.location.reload(), 2000);
                     } else {
                         btn.innerHTML = 'Try Again';
                         btn.disabled = false;

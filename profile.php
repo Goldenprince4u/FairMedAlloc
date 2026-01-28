@@ -142,6 +142,12 @@ require_once 'includes/header.php';
                         </div>
 
                         <div class="form-group">
+                            <label>Gender</label>
+                            <input type="text" value="<?php echo htmlspecialchars($student['gender']); ?>" disabled class="bg-gray-100 cursor-not-allowed">
+                            <div class="text-xs text-muted mt-1">Locked for allocation purposes.</div>
+                        </div>
+
+                        <div class="form-group">
                             <label>Level</label>
                             <select name="level">
                                 <option value="100" <?php if($student['level']==100) echo 'selected'; ?>>100 Level</option>
@@ -168,7 +174,7 @@ require_once 'includes/header.php';
 
                         <div class="form-group">
                             <label>Department</label>
-                            <select name="department" id="deptSelect">
+                            <select name="department" id="deptSelect" data-current="<?php echo htmlspecialchars($student['department']); ?>">
                                 <option value="<?php echo htmlspecialchars($student['department']); ?>"><?php echo htmlspecialchars($student['department'] ?: 'Select Faculty First'); ?></option>
                             </select>
                         </div>
@@ -222,41 +228,6 @@ require_once 'includes/header.php';
     </main>
 </div>
 
-<script>
-const departments = {
-    "Faculty of Computing and Digital Technologies": ["Computer Science", "Information Technology", "Cybersecurity"],
-    "Natural Sciences": ["Biochemistry", "Industrial Mathematics", "Microbiology", "Physics", "Chemistry"],
-    "Basic Medical Sciences": ["Nursing Science", "Physiology", "Anatomy", "Medical Laboratory Science"],
-    "Management Sciences": ["Accounting", "Business Administration", "Economics", "Transport Management"],
-    "Engineering": ["Civil Engineering", "Mechanical Engineering", "Electrical Engineering"],
-    "Humanities": ["English", "History", "Theatre Arts"],
-    "Law": ["Law"]
-};
-
-function updateDepartments() {
-    const faculty = document.getElementById("facultySelect").value;
-    const deptSelect = document.getElementById("deptSelect");
-    const currentDept = "<?php echo $student['department']; ?>";
-    
-    deptSelect.innerHTML = '<option value="">Select Department</option>';
-    
-    if(faculty && departments[faculty]) {
-        departments[faculty].forEach(dept => {
-            const option = document.createElement("option");
-            option.value = dept;
-            option.text = dept;
-            if (dept === currentDept) {
-                option.selected = true;
-            }
-            deptSelect.appendChild(option);
-        });
-    }
-}
-
-// Run on load to set initial state
-document.addEventListener('DOMContentLoaded', function() {
-    updateDepartments();
-});
-</script>
+<script src="js/departments.js"></script>
 </body>
 </html>

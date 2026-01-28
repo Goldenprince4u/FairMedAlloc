@@ -506,6 +506,12 @@ tr:hover td {
     color: var(--c-info);
 }
 
+.badge-final-year {
+    background: rgba(255, 215, 0, 0.1);
+    color: #ffd700;
+    border: 1px solid rgba(255, 215, 0, 0.3);
+}
+
 /* Alerts */
 .alert {
     padding: 1rem;

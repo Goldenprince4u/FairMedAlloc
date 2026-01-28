@@ -8,7 +8,7 @@
 // 1. Connection Parameters
 // Note: 'localhost' usually works, but if you get "Connection Refused", 
 // try using '127.0.0.1' instead.
-define('DB_HOST', 'localhost');
+define('DB_HOST', '127.0.0.1');
 define('DB_USER', 'root');      // Default XAMPP user
 define('DB_PASS', '');          // Default XAMPP password (empty)
 define('DB_NAME', 'fairmedalloc'); // Database Name

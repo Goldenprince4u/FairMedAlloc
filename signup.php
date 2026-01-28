@@ -47,7 +47,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
             if ($role === 'student') {
                 $fac = sanitize_input($_POST['faculty']);
                 $dept = sanitize_input($_POST['department']);
-                $gen = 'Male'; // Default
+                $gen = sanitize_input($_POST['gender']);
                 
                 $stmt2 = $conn->prepare("INSERT INTO student_profiles (user_id, matric_no, full_name, level, faculty, department, gender) VALUES (?, ?, ?, ?, ?, ?, ?)");
                 $stmt2->bind_param("ississs", $new_id, $matric, $name, $level, $fac, $dept, $gen);
@@ -124,6 +124,7 @@ require_once 'includes/header.php';
                        <label class="text-sm font-bold text-slate-700 mb-2">Matric Number</label>
                        <input type="text" name="matric_no" placeholder="RUN/CMP/22/..." required class="input-auth">
                     </div>
+                <div class="grid grid-cols-2 gap-4 mb-4">
                     <div class="form-group">
                         <label class="text-sm font-bold text-slate-700 mb-2">Level</label>
                         <select name="level" class="input-auth">
@@ -132,6 +133,14 @@ require_once 'includes/header.php';
                             <option value="300">300 Level</option>
                             <option value="400">400 Level</option>
                             <option value="500">500 Level</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label class="text-sm font-bold text-slate-700 mb-2">Gender</label>
+                        <select name="gender" class="input-auth" required>
+                            <option value="">Select...</option>
+                            <option value="Male">Male</option>
+                            <option value="Female">Female</option>
                         </select>
                     </div>
                 </div>
@@ -158,32 +167,7 @@ require_once 'includes/header.php';
                     </div>
                 </div>
 
-                <script>
-                const departments = {
-                    "Faculty of Computing and Digital Technologies": ["Computer Science", "Information Technology", "Cybersecurity"],
-                    "Natural Sciences": ["Biochemistry", "Industrial Mathematics", "Microbiology", "Physics", "Chemistry"],
-                    "Basic Medical Sciences": ["Nursing Science", "Physiology", "Anatomy", "Medical Laboratory Science"],
-                    "Management Sciences": ["Accounting", "Business Administration", "Economics", "Transport Management"],
-                    "Engineering": ["Civil Engineering", "Mechanical Engineering", "Electrical Engineering"],
-                    "Humanities": ["English", "History", "Theatre Arts"],
-                    "Law": ["Law"]
-                };
-
-                function updateDepartments() {
-                    const faculty = document.getElementById("facultySelect").value;
-                    const deptSelect = document.getElementById("deptSelect");
-                    deptSelect.innerHTML = '<option value="">Select Department</option>';
-                    
-                    if(faculty && departments[faculty]) {
-                        departments[faculty].forEach(dept => {
-                            const option = document.createElement("option");
-                            option.value = dept;
-                            option.text = dept;
-                            deptSelect.appendChild(option);
-                        });
-                    }
-                }
-                </script>
+<script src="js/departments.js"></script>
 
                 <div class="form-group mb-4">
                     <label class="text-sm font-bold text-slate-700 mb-2">Email Address</label>
@@ -192,7 +176,8 @@ require_once 'includes/header.php';
 
                 <div class="form-group mb-8">
                     <label class="text-sm font-bold text-slate-700 mb-2">Password</label>
-                    <input type="password" name="password" placeholder="Create a strong password" required class="input-auth">
+                    <input type="password" name="password" placeholder="Create a strong password" required class="input-auth" minlength="8" pattern="(?=.*\d)(?=.*[a-z])(?=.*[A-Z]).{8,}" title="Must contain at least one number and one uppercase and lowercase letter, and at least 8 or more characters">
+                    <div class="text-xs text-muted mt-2">For security, please ensure your password is at least 8 characters long and includes a mix of letters and numbers.</div>
                 </div>
 
                 <button class="btn btn-primary w-full mb-4">Register Account</button>

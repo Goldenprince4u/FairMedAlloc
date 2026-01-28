@@ -84,34 +84,37 @@ class AllocationEngine {
                 $room_id = $this->findAvailableRoom($gender, $final_score, $faculty, $mobility);
 
                 if ($room_id) {
-                    // Assign
-                    $stmt = $this->conn->prepare("INSERT INTO allocations (student_id, room_id) VALUES (?, ?)");
-                    $stmt->bind_param("ii", $student_id, $room_id);
-                    $stmt->execute();
+                    // Assign via Bed Configuration Logic
+                    if ($this->assignBed($room_id, $student_id)) {
+                        $allocated_count++;
                     
-                    // Update room occupancy
-                    $this->conn->query("UPDATE rooms SET occupied_count = occupied_count + 1 WHERE room_id = $room_id");
-                    $allocated_count++;
-                    
-                    // AUDIT LOGGING
-                    $hid_res = $this->conn->query("SELECT h.hostel_id, h.name FROM rooms r JOIN hostels h ON r.hostel_id = h.hostel_id WHERE r.room_id = $room_id");
-                    $h_row = $hid_res->fetch_assoc();
-                    $hid = $h_row['hostel_id'] ?? null;
-                    $h_name = $h_row['name'] ?? 'Hostel';
+                        // AUDIT LOGGING
+                        $hid_res = $this->conn->query("SELECT h.hostel_id, h.name FROM rooms r JOIN hostels h ON r.hostel_id = h.hostel_id WHERE r.room_id = $room_id");
+                        $h_row = $hid_res->fetch_assoc();
+                        $hid = $h_row['hostel_id'] ?? null;
+                        $h_name = $h_row['name'] ?? 'Hostel';
 
-                    // NOTIFY STUDENT
-                    $notifier->send($student_id, "Congratulations! You have been allocated a room in $h_name.");
-                    
-                    $audit_sql = "INSERT INTO algorithm_audit_logs 
-                                  (student_id, input_severity, input_proximity_need, calculated_urgency_score, allocation_decision, assigned_hostel_id) 
-                                  VALUES (?, 0, ?, ?, 'Allocated', ?)";
-                                  
-                    $prox_need = ($final_score >= 70) ? 1 : 0;
-                    $stmt_audit = $this->conn->prepare($audit_sql);
-                    $stmt_audit->bind_param("idii", $student_id, $prox_need, $final_score, $hid);
-                    $stmt_audit->execute();
+                        // NOTIFY STUDENT
+                        $notifier->send($student_id, "Congratulations! You have been allocated a room in $h_name.");
+                        
+                        $audit_sql = "INSERT INTO algorithm_audit_logs 
+                                      (student_id, input_severity, input_proximity_need, calculated_urgency_score, allocation_decision, assigned_hostel_id) 
+                                      VALUES (?, 0, ?, ?, 'Allocated', ?)";
+                                      
+                        $prox_need = ($final_score >= 70) ? 1 : 0;
+                        $stmt_audit = $this->conn->prepare($audit_sql);
+                        $stmt_audit->bind_param("idii", $student_id, $prox_need, $final_score, $hid);
+                        $stmt_audit->execute();
+                    } else {
+                        // Room was technically full or config error
+                        // Treat as missed allocation
+                        $notifier->send($student_id, "Update: You have been placed on the waiting list as no suitable rooms are currently available.");
+                        // ... Log as Waitlisted ...
+                    }
                 } else {
                     // Log Missed Allocation
+                    // ... (rest of else block)
+
                     // NOTIFY STUDENT (Waitlist)
                     $notifier->send($student_id, "Update: You have been placed on the waiting list as no suitable rooms are currently available.");
 
@@ -263,5 +266,66 @@ class AllocationEngine {
             }
         }
     }
+
+    /**
+     * Helper: Assign Bed based on configuration (LB/UB/SB)
+     */
+    private function assignBed($room_id, $student_id) {
+        // 1. Get Room Bed Config
+        $stmt = $this->conn->prepare("SELECT bed_config, capacity FROM rooms WHERE room_id = ?");
+        $stmt->bind_param("i", $room_id);
+        $stmt->execute();
+        $res = $stmt->get_result();
+        $room = $res->fetch_assoc();
+        
+        $config_str = $room['bed_config'] ?? null;
+        if (empty($config_str)) {
+            // Fallback: Default all to 'LB' based on capacity
+            $config_arr = array_fill(0, (int)$room['capacity'], 'LB');
+        } else {
+            $config_arr = array_map('trim', explode(',', $config_str));
+        }
+
+        // 2. Get Occupied Slots
+        $stmt_check = $this->conn->prepare("SELECT bed_space FROM allocations WHERE room_id = ?");
+        $stmt_check->bind_param("i", $room_id);
+        $stmt_check->execute();
+        $res_check = $stmt_check->get_result();
+        
+        $occupied_indices = [];
+        while ($row = $res_check->fetch_assoc()) {
+            if ($row['bed_space'] !== null) {
+                // Ensure valid ASCII range 
+                $ord = ord($row['bed_space']);
+                if ($ord >= 65 && $ord <= 90) { // A-Z
+                    $occupied_indices[] = $ord - 65; 
+                }
+            }
+        }
+        
+        // 3. Find First Free Slot
+        $slot_index = -1;
+        for ($i = 0; $i < count($config_arr); $i++) {
+            if (!in_array($i, $occupied_indices)) {
+                $slot_index = $i;
+                break;
+            }
+        }
+        
+        if ($slot_index === -1) return false; // Full
+        
+        // 4. Assign
+        $bed_space = chr(65 + $slot_index); // 0->A
+        $bed_label = $config_arr[$slot_index];
+        
+        $stmt_ins = $this->conn->prepare("INSERT INTO allocations (student_id, room_id, bed_space, bed_label) VALUES (?, ?, ?, ?)");
+        $stmt_ins->bind_param("iiss", $student_id, $room_id, $bed_space, $bed_label);
+        
+        if ($stmt_ins->execute()) {
+            $this->conn->query("UPDATE rooms SET occupied_count = occupied_count + 1 WHERE room_id = $room_id");
+            return true;
+        }
+        
+        return false;
+    }
 }
-?>

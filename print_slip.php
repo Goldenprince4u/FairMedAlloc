@@ -38,47 +38,7 @@ if (!$data) {
     <meta charset="UTF-8">
     <title>Allocation Slip - <?php echo htmlspecialchars($matric); ?></title>
     <link href="https://fonts.googleapis.com/css2?family=Merriweather:wght@700&family=Inter:wght@400;600&display=swap" rel="stylesheet">
-    <style>
-        body { font-family: 'Inter', sans-serif; background: #525659; padding: 20px; text-align: center; }
-        .slip-container {
-            background: white; width: 210mm; min-height: 297mm; /* A4 */
-            margin: 0 auto; padding: 40px; text-align: left;
-            box-shadow: 0 0 10px rgba(0,0,0,0.5);
-            position: relative;
-        }
-        .header { text-align: center; border-bottom: 2px solid #1e3a8a; padding-bottom: 20px; margin-bottom: 30px; }
-        .uni-name { font-family: 'Merriweather', serif; font-size: 24px; color: #1e3a8a; font-weight: bold; text-transform: uppercase; }
-        .sub-head { color: #555; font-size: 14px; margin-top: 5px; }
-        
-        .photo-box { position: absolute; top: 40px; right: 40px; width: 120px; height: 120px; border: 1px solid #ccc; }
-        .photo-box img { width: 100%; height: 100%; object-fit: cover; }
-        
-        .content { margin-top: 40px; }
-        .row { display: flex; margin-bottom: 15px; border-bottom: 1px solid #eee; padding-bottom: 5px; }
-        .label { width: 150px; font-weight: 600; color: #555; }
-        .value { flex: 1; font-weight: 500; font-family: monospace; font-size: 16px; }
-        
-        .alloc-box {
-            margin-top: 40px; border: 2px solid #1e3a8a; padding: 20px; background: #f0f9ff;
-            text-align: center;
-        }
-        .alloc-title { color: #1e3a8a; font-size: 14px; text-transform: uppercase; letter-spacing: 1px; }
-        .alloc-hostel { font-size: 28px; font-weight: bold; margin: 10px 0; color: #333; }
-        .alloc-room { font-size: 18px; color: #555; }
-        
-        .footer { margin-top: 80px; text-align: center; font-size: 12px; color: #999; border-top: 1px solid #eee; padding-top: 20px; }
-        .stamp { 
-            margin-top: 50px; border: 3px double #c2410c; color: #c2410c; 
-            padding: 10px; display: inline-block; transform: rotate(-5deg); font-weight: bold; 
-            text-transform: uppercase; font-size: 18px; opacity: 0.8;
-        }
-        
-        @media print {
-            body { background: white; padding: 0; }
-            .slip-container { box-shadow: none; width: 100%; }
-            .btn-print { display: none; }
-        }
-    </style>
+    <link rel="stylesheet" href="css/print.css">
 </head>
 <body>
     <button class="btn-print" onclick="window.print()">Print this Slip</button>

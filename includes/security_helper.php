@@ -64,7 +64,10 @@ function check_csrf(): void {
         $token = $_POST['csrf_token'] ?? '';
         if (!verify_csrf_token($token)) {
             header('HTTP/1.1 403 Forbidden');
-            die("<h1>403 Forbidden</h1><p>Security Token Mismatch. Please refresh the page and try again.</p>");
+            $url = htmlspecialchars($_SERVER['PHP_SELF']);
+            die("<h1>403 Forbidden</h1>
+                 <p>Security Token Mismatch (Session Expired).</p>
+                 <p><a href='$url'>Click here to reload the page safely</a></p>");
         }
     }
 }
