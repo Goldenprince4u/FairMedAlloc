@@ -8,6 +8,11 @@ require_once 'db_config.php';
 require_once 'includes/security_helper.php';
 
 $error = '';
+
+if (isset($_GET['error']) && $_GET['error'] === 'profile_missing') {
+    $error = "Profile data incomplete. Please log in again to sync.";
+}
+
 if ($_SERVER["REQUEST_METHOD"] == "POST") {
     check_csrf();
 

@@ -17,7 +17,7 @@ $user_id = $_SESSION['user_id'];
 
 // Fetch Allocation
 $stmt = $conn->prepare("SELECT a.*, h.name as hostel_name, h.block_name, r.room_number,
-                               p.full_name, p.matric_no, p.level, p.faculty, u.profile_pic 
+                               p.full_name, p.matric_no, p.level, p.faculty, p.department, u.profile_pic 
                         FROM allocations a 
                         JOIN rooms r ON a.room_id = r.room_id
                         JOIN hostels h ON r.hostel_id = h.hostel_id 
@@ -63,16 +63,36 @@ if (!$data) {
             <div class="row"><div class="label">Full Name:</div><div class="value"><?php echo htmlspecialchars($data['full_name']); ?></div></div>
             <div class="row"><div class="label">Matric No:</div><div class="value"><?php echo htmlspecialchars($data['matric_no']); ?></div></div>
             <div class="row"><div class="label">Faculty:</div><div class="value"><?php echo htmlspecialchars($data['faculty']); ?></div></div>
+            <div class="row"><div class="label">Department:</div><div class="value"><?php echo htmlspecialchars($data['department']); ?></div></div>
             <div class="row"><div class="label">Level:</div><div class="value"><?php echo htmlspecialchars($data['level']); ?></div></div>
             <div class="row"><div class="label">Date Issued:</div><div class="value"><?php echo date('d M Y'); ?></div></div>
         </div>
         
         <div class="alloc-box">
-            <div class="alloc-title">Allocated Hall of Residence</div>
-            <div class="alloc-hostel"><?php echo htmlspecialchars($data['hostel_name']); ?>, <?php echo htmlspecialchars($data['block_name']); ?></div>
-            <div class="alloc-room">
-                Room No: <strong><?php echo htmlspecialchars($data['room_number']); ?></strong>
-                <span style="font-size: 0.6em; vertical-align: middle;">(<?php echo htmlspecialchars($data['bed_label']); ?>)</span>
+            <div class="alloc-header">Allocated Hall of Residence</div>
+            
+            <?php
+            // Format Block Name
+            $b_name = $data['block_name'] ?? '1';
+            $b_name = str_ireplace('Block ', '', $b_name);
+            if (stripos($b_name, 'Main') !== false) $b_name = '1';
+            ?>
+            
+            <div class="alloc-hostel"><?php echo htmlspecialchars($data['hostel_name']); ?></div>
+            
+            <div class="alloc-grid">
+                <div class="alloc-item">
+                    <div class="alloc-label">BLOCK</div>
+                    <div class="alloc-value"><?php echo htmlspecialchars($b_name); ?></div>
+                </div>
+                <div class="alloc-item">
+                    <div class="alloc-label">ROOM</div>
+                    <div class="alloc-value"><?php echo htmlspecialchars($data['room_number']); ?></div>
+                </div>
+                <div class="alloc-item">
+                    <div class="alloc-label">BED</div>
+                    <div class="alloc-value"><?php echo htmlspecialchars($data['bed_label']); ?></div>
+                </div>
             </div>
         </div>
         

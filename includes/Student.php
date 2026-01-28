@@ -30,7 +30,7 @@ class Student {
      * Get allocation details
      */
     public function getAllocation() {
-        $stmt = $this->conn->prepare("SELECT a.*, r.room_number, h.name as hostel_name 
+        $stmt = $this->conn->prepare("SELECT a.*, r.room_number, h.name as hostel_name, h.block_name 
                                       FROM allocations a 
                                       JOIN rooms r ON a.room_id = r.room_id 
                                       JOIN hostels h ON r.hostel_id = h.hostel_id 

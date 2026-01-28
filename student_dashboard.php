@@ -18,6 +18,16 @@ $studentObj = new Student($conn, $user_id);
 
 // Fetch Data using Model
 $student = $studentObj->getProfile();
+
+if (!$student) {
+    // Session exists but profile deleted/missing?
+    // Force logout or better yet, show error.
+    // Let's redirect to specific error page or just logout.
+    session_destroy();
+    header("Location: login.php?error=profile_missing");
+    exit();
+}
+
 $alloc = $studentObj->getAllocation();
 $has_paid = $studentObj->hasPaid();
 
@@ -44,13 +54,30 @@ require_once 'includes/header.php';
                             <i class="fa-solid fa-circle-check text-success text-xl mt-1"></i>
                             <div>
                                 <div class="fw-700 text-success text-lg mb-2">Allocation Successful</div>
-                                <p class="text-muted">You have been placed in <strong class="text-slate-800"><?php echo htmlspecialchars($alloc['hostel_name']); ?></strong>.</p>
+                                <p class="text-muted">You have been placed in <strong class="text-slate-800"><?php echo htmlspecialchars($alloc['hostel_name']); ?></strong><?php if(!empty($alloc['block_name'])) echo ', ' . htmlspecialchars($alloc['block_name']); ?>.</p>
                             </div>
                         </div>
 
-                        <div class="border border-dashed border-gray-300 rounded p-4 bg-slate-50 inline-block min-w-[200px] mb-6">
-                            <div class="text-xs text-muted uppercase tracking-wider mb-1">ROOM NUMBER</div>
-                            <div class="text-3xl fw-700 text-primary">Rm <?php echo htmlspecialchars($alloc['room_number']); ?></div>
+                        <div class="grid grid-cols-3 gap-4 mb-6">
+                            <div class="p-3 bg-slate-50 rounded border border-dashed border-gray-300">
+                                <div class="text-xs text-muted uppercase tracking-wider mb-1">Block</div>
+                                <div class="text-xl fw-700 text-primary">
+                                    <?php 
+                                        $b_name = $alloc['block_name'] ?? '1';
+                                        $b_name = str_ireplace('Block ', '', $b_name); // Remove "Block "
+                                        if (stripos($b_name, 'Main') !== false) $b_name = '1'; // Main -> 1
+                                        echo htmlspecialchars($b_name); 
+                                    ?>
+                                </div>
+                            </div>
+                            <div class="p-3 bg-slate-50 rounded border border-dashed border-gray-300">
+                                <div class="text-xs text-muted uppercase tracking-wider mb-1">Room</div>
+                                <div class="text-xl fw-700 text-primary"><?php echo htmlspecialchars($alloc['room_number']); ?></div>
+                            </div>
+                            <div class="p-3 bg-slate-50 rounded border border-dashed border-gray-300">
+                                <div class="text-xs text-muted uppercase tracking-wider mb-1">Bed</div>
+                                <div class="text-xl fw-700 text-primary"><?php echo htmlspecialchars($alloc['bed_label'] ?? 'N/A'); ?></div>
+                            </div>
                         </div>
 
                         <div>

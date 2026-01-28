@@ -180,7 +180,9 @@ require_once 'includes/header.php';
                     <div class="text-xs text-muted mt-2">For security, please ensure your password is at least 8 characters long and includes a mix of letters and numbers.</div>
                 </div>
 
-                <button class="btn btn-primary w-full mb-4">Register Account</button>
+                <div class="text-center">
+                    <button class="btn btn-primary mb-4">Register Account</button>
+                </div>
                 
                 <div class="text-center text-sm">
                     Already have an account? <a href="login.php" class="text-primary fw-700">Sign In</a>
