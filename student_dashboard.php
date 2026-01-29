@@ -20,8 +20,6 @@ $studentObj = new Student($conn, $user_id);
 $student = $studentObj->getProfile();
 
 if (!$student) {
-    // Session exists but profile deleted/missing?
-    // Force logout or better yet, show error.
     // Let's redirect to specific error page or just logout.
     session_destroy();
     header("Location: login.php?error=profile_missing");
@@ -129,7 +127,7 @@ require_once 'includes/header.php';
 
                     <?php require_once 'includes/security_helper.php'; csrf_field(); ?>
 
-                    <button onclick="payFees()" id="payBtn" class="btn btn-primary">
+                    <button id="payBtn" class="btn btn-primary">
                         <i class="fa-solid fa-credit-card mr-2"></i> Pay School Fees (₦50,000)
                     </button>
                     <div id="payMsg" class="mt-4 hidden"></div>
@@ -137,43 +135,7 @@ require_once 'includes/header.php';
             <?php endif; ?>
         </div>
         
-        <script>
-        function payFees() {
-            const btn = document.getElementById('payBtn');
-            const msg = document.getElementById('payMsg');
-            btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin mr-2"></i> Processing...';
-            btn.disabled = true;
-
-            fetch('api/pay_simulation.php', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
-                body: JSON.stringify({
-                    csrf_token: document.querySelector('input[name="csrf_token"]').value
-                })
-            })
-                .then(res => res.json())
-                .then(data => {
-                    if(data.status === 'success') {
-                        btn.innerHTML = '<i class="fa-solid fa-check mr-2"></i> Paid Successfully';
-                        btn.classList.remove('btn-primary');
-                        btn.classList.add('bg-green-600', 'text-white');
-                        
-                        // Show detailed allocation message
-                        msg.innerHTML = `<span class="text-success">${data.message}</span>`;
-                        msg.classList.remove('hidden');
-                        
-                        setTimeout(() => window.location.reload(), 2000);
-                    } else {
-                        btn.innerHTML = 'Try Again';
-                        btn.disabled = false;
-                        msg.innerHTML = `<span class="text-danger">${data.message}</span>`;
-                        msg.classList.remove('hidden');
-                    }
-                });
-        }
-        </script>
+        <script src="js/student_dashboard.js"></script>
 
         <!-- Bottom Grid: Profile & Notices -->
         <div class="grid grid-dashboard-custom">
@@ -202,7 +164,7 @@ require_once 'includes/header.php';
                             <div><?php echo htmlspecialchars($student['department'] ?: $student['faculty']); ?></div>
 
                             <div class="text-muted">Health:</div>
-                            <div class="text-muted">Health:</div>
+
                             <?php if ($student['condition_category'] && $student['condition_category'] !== 'None'): ?>
                                 <div class="text-danger fw-700"><?php echo htmlspecialchars($student['condition_category']); ?></div>
                             <?php else: ?>

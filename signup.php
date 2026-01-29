@@ -88,7 +88,6 @@ require_once 'includes/header.php';
 
 <div class="auth-container">
     <!-- Left: Brand (Blue Gradient) -->
-    <!-- Left: Brand (Blue Gradient) -->
     <div class="auth-left text-center">
         <!-- Blobs for animation -->
         <div class="hero-blob opacity-20 w-[400px] h-[400px] -top-24 -left-24 absolute rounded-full bg-white blur-3xl"></div>
