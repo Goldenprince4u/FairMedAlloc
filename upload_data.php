@@ -25,15 +25,22 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_FILES['csv_file'])) {
         $stmt_profile = $conn->prepare("INSERT INTO student_profiles (user_id, matric_no, full_name, level, faculty, department, gender) VALUES (?, ?, ?, ?, ?, ?, ?)");
         
         while (($row = fgetcsv($file)) !== false) {
-            // Expected CSV: Matric No, Full Name, Level, Faculty, Department, Gender
-            if (count($row) < 6) continue; // Skip invalid rows
+            // Expected CSV: Matric No, Full Name, Level, Faculty, Department, Gender, Medical Condition
+            if (count($row) < 7) continue; // Skip if mandatory columns are missing
             
             $matric = trim($row[0]);
             $name   = trim($row[1]);
             $level  = (int)trim($row[2]);
             $faculty = trim($row[3]);
             $dept   = trim($row[4]);
-            $gender = trim($row[5]); // Added Gender column requirement
+            $gender = trim($row[5]);
+            $condition = trim($row[6]);
+
+            // Enforce Mandatory Medical Declaration
+            if (empty($condition)) {
+                // Skip rows with empty medical condition (it must be at least "None")
+                continue; 
+            }
             
             // Check Duplicate
             $stmt_check->bind_param("s", $matric);
@@ -55,22 +62,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_FILES['csv_file'])) {
                 $stmt_profile->bind_param("ississs", $uid, $matric, $name, $level, $faculty, $dept, $gender);
                 $stmt_profile->execute();
                 
-                // NEW: Medical Record from CSV
-                // Format: ..., Gender, Condition, Severity(1-10)
-                if (!empty($row[6])) {
-                    $condition = trim($row[6]);
+                // Process Medical Record
+                // Logic: Only insert if not "None"
+                if (strtolower($condition) !== 'none') {
                     $severity = !empty($row[7]) ? (int)trim($row[7]) : 5;
+                    $score = ($severity * 10); 
+                    $details = "$condition (Imported)";
                     
-                    if ($condition && strtolower($condition) !== 'none') {
-                        $stmt_med = $conn->prepare("INSERT INTO medical_records (student_id, condition_category, condition_details, severity_level, urgency_score) VALUES (?, ?, ?, ?, ?)");
-                        
-                        // Simple heuristic score for now (Model will update it later)
-                        $score = ($severity * 10); 
-                        $details = "$condition (Imported)";
-                        
-                        $stmt_med->bind_param("issid", $uid, $condition, $details, $severity, $score);
-                        $stmt_med->execute();
-                    }
+                    $stmt_med = $conn->prepare("INSERT INTO medical_records (student_id, condition_category, condition_details, severity_level, urgency_score) VALUES (?, ?, ?, ?, ?)");
+                    $stmt_med->bind_param("issid", $uid, $condition, $details, $severity, $score);
+                    $stmt_med->execute();
                 }
 
                 $count++;
@@ -112,7 +113,7 @@ require_once 'includes/header.php';
             </form>
             
             <div class="mt-8 text-xs text-muted">
-                Required Columns: Matric No, Full Name, Level, Faculty, Department
+                Required Columns: Matric No, Full Name, Level, Faculty, Department, Gender, Medical Condition
             </div>
         </div>
     </main>

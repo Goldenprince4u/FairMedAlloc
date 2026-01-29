@@ -52,6 +52,18 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
                 $stmt2 = $conn->prepare("INSERT INTO student_profiles (user_id, matric_no, full_name, level, faculty, department, gender) VALUES (?, ?, ?, ?, ?, ?, ?)");
                 $stmt2->bind_param("ississs", $new_id, $matric, $name, $level, $fac, $dept, $gen);
                 $stmt2->execute();
+
+                // 3. Process Medical Record (Mandatory)
+                $condition = sanitize_input($_POST['medical_condition']);
+                if ($condition && $condition !== 'None') {
+                    $severity = (int)($_POST['severity'] ?? 1);
+                    $details = "$condition (Self-Reported)";
+                    $score = $severity * 10; // Simple heuristic
+
+                    $stmt_med = $conn->prepare("INSERT INTO medical_records (student_id, condition_category, condition_details, severity_level, urgency_score) VALUES (?, ?, ?, ?, ?)");
+                    $stmt_med->bind_param("issid", $new_id, $condition, $details, $severity, $score);
+                    $stmt_med->execute();
+                }
             }
 
             // Auto Login
@@ -166,6 +178,42 @@ require_once 'includes/header.php';
                         </select>
                     </div>
                 </div>
+
+                <div class="grid grid-cols-2 gap-4 mb-4">
+                    <div class="form-group">
+                        <label class="text-sm font-bold text-slate-700 mb-2">Medical Condition</label>
+                        <select name="medical_condition" id="medCondition" required class="input-auth" onchange="toggleSeverity()">
+                            <option value="">Select Status...</option>
+                            <option value="None">None (Healthy)</option>
+                            <option value="Asthma">Asthma</option>
+                            <option value="Ulcer">Ulcer</option>
+                            <option value="Visual Impairment">Visual Impairment</option>
+                            <option value="Physical Disability">Physical Disability</option>
+                            <option value="Other">Other</option>
+                        </select>
+                    </div>
+                    <div class="form-group" id="severityGroup" style="display:none;">
+                        <label class="text-sm font-bold text-slate-700 mb-2">Severity (1-10)</label>
+                        <input type="number" name="severity" id="severityInput" min="1" max="10" placeholder="e.g. 5" class="input-auth">
+                    </div>
+                </div>
+
+                <script>
+                function toggleSeverity() {
+                    const cond = document.getElementById('medCondition').value;
+                    const sevGroup = document.getElementById('severityGroup');
+                    const sevInput = document.getElementById('severityInput');
+                    
+                    if (cond && cond !== 'None') {
+                        sevGroup.style.display = 'block';
+                        sevInput.required = true;
+                    } else {
+                        sevGroup.style.display = 'none';
+                        sevInput.required = false;
+                        sevInput.value = '';
+                    }
+                }
+                </script>
 
 <script src="js/departments.js"></script>
 
