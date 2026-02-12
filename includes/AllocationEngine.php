@@ -27,7 +27,7 @@ class AllocationEngine {
 
             // 2. Fetch ONLY NEW students (Not yet allocated) AND who have PAID
             // Added JOIN to payments table to enforcing payment check
-            $sql = "SELECT p.user_id, p.gender, p.faculty, m.urgency_score, m.condition_category, m.mobility_status 
+            $sql = "SELECT p.user_id, p.gender, p.faculty, m.urgency_score, m.condition_category, m.mobility_status, m.is_requested_mobility 
                     FROM student_profiles p 
                     LEFT JOIN medical_records m ON p.user_id = m.student_id 
                     LEFT JOIN allocations a ON p.user_id = a.student_id
@@ -45,12 +45,16 @@ class AllocationEngine {
             foreach ($students as $student) {
                 $batch_payload[] = [
                     'id' => $student['user_id'],
-                    'condition' => $student['condition_category'],
-                    'urgency_score' => $student['urgency_score'],
-                    'severity' => 0,
-                    'mobility' => $student['mobility_status'] ?? 'Normal'
+                    'id' => $student['user_id'],
+                    'mobility' => $student['mobility_status'] ?? 'Normal',
+                    'is_requested' => (bool)($student['is_requested_mobility'] ?? false)
                 ];
             }
+            
+            // Fetch Dynamic Threshold
+            $threshold_res = $this->conn->query("SELECT setting_value FROM settings WHERE setting_key = 'urgency_threshold_proximal'");
+            $threshold_row = $threshold_res->fetch_assoc();
+            $prox_threshold = (float)($threshold_row['setting_value'] ?? 75);
 
             // Execute Python (Existing logic retained)
             $temp_file = sys_get_temp_dir() . DIRECTORY_SEPARATOR . 'fairmed_batch_' . uniqid() . '.json';
@@ -81,7 +85,7 @@ class AllocationEngine {
                 $final_score = $scores_map[$student_id] ?? ($student['urgency_score'] ?? 0);
 
                 // Find Best Room
-                $room_id = $this->findAvailableRoom($gender, $final_score, $faculty, $mobility);
+                $room_id = $this->findAvailableRoom($gender, $final_score, $faculty, $mobility, $prox_threshold);
 
                 if ($room_id) {
                     // Assign via Bed Configuration Logic
@@ -101,7 +105,7 @@ class AllocationEngine {
                                       (student_id, input_severity, input_proximity_need, calculated_urgency_score, allocation_decision, assigned_hostel_id) 
                                       VALUES (?, 0, ?, ?, 'Allocated', ?)";
                                       
-                        $prox_need = ($final_score >= 70) ? 1 : 0;
+                        $prox_need = ($final_score >= $prox_threshold) ? 1 : 0;
                         $stmt_audit = $this->conn->prepare($audit_sql);
                         $stmt_audit->bind_param("idii", $student_id, $prox_need, $final_score, $hid);
                         $stmt_audit->execute();
@@ -121,7 +125,7 @@ class AllocationEngine {
                     $audit_sql = "INSERT INTO algorithm_audit_logs 
                                   (student_id, input_severity, input_proximity_need, calculated_urgency_score, allocation_decision, assigned_hostel_id) 
                                   VALUES (?, 0, ?, ?, 'No Bed', NULL)";
-                    $prox_need = ($final_score >= 70) ? 1 : 0;
+                    $prox_need = ($final_score >= $prox_threshold) ? 1 : 0;
                     $stmt_audit = $this->conn->prepare($audit_sql);
                     $stmt_audit->bind_param("idi", $student_id, $prox_need, $final_score);
                     $stmt_audit->execute();
@@ -154,7 +158,7 @@ class AllocationEngine {
      * Tier 3: Target Faculty -> Engineering Halls
      * Tier 4: General -> Remaining Halls
      */
-    private function findAvailableRoom($gender, $score, $faculty, $mobility) {
+    private function findAvailableRoom($gender, $score, $faculty, $mobility, $prox_threshold = 75) {
         $gender = ($gender === 'Female') ? 'Female' : 'Male'; 
         
         // --- TIER 1: ACCESSIBILITY (GROUND FLOOR) ---
@@ -166,29 +170,37 @@ class AllocationEngine {
         // Define Target Hostels for each Tier
         $target_hostels = [];
 
-        // Tier 2: High Urgency
-        if ($score >= 70) {
+        // Tier 2: High Urgency (Proximity to clinic)
+        if ($score >= $prox_threshold) {
             if ($gender === 'Male') {
-                $target_hostels = ["Prophet Moses Hall", "Prophet Moses Extension Hall"];
+                $target_hostels = ["Prophet Moses Extension Hall"]; // Health Sciences / Proximal
             } else {
-                $target_hostels = ["Queen Esther Extension Hall"];
+                $target_hostels = ["Queen Esther Extension Hall"]; // Health Sciences / Proximal
             }
         } 
-        // Tier 3: Faculty Based
-        elseif (in_array($faculty, ['Engineering', 'Basic Medical Sciences', 'Law'])) {
-             if ($gender === 'Male') {
-                $target_hostels = ["Prophet Moses Engineering Hall"];
-            } else {
-                $target_hostels = ["Queen Esther Engineering Hall"];
-            }
-        }
+        // Tier 3: Faculty-Based Proximity Mapping
         else {
-             // General
-             if ($gender === 'Male') {
-                 $target_hostels = ["Prophet Moses Hall", "Prophet Moses Extension Hall", "Daniel Hall"];
-             } else {
-                 $target_hostels = ["Queen Esther Main Hall", "Guest House", "Mary Hall"];
-             }
+            $faculty_hostel_map = [
+                // Engineering/Science → Engineering Halls
+                'Engineering' => ['Male' => ["Prophet Moses Engineering Hall"], 'Female' => ["Queen Esther Engineering Hall (New)"]],
+                'Basic Medical Sciences' => ['Male' => ["Prophet Moses Engineering Hall"], 'Female' => ["Queen Esther Engineering Hall (New)"]],
+                'Natural Sciences' => ['Male' => ["Prophet Moses Engineering Hall"], 'Female' => ["Queen Esther Engineering Hall (New)"]],
+                
+                // Health Sciences → Extension Halls (Proximal)
+                'Health Sciences' => ['Male' => ["Prophet Moses Extension Hall"], 'Female' => ["Queen Esther Extension Hall"]],
+                'Pharmacy' => ['Male' => ["Prophet Moses Extension Hall"], 'Female' => ["Queen Esther Extension Hall"]],
+                
+                // Humanities/Social/Law/Management/Education → Main Halls (General)
+                'Law' => ['Male' => ["Prophet Moses Hall"], 'Female' => ["Queen Esther Main Hall"]],
+                'Humanities' => ['Male' => ["Prophet Moses Hall"], 'Female' => ["Queen Esther Main Hall"]],
+                'Management Sciences' => ['Male' => ["Prophet Moses Hall"], 'Female' => ["Queen Esther Main Hall"]],
+                'Social Sciences' => ['Male' => ["Prophet Moses Hall"], 'Female' => ["Queen Esther Main Hall"]],
+                'Education' => ['Male' => ["Prophet Moses Hall"], 'Female' => ["Queen Esther Main Hall"]],
+            ];
+            
+            // Find faculty mapping or default to Main Hall
+            $target_hostels = $faculty_hostel_map[$faculty][$gender] ?? 
+                              (($gender === 'Male') ? ["Prophet Moses Hall"] : ["Queen Esther Main Hall"]);
         }
 
         // Try to find room in target list first (with Ground Constraint if needed)

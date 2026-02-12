@@ -1,0 +1,18 @@
+{
+  "condition": {
+    "classes": [
+      "Asthma",
+      "None",
+      "Orthopaedic",
+      "Sickle Cell",
+      "Visual Impairment"
+    ]
+  },
+  "mobility": {
+    "classes": [
+      "Crutches/Walker",
+      "Normal",
+      "Wheelchair User"
+    ]
+  }
+}

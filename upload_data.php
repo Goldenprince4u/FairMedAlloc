@@ -65,12 +65,37 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_FILES['csv_file'])) {
                 // Process Medical Record
                 // Logic: Only insert if not "None"
                 if (strtolower($condition) !== 'none') {
-                    $severity = !empty($row[7]) ? (int)trim($row[7]) : 5;
-                    $score = ($severity * 10); 
-                    $details = "$condition (Imported)";
+                    $severity = !empty($row[7]) ? (int)trim($row[7]) : 3;
+                    $mobility = !empty($row[8]) ? trim($row[8]) : 'Normal';
                     
-                    $stmt_med = $conn->prepare("INSERT INTO medical_records (student_id, condition_category, condition_details, severity_level, urgency_score) VALUES (?, ?, ?, ?, ?)");
-                    $stmt_med->bind_param("issid", $uid, $condition, $details, $severity, $score);
+                    // Call Python ML model for urgency score calculation
+                    $student_data = [
+                        'id' => $uid,
+                        'condition' => $condition,
+                        'severity' => $severity,
+                        'mobility' => $mobility,
+                        'academic_level' => $level
+                    ];
+                    
+                    $temp_file = sys_get_temp_dir() . DIRECTORY_SEPARATOR . 'fairmed_csv_' . uniqid() . '.json';
+                    file_put_contents($temp_file, json_encode($student_data));
+                    
+                    $script_path = __DIR__ . '/ml_models/predict.py';
+                    $command = "python \"$script_path\" \"$temp_file\"";
+                    $output = shell_exec($command);
+                    $result = json_decode($output, true);
+                    
+                    if (file_exists($temp_file)) unlink($temp_file);
+                    
+                    // Extract score from ML result or fallback
+                    $score = ($result['status'] === 'success' && isset($result['results'][$uid])) 
+                        ? $result['results'][$uid] 
+                        : ($severity * 15); // Fallback
+                    
+                    $details = "$condition (Imported via CSV)";
+                    
+                    $stmt_med = $conn->prepare("INSERT INTO medical_records (student_id, condition_category, condition_details, severity_level, urgency_score, mobility_status) VALUES (?, ?, ?, ?, ?, ?)");
+                    $stmt_med->bind_param("issids", $uid, $condition, $details, $severity, $score, $mobility);
                     $stmt_med->execute();
                 }
 
@@ -113,7 +138,8 @@ require_once 'includes/header.php';
             </form>
             
             <div class="mt-8 text-xs text-muted">
-                Required Columns: Matric No, Full Name, Level, Faculty, Department, Gender, Medical Condition
+                <strong>Required:</strong> Matric No, Full Name, Level, Faculty, Department, Gender, Medical Condition<br>
+                <strong>Optional:</strong> Severity (1-5), Mobility (Normal/Wheelchair User/Crutches/Walker)
             </div>
         </div>
     </main>
