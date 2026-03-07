@@ -6,6 +6,11 @@
 session_start();
 require_once 'db_config.php';
 
+// Fetch Allocation Status
+$stmt = $conn->query("SELECT setting_value FROM settings WHERE setting_key = 'allocation_status'");
+$status_row = $stmt->fetch_assoc();
+$is_locked = ($status_row['setting_value'] ?? 'open') === 'locked';
+
 $page_title = "Run Allocation | FairMedAlloc";
 require_once 'includes/header.php';
 ?>
@@ -30,9 +35,18 @@ require_once 'includes/header.php';
                     <li>Fill remaining spots with general population.</li>
                 </ul>
 
-                <button class="btn btn-primary w-full py-3 rounded-lg" onclick="startAllocation()">
-                    <i class="fa-solid fa-play mr-2"></i> Start Allocation Engine
-                </button>
+                <?php if ($is_locked): ?>
+                    <div class="px-4 py-3 bg-red-100 text-red-700 rounded-lg mb-4 text-center text-sm font-bold">
+                        <i class="fa-solid fa-lock mr-2"></i> Allocation Session is Locked for this Academic Year
+                    </div>
+                    <button class="btn btn-secondary w-full py-3 rounded-lg opacity-50 cursor-not-allowed" disabled>
+                        <i class="fa-solid fa-lock mr-2"></i> Session Locked
+                    </button>
+                <?php else: ?>
+                    <button class="btn btn-primary w-full py-3 rounded-lg" onclick="startAllocation()">
+                        <i class="fa-solid fa-play mr-2"></i> Start Allocation Engine
+                    </button>
+                <?php endif; ?>
             </div>
 
             <!-- Process Log (Dark Blue) -->

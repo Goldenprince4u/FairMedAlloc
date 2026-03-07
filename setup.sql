@@ -48,7 +48,7 @@ CREATE TABLE payments (
 
 -- Default Admin
 INSERT INTO users (username, password_hash, role) 
-VALUES ('AbdulQuadri', '$2y$10$8sA.N/e/P/x/R/w/y/z/0.1/2/3/4/5/6/7/8/9/0/1/2/3/4/5/6', 'admin'); 
+VALUES ('AbdulQuadri', '$2y$10$y70s17lPl9im2LEN17zvFORoJSaH7tDAtcmX3CIlzETGuXLYdaeQ2', 'admin'); 
 
 -- 2. Student Profiles
 CREATE TABLE student_profiles (
@@ -115,6 +115,7 @@ CREATE TABLE allocations (
     room_id INT NOT NULL,
     bed_space VARCHAR(5),
     bed_label ENUM('LB', 'TB', 'SB', 'UB') DEFAULT 'LB',
+    academic_session VARCHAR(20) NOT NULL,
     allocated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     allocation_method ENUM('algorithm', 'manual') DEFAULT 'algorithm',
     FOREIGN KEY (student_id) REFERENCES users(user_id) ON DELETE CASCADE,

@@ -14,9 +14,6 @@ class AllocationEngine {
     /**
      * Run the full allocation process
      */
-    /**
-     * Run the full allocation process
-     */
     public function run() {
         // Start Transaction for Atomicity
         $this->conn->begin_transaction();
@@ -26,8 +23,9 @@ class AllocationEngine {
             $this->syncRoomOccupancy();
 
             // 2. Fetch ONLY NEW students (Not yet allocated) AND who have PAID
-            // Added JOIN to payments table to enforcing payment check
-            $sql = "SELECT p.user_id, p.gender, p.faculty, m.urgency_score, m.condition_category, m.mobility_status, m.is_requested_mobility 
+            $sql = "SELECT p.user_id as id, p.gender, p.faculty, 
+                           COALESCE(m.urgency_score, 0) as score, 
+                           COALESCE(m.mobility_status, 'Normal') as mobility 
                     FROM student_profiles p 
                     LEFT JOIN medical_records m ON p.user_id = m.student_id 
                     LEFT JOIN allocations a ON p.user_id = a.student_id
@@ -40,27 +38,27 @@ class AllocationEngine {
             $students = $result->fetch_all(MYSQLI_ASSOC);
             $allocated_count = 0;
 
-            // 3. Batch Processing (Python Score Calculation)
+            if (empty($students)) {
+                 return ['status' => 'success', 'allocated' => 0, 'total' => 0];
+            }
+
+            // 3. Score overriding (ML Model prediction step is skipped here because it's already recorded in urgency_score column, 
+            //    or we could call predict.py if needed. Assuming scores are pre-calculated for simplicity right now based on previous runs).
+            //    To keep it fully backwards compatible we evaluate predict.py first:
             $batch_payload = [];
             foreach ($students as $student) {
                 $batch_payload[] = [
-                    'id' => $student['user_id'],
-                    'id' => $student['user_id'],
-                    'mobility' => $student['mobility_status'] ?? 'Normal',
-                    'is_requested' => (bool)($student['is_requested_mobility'] ?? false)
+                    'id' => $student['id'],
+                    'mobility' => $student['mobility'],
+                    'severity' => 0 // Fallback
                 ];
             }
             
-            // Fetch Dynamic Threshold
-            $threshold_res = $this->conn->query("SELECT setting_value FROM settings WHERE setting_key = 'urgency_threshold_proximal'");
-            $threshold_row = $threshold_res->fetch_assoc();
-            $prox_threshold = (float)($threshold_row['setting_value'] ?? 75);
-
-            // Execute Python (Existing logic retained)
+            // Recalculate scores using bridge just to be safe
             $temp_file = sys_get_temp_dir() . DIRECTORY_SEPARATOR . 'fairmed_batch_' . uniqid() . '.json';
             file_put_contents($temp_file, json_encode($batch_payload));
             $script_path = __DIR__ . '/../ml_models/predict.py';
-            $command = "python \"$script_path\" \"$temp_file\""; // Assuming python is in PATH, if not might need full path
+            $command = escapeshellcmd("python \"$script_path\" \"$temp_file\"");
             $output = shell_exec($command);
             $result_data = json_decode($output, true);
             if (file_exists($temp_file)) unlink($temp_file);
@@ -70,26 +68,99 @@ class AllocationEngine {
                 $scores_map = $result_data['results'];
             }
 
-            // 4. Process Allocations
+            // Update students array with latest scores
+            foreach ($students as &$s) {
+                if (isset($scores_map[$s['id']])) {
+                    $s['score'] = $scores_map[$s['id']];
+                }
+            }
+            unset($s);
+
+            // Fetch Dynamic Threshold
+            $threshold_res = $this->conn->query("SELECT setting_value FROM settings WHERE setting_key = 'urgency_threshold_proximal'");
+            $threshold_row = $threshold_res->fetch_assoc();
+            $prox_threshold = (float)($threshold_row['setting_value'] ?? 75);
+
+            // 4. Fetch Available Rooms for OR-Tools
+            $roomQuery = "SELECT r.room_id as id, r.hostel_id, h.gender_allowed as gender, 
+                                 h.proximal_faculty as faculty_target, h.is_proximal, 
+                                 r.floor_level, h.has_elevator, 
+                                 (r.capacity - r.occupied_count) as available_capacity
+                          FROM rooms r
+                          JOIN hostels h ON r.hostel_id = h.hostel_id
+                          WHERE r.occupied_count < r.capacity";
+            $roomResult = $this->conn->query($roomQuery);
+            $rooms = $roomResult->fetch_all(MYSQLI_ASSOC);
+            
+            foreach ($rooms as &$r) {
+                // Ensure correct types for Python JSON serialization
+                $r['is_proximal'] = (bool)$r['is_proximal'];
+                $r['has_elevator'] = (bool)$r['has_elevator'];
+                $r['available_capacity'] = (int)$r['available_capacity'];
+                $r['floor_level'] = (int)$r['floor_level'];
+            }
+            unset($r);
+
+            // 5. Build Final Payload for OR-Tools (CSV format)
+            $students_csv_file = sys_get_temp_dir() . DIRECTORY_SEPARATOR . 'fairmed_students_' . uniqid() . '.csv';
+            $rooms_csv_file = sys_get_temp_dir() . DIRECTORY_SEPARATOR . 'fairmed_rooms_' . uniqid() . '.csv';
+            $output_csv_file = sys_get_temp_dir() . DIRECTORY_SEPARATOR . 'fairmed_output_' . uniqid() . '.csv';
+
+            $fp_students = fopen($students_csv_file, 'w');
+            fputcsv($fp_students, ['id', 'gender', 'faculty', 'score', 'mobility']);
+            foreach ($students as $s) {
+                fputcsv($fp_students, [$s['id'], $s['gender'], $s['faculty'], $s['score'], $s['mobility']]);
+            }
+            fclose($fp_students);
+
+            $fp_rooms = fopen($rooms_csv_file, 'w');
+            fputcsv($fp_rooms, ['id', 'hostel_id', 'gender', 'faculty_target', 'is_proximal', 'floor_level', 'has_elevator', 'available_capacity']);
+            foreach ($rooms as $r) {
+                fputcsv($fp_rooms, [$r['id'], $r['hostel_id'], $r['gender'], $r['faculty_target'], $r['is_proximal'] ? 1 : 0, $r['floor_level'], $r['has_elevator'] ? 1 : 0, $r['available_capacity']]);
+            }
+            fclose($fp_rooms);
+
+            // 6. Execute OR-Tools allocate.py
+            $alloc_script = __DIR__ . '/../ml_models/allocate.py';
+            $alloc_command = escapeshellcmd("python \"$alloc_script\" \"$students_csv_file\" \"$rooms_csv_file\" \"$output_csv_file\"");
+            shell_exec($alloc_command);
+
+            if (file_exists($students_csv_file)) unlink($students_csv_file);
+            if (file_exists($rooms_csv_file)) unlink($rooms_csv_file);
+
+            if (!file_exists($output_csv_file)) {
+                throw new Exception("OR-Tools allocation failed. No output CSV generated.");
+            }
+
+            $assignments = []; 
+            $fp_out = fopen($output_csv_file, 'r');
+            fgetcsv($fp_out); // Read header
+            while (($row = fgetcsv($fp_out)) !== false) {
+                if (count($row) >= 2) {
+                    $assignments[(int)$row[0]] = (int)$row[1];
+                }
+            }
+            fclose($fp_out);
+            unlink($output_csv_file);
+
+            // Fetch Current Session for Session Locking
+            $session_res = $this->conn->query("SELECT setting_value FROM settings WHERE setting_key = 'current_session'");
+            $session_row = $session_res->fetch_assoc();
+            $current_session = $session_row['setting_value'] ?? '2025/2026';
+
+            // 7. Process Allocations into Database
             require_once 'NotificationManager.php';
             $notifier = new NotificationManager($this->conn);
 
             foreach ($students as $student) {
-                // ... (Existing variables setup) ...
-                $student_id = $student['user_id'];
-                $gender = $student['gender'];
-                $faculty = $student['faculty'];
-                $mobility = $student['mobility_status'] ?? 'Normal';
-                
-                // Get Final Score
-                $final_score = $scores_map[$student_id] ?? ($student['urgency_score'] ?? 0);
+                $student_id = $student['id'];
+                $final_score = $student['score'];
 
-                // Find Best Room
-                $room_id = $this->findAvailableRoom($gender, $final_score, $faculty, $mobility, $prox_threshold);
+                if (isset($assignments[$student_id])) {
+                    $room_id = $assignments[$student_id];
 
-                if ($room_id) {
-                    // Assign via Bed Configuration Logic
-                    if ($this->assignBed($room_id, $student_id)) {
+                    // Assign via Bed Configuration Logic (Retained exact bed logic)
+                    if ($this->assignBed($room_id, $student_id, $current_session)) {
                         $allocated_count++;
                     
                         // AUDIT LOGGING
@@ -110,16 +181,11 @@ class AllocationEngine {
                         $stmt_audit->bind_param("idii", $student_id, $prox_need, $final_score, $hid);
                         $stmt_audit->execute();
                     } else {
-                        // Room was technically full or config error
-                        // Treat as missed allocation
+                        // Room was technically full during exact bed assignment
                         $notifier->send($student_id, "Update: You have been placed on the waiting list as no suitable rooms are currently available.");
-                        // ... Log as Waitlisted ...
                     }
                 } else {
                     // Log Missed Allocation
-                    // ... (rest of else block)
-
-                    // NOTIFY STUDENT (Waitlist)
                     $notifier->send($student_id, "Update: You have been placed on the waiting list as no suitable rooms are currently available.");
 
                     $audit_sql = "INSERT INTO algorithm_audit_logs 
@@ -131,6 +197,9 @@ class AllocationEngine {
                     $stmt_audit->execute();
                 }
             }
+
+            // Lock the session directly in DB
+            $this->conn->query("UPDATE settings SET setting_value = 'locked' WHERE setting_key = 'allocation_status'");
 
             // Commit the transaction
             $this->conn->commit();
@@ -149,110 +218,6 @@ class AllocationEngine {
                 'message' => $e->getMessage()
             ];
         }
-    }
-
-    /**
-     * Helper: Find a room based on constraints
-     * Tier 1: Accessibility (Ground Floor)
-     * Tier 2: Urgency > 70 -> Proximal Hostels
-     * Tier 3: Target Faculty -> Engineering Halls
-     * Tier 4: General -> Remaining Halls
-     */
-    private function findAvailableRoom($gender, $score, $faculty, $mobility, $prox_threshold = 75) {
-        $gender = ($gender === 'Female') ? 'Female' : 'Male'; 
-        
-        // --- TIER 1: ACCESSIBILITY (GROUND FLOOR) ---
-        $require_ground_floor = false;
-        if (stripos($mobility, 'Wheelchair') !== false || stripos($mobility, 'Crutches') !== false || stripos($mobility, 'Walker') !== false) {
-             $require_ground_floor = true;
-        }
-
-        // Define Target Hostels for each Tier
-        $target_hostels = [];
-
-        // Tier 2: High Urgency (Proximity to clinic)
-        if ($score >= $prox_threshold) {
-            if ($gender === 'Male') {
-                $target_hostels = ["Prophet Moses Extension Hall"]; // Health Sciences / Proximal
-            } else {
-                $target_hostels = ["Queen Esther Extension Hall"]; // Health Sciences / Proximal
-            }
-        } 
-        // Tier 3: Faculty-Based Proximity Mapping
-        else {
-            $faculty_hostel_map = [
-                // Engineering/Science → Engineering Halls
-                'Engineering' => ['Male' => ["Prophet Moses Engineering Hall"], 'Female' => ["Queen Esther Engineering Hall (New)"]],
-                'Basic Medical Sciences' => ['Male' => ["Prophet Moses Engineering Hall"], 'Female' => ["Queen Esther Engineering Hall (New)"]],
-                'Natural Sciences' => ['Male' => ["Prophet Moses Engineering Hall"], 'Female' => ["Queen Esther Engineering Hall (New)"]],
-                
-                // Health Sciences → Extension Halls (Proximal)
-                'Health Sciences' => ['Male' => ["Prophet Moses Extension Hall"], 'Female' => ["Queen Esther Extension Hall"]],
-                'Pharmacy' => ['Male' => ["Prophet Moses Extension Hall"], 'Female' => ["Queen Esther Extension Hall"]],
-                
-                // Humanities/Social/Law/Management/Education → Main Halls (General)
-                'Law' => ['Male' => ["Prophet Moses Hall"], 'Female' => ["Queen Esther Main Hall"]],
-                'Humanities' => ['Male' => ["Prophet Moses Hall"], 'Female' => ["Queen Esther Main Hall"]],
-                'Management Sciences' => ['Male' => ["Prophet Moses Hall"], 'Female' => ["Queen Esther Main Hall"]],
-                'Social Sciences' => ['Male' => ["Prophet Moses Hall"], 'Female' => ["Queen Esther Main Hall"]],
-                'Education' => ['Male' => ["Prophet Moses Hall"], 'Female' => ["Queen Esther Main Hall"]],
-            ];
-            
-            // Find faculty mapping or default to Main Hall
-            $target_hostels = $faculty_hostel_map[$faculty][$gender] ?? 
-                              (($gender === 'Male') ? ["Prophet Moses Hall"] : ["Queen Esther Main Hall"]);
-        }
-
-        // Try to find room in target list first (with Ground Constraint if needed)
-        foreach ($target_hostels as $h_name) {
-            $rid = $this->queryRoom($h_name, $gender, $require_ground_floor);
-            if ($rid) return $rid;
-        }
-
-        // Fallback Search (Any Hostel allowed for that Gender)
-        // If they need ground floor, we MUST enforce it in fallback too.
-        
-        $sql = "SELECT r.room_id 
-                FROM rooms r
-                JOIN hostels h ON r.hostel_id = h.hostel_id
-                WHERE h.gender_allowed = ? 
-                AND r.occupied_count < r.capacity";
-        
-        if ($require_ground_floor) {
-            $sql .= " AND (r.floor_level = 0 OR h.has_elevator = 1) ";
-        }
-
-        $sql .= " ORDER BY h.is_proximal DESC, r.floor_level ASC LIMIT 1";
-        
-        $stmt = $this->conn->prepare($sql);
-        $stmt->bind_param("s", $gender);
-        $stmt->execute();
-        $res = $stmt->get_result();
-        
-        if ($res->num_rows > 0) return $res->fetch_assoc()['room_id'];
-
-        return null;
-    }
-
-    private function queryRoom($hostel_name, $gender, $ground_floor_only = false) {
-        $sql = "SELECT r.room_id 
-                FROM rooms r
-                JOIN hostels h ON r.hostel_id = h.hostel_id
-                WHERE h.name = ? 
-                AND h.gender_allowed = ?
-                AND r.occupied_count < r.capacity";
-                
-        if ($ground_floor_only) {
-            $sql .= " AND (r.floor_level = 0 OR h.has_elevator = 1) ";
-        }
-
-        $sql .= " ORDER BY r.floor_level ASC LIMIT 1";
-
-        $stmt = $this->conn->prepare($sql);
-        $stmt->bind_param("ss", $hostel_name, $gender);
-        $stmt->execute();
-        $res = $stmt->get_result();
-        return ($res->num_rows > 0) ? $res->fetch_assoc()['room_id'] : null;
     }
 
     /**
@@ -282,7 +247,7 @@ class AllocationEngine {
     /**
      * Helper: Assign Bed based on configuration (LB/UB/SB)
      */
-    private function assignBed($room_id, $student_id) {
+    private function assignBed($room_id, $student_id, $academic_session) {
         // 1. Get Room Bed Config
         $stmt = $this->conn->prepare("SELECT bed_config, capacity FROM rooms WHERE room_id = ?");
         $stmt->bind_param("i", $room_id);
@@ -330,8 +295,8 @@ class AllocationEngine {
         $bed_space = chr(65 + $slot_index); // 0->A
         $bed_label = $config_arr[$slot_index];
         
-        $stmt_ins = $this->conn->prepare("INSERT INTO allocations (student_id, room_id, bed_space, bed_label) VALUES (?, ?, ?, ?)");
-        $stmt_ins->bind_param("iiss", $student_id, $room_id, $bed_space, $bed_label);
+        $stmt_ins = $this->conn->prepare("INSERT INTO allocations (student_id, room_id, bed_space, bed_label, academic_session) VALUES (?, ?, ?, ?, ?)");
+        $stmt_ins->bind_param("iisss", $student_id, $room_id, $bed_space, $bed_label, $academic_session);
         
         if ($stmt_ins->execute()) {
             $this->conn->query("UPDATE rooms SET occupied_count = occupied_count + 1 WHERE room_id = $room_id");
