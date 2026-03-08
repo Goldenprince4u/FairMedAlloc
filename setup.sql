@@ -223,8 +223,8 @@ INSERT INTO departments (faculty_id, name) VALUES
 -- ========================================================
 
 -- MALE HOSTELS
-INSERT INTO hostels (hostel_id, name, block_name, gender_allowed, proximal_faculty, is_proximal, description, total_capacity) VALUES
-(1, 'Prophet Moses Hall', 'Block 1', 'Male', 'General', FALSE, 'Male Hostel', 80);
+INSERT INTO hostels (hostel_id, name, block_name, gender_allowed, proximal_faculty_id, is_proximal, description, total_capacity) VALUES
+(1, 'Prophet Moses Hall', 'Block 1', 'Male', NULL, FALSE, 'Male Hostel', 80);
 INSERT INTO rooms (hostel_id, room_number, floor_level, capacity, is_corner, bed_config) VALUES
 (1, '1', 0, 4, 1, 'LB, UB, LB, UB'),
 (1, '2', 0, 3, 0, 'SB, LB, UB'),
@@ -251,8 +251,8 @@ INSERT INTO rooms (hostel_id, room_number, floor_level, capacity, is_corner, bed
 (1, '23', 1, 3, 0, 'SB, LB, UB'),
 (1, '24', 1, 4, 1, 'LB, UB, LB, UB');
 
-INSERT INTO hostels (hostel_id, name, block_name, gender_allowed, proximal_faculty, is_proximal, description, total_capacity) VALUES
-(2, 'Prophet Moses Hall', 'Block 2', 'Male', 'General', FALSE, 'Male Hostel', 80);
+INSERT INTO hostels (hostel_id, name, block_name, gender_allowed, proximal_faculty_id, is_proximal, description, total_capacity) VALUES
+(2, 'Prophet Moses Hall', 'Block 2', 'Male', NULL, FALSE, 'Male Hostel', 80);
 INSERT INTO rooms (hostel_id, room_number, floor_level, capacity, is_corner, bed_config) VALUES
 (2, '1', 0, 4, 1, 'LB, UB, LB, UB'),
 (2, '2', 0, 3, 0, 'SB, LB, UB'),
@@ -279,8 +279,8 @@ INSERT INTO rooms (hostel_id, room_number, floor_level, capacity, is_corner, bed
 (2, '23', 1, 3, 0, 'SB, LB, UB'),
 (2, '24', 1, 4, 1, 'LB, UB, LB, UB');
 
-INSERT INTO hostels (hostel_id, name, block_name, gender_allowed, proximal_faculty, is_proximal, description, total_capacity) VALUES
-(3, 'Prophet Moses Hall', 'Block 3', 'Male', 'General', FALSE, 'Male Hostel', 80);
+INSERT INTO hostels (hostel_id, name, block_name, gender_allowed, proximal_faculty_id, is_proximal, description, total_capacity) VALUES
+(3, 'Prophet Moses Hall', 'Block 3', 'Male', NULL, FALSE, 'Male Hostel', 80);
 INSERT INTO rooms (hostel_id, room_number, floor_level, capacity, is_corner, bed_config) VALUES
 (3, '1', 0, 4, 1, 'LB, UB, LB, UB'),
 (3, '2', 0, 3, 0, 'SB, LB, UB'),
@@ -307,8 +307,8 @@ INSERT INTO rooms (hostel_id, room_number, floor_level, capacity, is_corner, bed
 (3, '23', 1, 3, 0, 'SB, LB, UB'),
 (3, '24', 1, 4, 1, 'LB, UB, LB, UB');
 
-INSERT INTO hostels (hostel_id, name, block_name, gender_allowed, proximal_faculty, is_proximal, description, total_capacity) VALUES
-(4, 'Prophet Moses Extension Hall', 'Block 1', 'Male', 'Health Sciences', TRUE, 'Male Hostel', 80);
+INSERT INTO hostels (hostel_id, name, block_name, gender_allowed, proximal_faculty_id, is_proximal, description, total_capacity) VALUES
+(4, 'Prophet Moses Extension Hall', 'Block 1', 'Male', 3, TRUE, 'Male Hostel', 80);
 INSERT INTO rooms (hostel_id, room_number, floor_level, capacity, is_corner, bed_config) VALUES
 (4, '1', 0, 4, 1, 'LB, UB, LB, UB'),
 (4, '2', 0, 3, 0, 'SB, LB, UB'),
@@ -335,8 +335,8 @@ INSERT INTO rooms (hostel_id, room_number, floor_level, capacity, is_corner, bed
 (4, '23', 1, 3, 0, 'SB, LB, UB'),
 (4, '24', 1, 4, 1, 'LB, UB, LB, UB');
 
-INSERT INTO hostels (hostel_id, name, block_name, gender_allowed, proximal_faculty, is_proximal, description, total_capacity) VALUES
-(5, 'Prophet Moses Extension Hall', 'Block 2', 'Male', 'Health Sciences', TRUE, 'Male Hostel', 80);
+INSERT INTO hostels (hostel_id, name, block_name, gender_allowed, proximal_faculty_id, is_proximal, description, total_capacity) VALUES
+(5, 'Prophet Moses Extension Hall', 'Block 2', 'Male', 3, TRUE, 'Male Hostel', 80);
 INSERT INTO rooms (hostel_id, room_number, floor_level, capacity, is_corner, bed_config) VALUES
 (5, '1', 0, 4, 1, 'LB, UB, LB, UB'),
 (5, '2', 0, 3, 0, 'SB, LB, UB'),
@@ -363,8 +363,8 @@ INSERT INTO rooms (hostel_id, room_number, floor_level, capacity, is_corner, bed
 (5, '23', 1, 3, 0, 'SB, LB, UB'),
 (5, '24', 1, 4, 1, 'LB, UB, LB, UB');
 
-INSERT INTO hostels (hostel_id, name, block_name, gender_allowed, proximal_faculty, is_proximal, description, total_capacity) VALUES
-(6, 'Prophet Moses Extension Hall', 'Block 3', 'Male', 'Health Sciences', TRUE, 'Male Hostel', 80);
+INSERT INTO hostels (hostel_id, name, block_name, gender_allowed, proximal_faculty_id, is_proximal, description, total_capacity) VALUES
+(6, 'Prophet Moses Extension Hall', 'Block 3', 'Male', 3, TRUE, 'Male Hostel', 80);
 INSERT INTO rooms (hostel_id, room_number, floor_level, capacity, is_corner, bed_config) VALUES
 (6, '1', 0, 4, 1, 'LB, UB, LB, UB'),
 (6, '2', 0, 3, 0, 'SB, LB, UB'),
@@ -391,8 +391,8 @@ INSERT INTO rooms (hostel_id, room_number, floor_level, capacity, is_corner, bed
 (6, '23', 1, 3, 0, 'SB, LB, UB'),
 (6, '24', 1, 4, 1, 'LB, UB, LB, UB');
 
-INSERT INTO hostels (hostel_id, name, block_name, gender_allowed, proximal_faculty, is_proximal, description, total_capacity) VALUES
-(7, 'Prophet Moses Engineering Hall', 'Block 1', 'Male', 'Engineering', FALSE, 'Male Hostel', 80);
+INSERT INTO hostels (hostel_id, name, block_name, gender_allowed, proximal_faculty_id, is_proximal, description, total_capacity) VALUES
+(7, 'Prophet Moses Engineering Hall', 'Block 1', 'Male', 5, FALSE, 'Male Hostel', 80);
 INSERT INTO rooms (hostel_id, room_number, floor_level, capacity, is_corner, bed_config) VALUES
 (7, '1', 0, 4, 1, 'LB, UB, LB, UB'),
 (7, '2', 0, 3, 0, 'SB, LB, UB'),
@@ -419,8 +419,8 @@ INSERT INTO rooms (hostel_id, room_number, floor_level, capacity, is_corner, bed
 (7, '23', 1, 3, 0, 'SB, LB, UB'),
 (7, '24', 1, 4, 1, 'LB, UB, LB, UB');
 
-INSERT INTO hostels (hostel_id, name, block_name, gender_allowed, proximal_faculty, is_proximal, description, total_capacity) VALUES
-(8, 'Prophet Moses Engineering Hall', 'Block 2', 'Male', 'Engineering', FALSE, 'Male Hostel', 80);
+INSERT INTO hostels (hostel_id, name, block_name, gender_allowed, proximal_faculty_id, is_proximal, description, total_capacity) VALUES
+(8, 'Prophet Moses Engineering Hall', 'Block 2', 'Male', 5, FALSE, 'Male Hostel', 80);
 INSERT INTO rooms (hostel_id, room_number, floor_level, capacity, is_corner, bed_config) VALUES
 (8, '1', 0, 4, 1, 'LB, UB, LB, UB'),
 (8, '2', 0, 3, 0, 'SB, LB, UB'),
@@ -447,8 +447,8 @@ INSERT INTO rooms (hostel_id, room_number, floor_level, capacity, is_corner, bed
 (8, '23', 1, 3, 0, 'SB, LB, UB'),
 (8, '24', 1, 4, 1, 'LB, UB, LB, UB');
 
-INSERT INTO hostels (hostel_id, name, block_name, gender_allowed, proximal_faculty, is_proximal, description, total_capacity) VALUES
-(9, 'Prophet Moses Engineering Hall', 'Block 3', 'Male', 'Engineering', FALSE, 'Male Hostel', 80);
+INSERT INTO hostels (hostel_id, name, block_name, gender_allowed, proximal_faculty_id, is_proximal, description, total_capacity) VALUES
+(9, 'Prophet Moses Engineering Hall', 'Block 3', 'Male', 5, FALSE, 'Male Hostel', 80);
 INSERT INTO rooms (hostel_id, room_number, floor_level, capacity, is_corner, bed_config) VALUES
 (9, '1', 0, 4, 1, 'LB, UB, LB, UB'),
 (9, '2', 0, 3, 0, 'SB, LB, UB'),
@@ -476,8 +476,8 @@ INSERT INTO rooms (hostel_id, room_number, floor_level, capacity, is_corner, bed
 (9, '24', 1, 4, 1, 'LB, UB, LB, UB');
 
 -- FEMALE HOSTELS
-INSERT INTO hostels (hostel_id, name, block_name, gender_allowed, proximal_faculty, is_proximal, description, total_capacity) VALUES
-(10, 'Queen Esther Main Hall', 'Block 1', 'Female', 'General', FALSE, 'Female Hostel', 80);
+INSERT INTO hostels (hostel_id, name, block_name, gender_allowed, proximal_faculty_id, is_proximal, description, total_capacity) VALUES
+(10, 'Queen Esther Main Hall', 'Block 1', 'Female', NULL, FALSE, 'Female Hostel', 80);
 INSERT INTO rooms (hostel_id, room_number, floor_level, capacity, is_corner, bed_config) VALUES
 (10, '1', 0, 4, 1, 'LB, UB, LB, UB'),
 (10, '2', 0, 3, 0, 'SB, LB, UB'),
@@ -504,8 +504,8 @@ INSERT INTO rooms (hostel_id, room_number, floor_level, capacity, is_corner, bed
 (10, '23', 1, 3, 0, 'SB, LB, UB'),
 (10, '24', 1, 4, 1, 'LB, UB, LB, UB');
 
-INSERT INTO hostels (hostel_id, name, block_name, gender_allowed, proximal_faculty, is_proximal, description, total_capacity) VALUES
-(11, 'Queen Esther Main Hall', 'Block 2', 'Female', 'General', FALSE, 'Female Hostel', 80);
+INSERT INTO hostels (hostel_id, name, block_name, gender_allowed, proximal_faculty_id, is_proximal, description, total_capacity) VALUES
+(11, 'Queen Esther Main Hall', 'Block 2', 'Female', NULL, FALSE, 'Female Hostel', 80);
 INSERT INTO rooms (hostel_id, room_number, floor_level, capacity, is_corner, bed_config) VALUES
 (11, '1', 0, 4, 1, 'LB, UB, LB, UB'),
 (11, '2', 0, 3, 0, 'SB, LB, UB'),
@@ -532,8 +532,8 @@ INSERT INTO rooms (hostel_id, room_number, floor_level, capacity, is_corner, bed
 (11, '23', 1, 3, 0, 'SB, LB, UB'),
 (11, '24', 1, 4, 1, 'LB, UB, LB, UB');
 
-INSERT INTO hostels (hostel_id, name, block_name, gender_allowed, proximal_faculty, is_proximal, description, total_capacity) VALUES
-(12, 'Queen Esther Main Hall', 'Block 3', 'Female', 'General', FALSE, 'Female Hostel', 80);
+INSERT INTO hostels (hostel_id, name, block_name, gender_allowed, proximal_faculty_id, is_proximal, description, total_capacity) VALUES
+(12, 'Queen Esther Main Hall', 'Block 3', 'Female', NULL, FALSE, 'Female Hostel', 80);
 INSERT INTO rooms (hostel_id, room_number, floor_level, capacity, is_corner, bed_config) VALUES
 (12, '1', 0, 4, 1, 'LB, UB, LB, UB'),
 (12, '2', 0, 3, 0, 'SB, LB, UB'),
@@ -560,8 +560,8 @@ INSERT INTO rooms (hostel_id, room_number, floor_level, capacity, is_corner, bed
 (12, '23', 1, 3, 0, 'SB, LB, UB'),
 (12, '24', 1, 4, 1, 'LB, UB, LB, UB');
 
-INSERT INTO hostels (hostel_id, name, block_name, gender_allowed, proximal_faculty, is_proximal, description, total_capacity) VALUES
-(13, 'Queen Esther Extension Hall', 'Block 1', 'Female', 'Health Sciences', TRUE, 'Female Hostel', 80);
+INSERT INTO hostels (hostel_id, name, block_name, gender_allowed, proximal_faculty_id, is_proximal, description, total_capacity) VALUES
+(13, 'Queen Esther Extension Hall', 'Block 1', 'Female', 3, TRUE, 'Female Hostel', 80);
 INSERT INTO rooms (hostel_id, room_number, floor_level, capacity, is_corner, bed_config) VALUES
 (13, '1', 0, 4, 1, 'LB, UB, LB, UB'),
 (13, '2', 0, 3, 0, 'SB, LB, UB'),
@@ -588,8 +588,8 @@ INSERT INTO rooms (hostel_id, room_number, floor_level, capacity, is_corner, bed
 (13, '23', 1, 3, 0, 'SB, LB, UB'),
 (13, '24', 1, 4, 1, 'LB, UB, LB, UB');
 
-INSERT INTO hostels (hostel_id, name, block_name, gender_allowed, proximal_faculty, is_proximal, description, total_capacity) VALUES
-(14, 'Queen Esther Extension Hall', 'Block 2', 'Female', 'Health Sciences', TRUE, 'Female Hostel', 80);
+INSERT INTO hostels (hostel_id, name, block_name, gender_allowed, proximal_faculty_id, is_proximal, description, total_capacity) VALUES
+(14, 'Queen Esther Extension Hall', 'Block 2', 'Female', 3, TRUE, 'Female Hostel', 80);
 INSERT INTO rooms (hostel_id, room_number, floor_level, capacity, is_corner, bed_config) VALUES
 (14, '1', 0, 4, 1, 'LB, UB, LB, UB'),
 (14, '2', 0, 3, 0, 'SB, LB, UB'),
@@ -616,8 +616,8 @@ INSERT INTO rooms (hostel_id, room_number, floor_level, capacity, is_corner, bed
 (14, '23', 1, 3, 0, 'SB, LB, UB'),
 (14, '24', 1, 4, 1, 'LB, UB, LB, UB');
 
-INSERT INTO hostels (hostel_id, name, block_name, gender_allowed, proximal_faculty, is_proximal, description, total_capacity) VALUES
-(15, 'Queen Esther Extension Hall', 'Block 3', 'Female', 'Health Sciences', TRUE, 'Female Hostel', 80);
+INSERT INTO hostels (hostel_id, name, block_name, gender_allowed, proximal_faculty_id, is_proximal, description, total_capacity) VALUES
+(15, 'Queen Esther Extension Hall', 'Block 3', 'Female', 3, TRUE, 'Female Hostel', 80);
 INSERT INTO rooms (hostel_id, room_number, floor_level, capacity, is_corner, bed_config) VALUES
 (15, '1', 0, 4, 1, 'LB, UB, LB, UB'),
 (15, '2', 0, 3, 0, 'SB, LB, UB'),
@@ -644,8 +644,8 @@ INSERT INTO rooms (hostel_id, room_number, floor_level, capacity, is_corner, bed
 (15, '23', 1, 3, 0, 'SB, LB, UB'),
 (15, '24', 1, 4, 1, 'LB, UB, LB, UB');
 
-INSERT INTO hostels (hostel_id, name, block_name, gender_allowed, proximal_faculty, is_proximal, description, total_capacity) VALUES
-(16, 'Queen Esther Engineering Hall (New)', 'Block 1', 'Female', 'Engineering', FALSE, 'Female Hostel', 80);
+INSERT INTO hostels (hostel_id, name, block_name, gender_allowed, proximal_faculty_id, is_proximal, description, total_capacity) VALUES
+(16, 'Queen Esther Engineering Hall (New)', 'Block 1', 'Female', 5, FALSE, 'Female Hostel', 80);
 INSERT INTO rooms (hostel_id, room_number, floor_level, capacity, is_corner, bed_config) VALUES
 (16, '1', 0, 4, 1, 'LB, UB, LB, UB'),
 (16, '2', 0, 3, 0, 'SB, LB, UB'),
@@ -672,8 +672,8 @@ INSERT INTO rooms (hostel_id, room_number, floor_level, capacity, is_corner, bed
 (16, '23', 1, 3, 0, 'SB, LB, UB'),
 (16, '24', 1, 4, 1, 'LB, UB, LB, UB');
 
-INSERT INTO hostels (hostel_id, name, block_name, gender_allowed, proximal_faculty, is_proximal, description, total_capacity) VALUES
-(17, 'Queen Esther Engineering Hall (New)', 'Block 2', 'Female', 'Engineering', FALSE, 'Female Hostel', 80);
+INSERT INTO hostels (hostel_id, name, block_name, gender_allowed, proximal_faculty_id, is_proximal, description, total_capacity) VALUES
+(17, 'Queen Esther Engineering Hall (New)', 'Block 2', 'Female', 5, FALSE, 'Female Hostel', 80);
 INSERT INTO rooms (hostel_id, room_number, floor_level, capacity, is_corner, bed_config) VALUES
 (17, '1', 0, 4, 1, 'LB, UB, LB, UB'),
 (17, '2', 0, 3, 0, 'SB, LB, UB'),
@@ -700,8 +700,8 @@ INSERT INTO rooms (hostel_id, room_number, floor_level, capacity, is_corner, bed
 (17, '23', 1, 3, 0, 'SB, LB, UB'),
 (17, '24', 1, 4, 1, 'LB, UB, LB, UB');
 
-INSERT INTO hostels (hostel_id, name, block_name, gender_allowed, proximal_faculty, is_proximal, description, total_capacity) VALUES
-(18, 'Queen Esther Engineering Hall (New)', 'Block 3', 'Female', 'Engineering', FALSE, 'Female Hostel', 80);
+INSERT INTO hostels (hostel_id, name, block_name, gender_allowed, proximal_faculty_id, is_proximal, description, total_capacity) VALUES
+(18, 'Queen Esther Engineering Hall (New)', 'Block 3', 'Female', 5, FALSE, 'Female Hostel', 80);
 INSERT INTO rooms (hostel_id, room_number, floor_level, capacity, is_corner, bed_config) VALUES
 (18, '1', 0, 4, 1, 'LB, UB, LB, UB'),
 (18, '2', 0, 3, 0, 'SB, LB, UB'),
