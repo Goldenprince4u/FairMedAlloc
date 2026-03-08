@@ -17,12 +17,15 @@ $user_id = $_SESSION['user_id'];
 
 // Fetch Allocation
 $stmt = $conn->prepare("SELECT a.*, h.name as hostel_name, h.block_name, r.room_number,
-                               u.full_name, p.matric_no, p.level, p.faculty, p.department, u.profile_pic 
+                               u.full_name, p.matric_no, p.level, u.profile_pic,
+                               d.name as department, f.name as faculty
                         FROM allocations a 
                         JOIN rooms r ON a.room_id = r.room_id
                         JOIN hostels h ON r.hostel_id = h.hostel_id 
                         JOIN student_profiles p ON a.student_id = p.user_id 
                         JOIN users u ON a.student_id = u.user_id
+                        JOIN departments d ON p.department_id = d.department_id
+                        JOIN faculties f ON d.faculty_id = f.faculty_id
                         WHERE a.student_id = ?");
 $stmt->bind_param("i", $user_id);
 $stmt->execute();

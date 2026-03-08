@@ -39,13 +39,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     // Check if fields are set to avoid notices
     $name = sanitize_input($_POST['full_name'] ?? '');
     $lvl  = (int) ($_POST['level'] ?? 0);
-    $faculty = sanitize_input($_POST['faculty'] ?? ''); 
-    $dept = sanitize_input($_POST['department'] ?? '');
+    $dept_id = (int)($_POST['department'] ?? 0);
     $cond = sanitize_input($_POST['medical_condition'] ?? 'None');
     $mob  = sanitize_input($_POST['mobility_status'] ?? 'Normal Mobility');
 
-    $stmt = $conn->prepare("UPDATE student_profiles SET level=?, faculty=?, department=? WHERE user_id=?");
-    $stmt->bind_param("isss", $lvl, $faculty, $dept, $user_id);
+    $stmt = $conn->prepare("UPDATE student_profiles SET level=?, department_id=? WHERE user_id=?");
+    $stmt->bind_param("iii", $lvl, $dept_id, $user_id);
     
     if ($stmt->execute()) {
         $stmt_u = $conn->prepare("UPDATE users SET full_name=? WHERE user_id=?");
@@ -75,7 +74,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 }
 
 // Fetch Data
-$stmt = $conn->prepare("SELECT p.*, m.condition_category, m.mobility_status, u.profile_pic, u.full_name, u.email FROM student_profiles p JOIN users u ON p.user_id = u.user_id LEFT JOIN medical_records m ON p.user_id = m.student_id WHERE p.user_id = ?");
+$stmt = $conn->prepare("SELECT p.*, m.condition_category, m.mobility_status, u.profile_pic, u.full_name, u.email,
+                                     d.name as department_name, d.faculty_id
+                              FROM student_profiles p 
+                              JOIN users u ON p.user_id = u.user_id 
+                              JOIN departments d ON p.department_id = d.department_id
+                              LEFT JOIN medical_records m ON p.user_id = m.student_id 
+                              WHERE p.user_id = ?");
 $stmt->bind_param("i", $user_id);
 $stmt->execute();
 $student = $stmt->get_result()->fetch_assoc();
@@ -165,20 +170,20 @@ require_once 'includes/header.php';
                             <label>Faculty</label>
                             <select name="faculty" id="facultySelect" onchange="updateDepartments()">
                                 <option value="">Select...</option>
-                                <option value="Faculty of Computing and Digital Technologies" <?php if($student['faculty'] == 'Faculty of Computing and Digital Technologies') echo 'selected'; ?>>Faculty of Computing and Digital Technologies</option>
-                                <option value="Natural Sciences" <?php if($student['faculty'] == 'Natural Sciences') echo 'selected'; ?>>Natural Sciences</option>
-                                <option value="Basic Medical Sciences" <?php if($student['faculty'] == 'Basic Medical Sciences') echo 'selected'; ?>>Basic Medical Sciences</option>
-                                <option value="Management Sciences" <?php if($student['faculty'] == 'Management Sciences') echo 'selected'; ?>>Management Sciences</option>
-                                <option value="Engineering" <?php if($student['faculty'] == 'Engineering') echo 'selected'; ?>>Engineering</option>
-                                <option value="Humanities" <?php if($student['faculty'] == 'Humanities') echo 'selected'; ?>>Humanities</option>
-                                <option value="Law" <?php if($student['faculty'] == 'Law') echo 'selected'; ?>>Law</option>
+                                <?php
+                                $fac_query = $conn->query("SELECT faculty_id, name FROM faculties ORDER BY name ASC");
+                                while($f = $fac_query->fetch_assoc()) {
+                                    $sel = ($student['faculty_id'] == $f['faculty_id']) ? 'selected' : '';
+                                    echo '<option value="'.$f['faculty_id'].'" '.$sel.'>'.htmlspecialchars($f['name']).'</option>';
+                                }
+                                ?>
                             </select>
                         </div>
 
                         <div class="form-group">
                             <label>Department</label>
-                            <select name="department" id="deptSelect" data-current="<?php echo htmlspecialchars($student['department']); ?>">
-                                <option value="<?php echo htmlspecialchars($student['department']); ?>"><?php echo htmlspecialchars($student['department'] ?: 'Select Faculty First'); ?></option>
+                            <select name="department" id="deptSelect" data-current="<?php echo htmlspecialchars($student['department_id']); ?>">
+                                <option value="<?php echo htmlspecialchars($student['department_id']); ?>"><?php echo htmlspecialchars($student['department_name'] ?: 'Select Faculty First'); ?></option>
                             </select>
                         </div>
                     </div>

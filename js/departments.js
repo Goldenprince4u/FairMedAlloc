@@ -1,33 +1,34 @@
-const departments = {
-    "Faculty of Computing and Digital Technologies": ["Computer Science", "Information Technology", "Cybersecurity"],
-    "Natural Sciences": ["Biochemistry", "Industrial Mathematics", "Microbiology", "Physics", "Chemistry"],
-    "Basic Medical Sciences": ["Nursing Science", "Physiology", "Anatomy", "Medical Laboratory Science", "Biochemistry"],
-    "Management Sciences": ["Accounting", "Business Administration", "Economics", "Transport Management"],
-    "Engineering": ["Civil Engineering", "Mechanical Engineering", "Electrical Engineering"],
-    "Humanities": ["English", "History", "Theatre Arts"],
-    "Law": ["Law"]
-};
-
-function updateDepartments() {
-    const faculty = document.getElementById("facultySelect").value;
+async function updateDepartments() {
+    const facultySelect = document.getElementById("facultySelect");
     const deptSelect = document.getElementById("deptSelect");
-
-    // Get current selection if relevant (passed via data attribute or global)
-    // For simplicity, we just reset or try to match if available
-    const currentDept = deptSelect.getAttribute('data-current') || "";
+    
+    const facultyId = facultySelect.value;
+    const currentDeptId = deptSelect.getAttribute('data-current') || "";
 
     deptSelect.innerHTML = '<option value="">Select Department</option>';
 
-    if (faculty && departments[faculty]) {
-        departments[faculty].forEach(dept => {
-            const option = document.createElement("option");
-            option.value = dept;
-            option.text = dept;
-            if (dept === currentDept) {
-                option.selected = true;
-            }
-            deptSelect.appendChild(option);
-        });
+    if (!facultyId) return;
+
+    try {
+        const response = await fetch(`api/get_departments.php?faculty_id=${facultyId}`);
+        const departments = await response.json();
+
+        if (Array.isArray(departments)) {
+            departments.forEach(dept => {
+                const option = document.createElement("option");
+                option.value = dept.id;
+                option.text = dept.name;
+                
+                // If editing profile, reselect their current department
+                if (String(dept.id) === String(currentDeptId)) {
+                    option.selected = true;
+                }
+                
+                deptSelect.appendChild(option);
+            });
+        }
+    } catch (error) {
+        console.error("Error fetching departments:", error);
     }
 }
 

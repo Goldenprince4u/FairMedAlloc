@@ -39,12 +39,11 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
             $new_id = $conn->insert_id;
             
             // 2. Create Profile
-            $fac = sanitize_input($_POST['faculty']);
-            $dept = sanitize_input($_POST['department']);
+            $dept_id = (int)$_POST['department'];
             $gen = sanitize_input($_POST['gender']);
             
-            $stmt2 = $conn->prepare("INSERT INTO student_profiles (user_id, matric_no, level, faculty, department, gender) VALUES (?, ?, ?, ?, ?, ?)");
-            $stmt2->bind_param("isisss", $new_id, $matric, $level, $fac, $dept, $gen);
+            $stmt2 = $conn->prepare("INSERT INTO student_profiles (user_id, matric_no, level, department_id, gender) VALUES (?, ?, ?, ?, ?)");
+            $stmt2->bind_param("isiis", $new_id, $matric, $level, $dept_id, $gen);
             $stmt2->execute();
 
             // 3. Process Medical Record (Mandatory)
@@ -154,13 +153,12 @@ require_once 'includes/header.php';
                         <label class="text-sm font-bold text-slate-700 mb-2">Faculty</label>
                         <select name="faculty" id="facultySelect" required onchange="updateDepartments()" class="input-auth">
                             <option value="">Select...</option>
-                            <option value="Faculty of Computing and Digital Technologies">Faculty of Computing and Digital Technologies</option>
-                            <option value="Natural Sciences">Natural Sciences</option>
-                            <option value="Basic Medical Sciences">Basic Medical Sciences</option>
-                            <option value="Management Sciences">Management Sciences</option>
-                            <option value="Engineering">Engineering</option>
-                            <option value="Humanities">Humanities</option>
-                            <option value="Law">Law</option>
+                            <?php
+                            $fac_query = $conn->query("SELECT faculty_id, name FROM faculties ORDER BY name ASC");
+                            while($f = $fac_query->fetch_assoc()) {
+                                echo '<option value="'.$f['faculty_id'].'">'.htmlspecialchars($f['name']).'</option>';
+                            }
+                            ?>
                         </select>
                     </div>
                     <div class="form-group">

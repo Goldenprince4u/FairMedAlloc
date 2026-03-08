@@ -14,6 +14,8 @@ DROP TABLE IF EXISTS rooms;
 DROP TABLE IF EXISTS hostels;
 DROP TABLE IF EXISTS medical_records;
 DROP TABLE IF EXISTS student_profiles;
+DROP TABLE IF EXISTS departments;
+DROP TABLE IF EXISTS faculties;
 DROP TABLE IF EXISTS users;
 DROP TABLE IF EXISTS settings;
 DROP TABLE IF EXISTS payments;
@@ -52,19 +54,34 @@ CREATE TABLE payments (
 INSERT INTO users (username, full_name, email, password_hash, role) 
 VALUES ('AbdulQuadri', 'Admin Default', 'admin@fairmedalloc.com', '$2y$10$y70s17lPl9im2LEN17zvFORoJSaH7tDAtcmX3CIlzETGuXLYdaeQ2', 'admin'); 
 
--- 2. Student Profiles
+-- 2. Faculties
+CREATE TABLE faculties (
+    faculty_id INT AUTO_INCREMENT PRIMARY KEY,
+    name VARCHAR(100) UNIQUE NOT NULL
+);
+
+-- 3. Departments
+CREATE TABLE departments (
+    department_id INT AUTO_INCREMENT PRIMARY KEY,
+    faculty_id INT NOT NULL,
+    name VARCHAR(100) NOT NULL,
+    FOREIGN KEY (faculty_id) REFERENCES faculties(faculty_id) ON DELETE CASCADE,
+    UNIQUE(faculty_id, name)
+);
+
+-- 4. Student Profiles
 CREATE TABLE student_profiles (
     profile_id INT AUTO_INCREMENT PRIMARY KEY,
     user_id INT UNIQUE NOT NULL,
     matric_no VARCHAR(20) UNIQUE NOT NULL,
     gender ENUM('Male', 'Female') NOT NULL,
     level INT NOT NULL,
-    faculty VARCHAR(50) NOT NULL,
-    department VARCHAR(50),
-    FOREIGN KEY (user_id) REFERENCES users(user_id) ON DELETE CASCADE
+    department_id INT NOT NULL,
+    FOREIGN KEY (user_id) REFERENCES users(user_id) ON DELETE CASCADE,
+    FOREIGN KEY (department_id) REFERENCES departments(department_id) ON DELETE RESTRICT
 );
 
--- 3. Medical Records
+-- 5. Medical Records
 CREATE TABLE medical_records (
     record_id INT AUTO_INCREMENT PRIMARY KEY,
     student_id INT NOT NULL,
@@ -81,20 +98,21 @@ CREATE TABLE medical_records (
     FOREIGN KEY (student_id) REFERENCES users(user_id) ON DELETE CASCADE
 );
 
--- 4. Hostels
+-- 6. Hostels
 CREATE TABLE hostels (
     hostel_id INT AUTO_INCREMENT PRIMARY KEY,
     name VARCHAR(100) NOT NULL,
     block_name VARCHAR(50) DEFAULT 'Main Block',
     gender_allowed ENUM('Male', 'Female') NOT NULL,
-    proximal_faculty VARCHAR(100),
+    proximal_faculty_id INT,
     is_proximal BOOLEAN DEFAULT FALSE,
     has_elevator BOOLEAN DEFAULT FALSE,
     total_capacity INT NOT NULL,
-    description VARCHAR(255)
+    description VARCHAR(255),
+    FOREIGN KEY (proximal_faculty_id) REFERENCES faculties(faculty_id) ON DELETE SET NULL
 );
 
--- 5. Rooms
+-- 7. Rooms
 CREATE TABLE rooms (
     room_id INT AUTO_INCREMENT PRIMARY KEY,
     hostel_id INT NOT NULL,
@@ -108,7 +126,7 @@ CREATE TABLE rooms (
     FOREIGN KEY (hostel_id) REFERENCES hostels(hostel_id) ON DELETE CASCADE
 );
 
--- 6. Allocations
+-- 8. Allocations
 CREATE TABLE allocations (
     allocation_id INT AUTO_INCREMENT PRIMARY KEY,
     student_id INT UNIQUE NOT NULL,
@@ -122,7 +140,7 @@ CREATE TABLE allocations (
     FOREIGN KEY (room_id) REFERENCES rooms(room_id)
 );
 
--- 7. Audit Logs
+-- 9. Audit Logs
 CREATE TABLE algorithm_audit_logs (
     log_id INT AUTO_INCREMENT PRIMARY KEY,
     student_id INT NOT NULL,
@@ -135,7 +153,7 @@ CREATE TABLE algorithm_audit_logs (
     FOREIGN KEY (student_id) REFERENCES users(user_id) ON DELETE CASCADE
 );
 
--- 8. Settings
+-- 10. Settings
 CREATE TABLE settings (
     setting_key VARCHAR(50) PRIMARY KEY,
     setting_value VARCHAR(255)
@@ -146,7 +164,7 @@ INSERT INTO settings (setting_key, setting_value) VALUES
 ('urgency_threshold_ground_floor', '85'),
 ('allocation_status', 'open');
 
--- 9. FAQs
+-- 11. FAQs
 CREATE TABLE faqs (
     faq_id INT AUTO_INCREMENT PRIMARY KEY,
     question VARCHAR(255) NOT NULL,
@@ -158,7 +176,7 @@ INSERT INTO faqs (question, answer) VALUES
 ('What if my allocation is pending?', 'Allocations are done in batches. If your status is "Pending", the admin has likely not run the final allocation for the session yet. Ensure your profile is up to date.'),
 ('How do I correct a wrong medical entry?', 'You can edit your profile via the "Student Dashboard > Edit Profile" link. However, false claims are subject to physical verification at the University Health Center.');
 
--- 10. Notifications
+-- 12. Notifications
 CREATE TABLE notifications (
     id INT AUTO_INCREMENT PRIMARY KEY,
     user_id INT NOT NULL,
@@ -168,7 +186,7 @@ CREATE TABLE notifications (
     FOREIGN KEY (user_id) REFERENCES users(user_id) ON DELETE CASCADE
 );
 
--- 11. Password Resets
+-- 13. Password Resets
 CREATE TABLE password_resets (
     id INT AUTO_INCREMENT PRIMARY KEY,
     user_id INT NOT NULL,
@@ -177,6 +195,28 @@ CREATE TABLE password_resets (
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (user_id) REFERENCES users(user_id) ON DELETE CASCADE
 );
+
+-- ========================================================
+-- SEED DATA (FACULTIES & DEPARTMENTS)
+-- ========================================================
+
+INSERT INTO faculties (faculty_id, name) VALUES 
+(1, 'Faculty of Computing and Digital Technologies'),
+(2, 'Natural Sciences'),
+(3, 'Basic Medical Sciences'),
+(4, 'Management Sciences'),
+(5, 'Engineering'),
+(6, 'Humanities'),
+(7, 'Law');
+
+INSERT INTO departments (faculty_id, name) VALUES 
+(1, 'Computer Science'), (1, 'Information Technology'), (1, 'Cybersecurity'),
+(2, 'Biochemistry'), (2, 'Industrial Mathematics'), (2, 'Microbiology'), (2, 'Physics'), (2, 'Chemistry'),
+(3, 'Nursing Science'), (3, 'Physiology'), (3, 'Anatomy'), (3, 'Medical Laboratory Science'), (3, 'Basic Medical Biochemistry'),
+(4, 'Accounting'), (4, 'Business Administration'), (4, 'Economics'), (4, 'Transport Management'),
+(5, 'Civil Engineering'), (5, 'Mechanical Engineering'), (5, 'Electrical Engineering'),
+(6, 'English'), (6, 'History'), (6, 'Theatre Arts'),
+(7, 'Law');
 
 -- ========================================================
 -- SEED DATA (GENERATED STANDARD HOSTELS)

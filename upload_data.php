@@ -22,7 +22,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_FILES['csv_file'])) {
         // Prepare Statements
         $stmt_check = $conn->prepare("SELECT user_id FROM users WHERE username = ?");
         $stmt_user = $conn->prepare("INSERT INTO users (username, full_name, password_hash, role) VALUES (?, ?, ?, 'student')");
-        $stmt_profile = $conn->prepare("INSERT INTO student_profiles (user_id, matric_no, level, faculty, department, gender) VALUES (?, ?, ?, ?, ?, ?)");
+        $stmt_profile = $conn->prepare("INSERT INTO student_profiles (user_id, matric_no, level, department_id, gender) VALUES (?, ?, ?, ?, ?)");
+        $stmt_dept_lookup = $conn->prepare("SELECT department_id FROM departments WHERE name LIKE ? LIMIT 1");
         
         while (($row = fgetcsv($file)) !== false) {
             // Expected CSV: Matric No, Full Name, Level, Faculty, Department, Gender, Medical Condition
@@ -58,8 +59,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_FILES['csv_file'])) {
             if ($stmt_user->execute()) {
                 $uid = $conn->insert_id;
                 
+                // Lookup Department ID from String
+                $dept_id = 1; // Fallback
+                $search_dept = "%" . $dept . "%";
+                $stmt_dept_lookup->bind_param("s", $search_dept);
+                $stmt_dept_lookup->execute();
+                $res_dept = $stmt_dept_lookup->get_result();
+                if($res_dept->num_rows > 0) {
+                    $row_dept = $res_dept->fetch_assoc();
+                    $dept_id = $row_dept['department_id'];
+                }
+
                 // Create Profile
-                $stmt_profile->bind_param("isisss", $uid, $matric, $level, $faculty, $dept, $gender);
+                $stmt_profile->bind_param("isiis", $uid, $matric, $level, $dept_id, $gender);
                 $stmt_profile->execute();
                 
                 // Process Medical Record
