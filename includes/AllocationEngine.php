@@ -23,10 +23,12 @@ class AllocationEngine {
             $this->syncRoomOccupancy();
 
             // 2. Fetch ONLY NEW students (Not yet allocated) AND who have PAID
-            $sql = "SELECT p.user_id as id, p.gender, p.faculty, 
+            $sql = "SELECT p.user_id as id, p.gender, f.name as faculty, 
                            COALESCE(m.urgency_score, 0) as score, 
                            COALESCE(m.mobility_status, 'Normal') as mobility 
                     FROM student_profiles p 
+                    JOIN departments d ON p.department_id = d.department_id
+                    JOIN faculties f ON d.faculty_id = f.faculty_id
                     LEFT JOIN medical_records m ON p.user_id = m.student_id 
                     LEFT JOIN allocations a ON p.user_id = a.student_id
                     JOIN payments py ON p.user_id = py.student_id
@@ -83,11 +85,12 @@ class AllocationEngine {
 
             // 4. Fetch Available Rooms for OR-Tools
             $roomQuery = "SELECT r.room_id as id, r.hostel_id, h.gender_allowed as gender, 
-                                 h.proximal_faculty as faculty_target, h.is_proximal, 
+                                 f.name as faculty_target, h.is_proximal, 
                                  r.floor_level, h.has_elevator, 
                                  (r.capacity - r.occupied_count) as available_capacity
                           FROM rooms r
                           JOIN hostels h ON r.hostel_id = h.hostel_id
+                          LEFT JOIN faculties f ON h.proximal_faculty_id = f.faculty_id
                           WHERE r.occupied_count < r.capacity";
             $roomResult = $this->conn->query($roomQuery);
             $rooms = $roomResult->fetch_all(MYSQLI_ASSOC);
@@ -98,6 +101,7 @@ class AllocationEngine {
                 $r['has_elevator'] = (bool)$r['has_elevator'];
                 $r['available_capacity'] = (int)$r['available_capacity'];
                 $r['floor_level'] = (int)$r['floor_level'];
+                $r['faculty_target'] = $r['faculty_target'] ?: 'General';
             }
             unset($r);
 
