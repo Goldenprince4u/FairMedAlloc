@@ -24,10 +24,10 @@ $total_pages = ceil($total_rows / $limit);
 // Fetch Data with Limit
 $query = "
     SELECT 
-        p.user_id, p.full_name, p.matric_no, p.faculty, p.department, p.level,
+        p.user_id, u.full_name, p.matric_no, p.faculty, p.department, p.level,
         m.urgency_score, m.condition_category, m.mobility_status,
         h.name as hostel_name, r.room_number,
-        u.profile_pic, p.email
+        u.profile_pic, u.email
     FROM student_profiles p 
     JOIN users u ON p.user_id = u.user_id 
     LEFT JOIN medical_records m ON p.user_id = m.student_id 

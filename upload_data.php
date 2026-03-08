@@ -21,8 +21,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_FILES['csv_file'])) {
         
         // Prepare Statements
         $stmt_check = $conn->prepare("SELECT user_id FROM users WHERE username = ?");
-        $stmt_user = $conn->prepare("INSERT INTO users (username, password_hash, role) VALUES (?, ?, 'student')");
-        $stmt_profile = $conn->prepare("INSERT INTO student_profiles (user_id, matric_no, full_name, level, faculty, department, gender) VALUES (?, ?, ?, ?, ?, ?, ?)");
+        $stmt_user = $conn->prepare("INSERT INTO users (username, full_name, password_hash, role) VALUES (?, ?, ?, 'student')");
+        $stmt_profile = $conn->prepare("INSERT INTO student_profiles (user_id, matric_no, level, faculty, department, gender) VALUES (?, ?, ?, ?, ?, ?)");
         
         while (($row = fgetcsv($file)) !== false) {
             // Expected CSV: Matric No, Full Name, Level, Faculty, Department, Gender, Medical Condition
@@ -54,12 +54,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_FILES['csv_file'])) {
             $password = strtolower($matric); 
             $hash = password_hash($password, PASSWORD_DEFAULT);
             
-            $stmt_user->bind_param("ss", $matric, $hash);
+            $stmt_user->bind_param("sss", $matric, $name, $hash);
             if ($stmt_user->execute()) {
                 $uid = $conn->insert_id;
                 
                 // Create Profile
-                $stmt_profile->bind_param("ississs", $uid, $matric, $name, $level, $faculty, $dept, $gender);
+                $stmt_profile->bind_param("isisss", $uid, $matric, $level, $faculty, $dept, $gender);
                 $stmt_profile->execute();
                 
                 // Process Medical Record

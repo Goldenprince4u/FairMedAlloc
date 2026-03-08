@@ -16,7 +16,7 @@ class Student {
      * Get full profile with medical records
      */
     public function getProfile() {
-        $stmt = $this->conn->prepare("SELECT p.*, m.condition_category, m.mobility_status, u.profile_pic 
+        $stmt = $this->conn->prepare("SELECT p.*, m.condition_category, m.mobility_status, u.profile_pic, u.full_name, u.email 
                                       FROM student_profiles p 
                                       JOIN users u ON p.user_id = u.user_id 
                                       LEFT JOIN medical_records m ON p.user_id = m.student_id 

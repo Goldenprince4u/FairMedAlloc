@@ -44,10 +44,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $cond = sanitize_input($_POST['medical_condition'] ?? 'None');
     $mob  = sanitize_input($_POST['mobility_status'] ?? 'Normal Mobility');
 
-    $stmt = $conn->prepare("UPDATE student_profiles SET full_name=?, level=?, faculty=?, department=? WHERE user_id=?");
-    $stmt->bind_param("sisss", $name, $lvl, $faculty, $dept, $user_id);
+    $stmt = $conn->prepare("UPDATE student_profiles SET level=?, faculty=?, department=? WHERE user_id=?");
+    $stmt->bind_param("isss", $lvl, $faculty, $dept, $user_id);
     
     if ($stmt->execute()) {
+        $stmt_u = $conn->prepare("UPDATE users SET full_name=? WHERE user_id=?");
+        $stmt_u->bind_param("si", $name, $user_id);
+        $stmt_u->execute();
         // Update Medical
         $score = 10;
         if ($cond !== 'None') $score += 50;
@@ -72,7 +75,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 }
 
 // Fetch Data
-$stmt = $conn->prepare("SELECT p.*, m.condition_category, m.mobility_status, u.profile_pic FROM student_profiles p JOIN users u ON p.user_id = u.user_id LEFT JOIN medical_records m ON p.user_id = m.student_id WHERE p.user_id = ?");
+$stmt = $conn->prepare("SELECT p.*, m.condition_category, m.mobility_status, u.profile_pic, u.full_name, u.email FROM student_profiles p JOIN users u ON p.user_id = u.user_id LEFT JOIN medical_records m ON p.user_id = m.student_id WHERE p.user_id = ?");
 $stmt->bind_param("i", $user_id);
 $stmt->execute();
 $student = $stmt->get_result()->fetch_assoc();
