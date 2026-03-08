@@ -19,12 +19,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
     $pass   = $_POST['password'];
     $level  = (int)($_POST['level'] ?? 100);
     $role   = 'student'; 
-
-    // Auto-role detection for admin (Development only)
-    if (stripos($matric, 'ADMIN') !== false) {
-        $role = 'admin';
-    }
-
+    
     // Check Existence
     $check = $conn->prepare("SELECT user_id FROM users WHERE username = ?");
     $check->bind_param("s", $matric);
@@ -44,16 +39,15 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
             $new_id = $conn->insert_id;
             
             // 2. Create Profile
-            if ($role === 'student') {
-                $fac = sanitize_input($_POST['faculty']);
-                $dept = sanitize_input($_POST['department']);
-                $gen = sanitize_input($_POST['gender']);
-                
-                $stmt2 = $conn->prepare("INSERT INTO student_profiles (user_id, matric_no, full_name, level, faculty, department, gender) VALUES (?, ?, ?, ?, ?, ?, ?)");
-                $stmt2->bind_param("ississs", $new_id, $matric, $name, $level, $fac, $dept, $gen);
-                $stmt2->execute();
+            $fac = sanitize_input($_POST['faculty']);
+            $dept = sanitize_input($_POST['department']);
+            $gen = sanitize_input($_POST['gender']);
+            
+            $stmt2 = $conn->prepare("INSERT INTO student_profiles (user_id, matric_no, full_name, level, faculty, department, gender) VALUES (?, ?, ?, ?, ?, ?, ?)");
+            $stmt2->bind_param("ississs", $new_id, $matric, $name, $level, $fac, $dept, $gen);
+            $stmt2->execute();
 
-                // 3. Process Medical Record (Mandatory)
+            // 3. Process Medical Record (Mandatory)
                 $condition = sanitize_input($_POST['medical_condition']);
                 if ($condition && $condition !== 'None') {
                     $severity = (int)($_POST['severity'] ?? 1);
@@ -64,7 +58,6 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
                     $stmt_med->bind_param("issid", $new_id, $condition, $details, $severity, $score);
                     $stmt_med->execute();
                 }
-            }
 
             // Auto Login
             $_SESSION['logged_in'] = true;
@@ -73,7 +66,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
             $_SESSION['username'] = $matric;
             $_SESSION['profile_pic'] = 'default.png';
 
-            header("Location: " . ($role === 'admin' ? 'admin_dashboard.php' : 'student_dashboard.php'));
+            header("Location: student_dashboard.php");
             exit();
         } else {
             $msg = "Error creating account. Please try again.";
@@ -233,6 +226,10 @@ require_once 'includes/header.php';
                 
                 <div class="text-center text-sm">
                     Already have an account? <a href="login.php" class="text-primary fw-700">Sign In</a>
+                </div>
+                <!-- Admin specific note -->
+                <div class="text-center text-sm mt-6 pt-4 border-t border-slate-200 text-muted">
+                    Staff Member? <a href="admin_signup.php" class="text-primary fw-700">Admin Registration</a>
                 </div>
             </form>
         </div>

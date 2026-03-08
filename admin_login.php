@@ -1,17 +1,13 @@
 <?php
 /**
- * Login Page
- * Handles user authentication.
+ * Admin Login Page
+ * Handles administrator authentication.
  */
 session_start();
 require_once 'db_config.php';
 require_once 'includes/security_helper.php';
 
 $error = '';
-
-if (isset($_GET['error']) && $_GET['error'] === 'profile_missing') {
-    $error = "Profile data incomplete. Please log in again to sync.";
-}
 
 if ($_SERVER["REQUEST_METHOD"] == "POST") {
     check_csrf();
@@ -38,8 +34,8 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
                 // Success: Reset Attempts
                 $conn->query("UPDATE users SET login_attempts = 0, lock_until = NULL WHERE user_id = " . $user['user_id']);
 
-                if ($user['role'] !== 'student') {
-                    $error = "Invalid portal for your role. Please use the Administrator Login.";
+                if ($user['role'] !== 'admin') {
+                    $error = "Access Denied: Admin privileges required.";
                 } else {
                     $_SESSION['logged_in'] = true;
                     $_SESSION['user_id'] = $user['user_id'];
@@ -51,7 +47,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
                     $pic = $conn->query("SELECT profile_pic FROM users WHERE user_id=$pid")->fetch_assoc();
                     $_SESSION['profile_pic'] = $pic['profile_pic'] ?? 'default.png';
 
-                    header("Location: student_dashboard.php");
+                    header("Location: admin_dashboard.php");
                     exit();
                 }
             } else {
@@ -72,7 +68,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
     }
 }
 
-$page_title = "Login | FairMedAlloc";
+$page_title = "Admin Login | FairMedAlloc";
 require_once 'includes/header.php';
 ?>
 
@@ -83,11 +79,11 @@ require_once 'includes/header.php';
         <div class="hero-blob opacity-20 w-[400px] h-[400px] -top-24 -left-24 absolute rounded-full bg-white blur-3xl"></div>
         
         <div class="brand-content relative z-10 animate-fade-in text-left pl-12">
-            <h1 class="serif mb-2 text-white font-bold leading-none text-6xl">FairMedAlloc<br>System</h1>
+            <h1 class="serif mb-2 text-white font-bold leading-none text-6xl">System<br>Administration</h1>
             <p class="mb-12 text-sm text-gray-300 tracking-widest uppercase font-semibold">Redeemer's University</p>
             
             <div class="brand-border">
-                <p class="text-white text-lg font-light leading-relaxed">Prioritizing Student Health & Safety through Algorithmic Fairness.<br>A Final Year Computer Science Research Project.</p>
+                <p class="text-white text-lg font-light leading-relaxed">Secure access to the FairMedAlloc Management Console. Strictly for authorized personnel.</p>
             </div>
         </div>
     </div>
@@ -95,9 +91,9 @@ require_once 'includes/header.php';
     <div class="auth-right">
         <div class="auth-box animate-fade-in">
             <div class="mb-8">
-                <span class="badge badge-info mb-4">UNIFIED PORTAL</span>
-                <h2 class="mb-2 text-primary serif text-4xl">Welcome Back</h2>
-                <p class="text-muted text-lg">Enter your credentials to access the system.</p>
+                <span class="badge badge-warning mb-4"><i class="fa-solid fa-lock mr-2"></i>ADMIN PORTAL</span>
+                <h2 class="mb-2 text-primary serif text-4xl">Admin Login</h2>
+                <p class="text-muted text-lg">Enter your administrative credentials.</p>
             </div>
 
             <?php if($error): ?>
@@ -108,7 +104,7 @@ require_once 'includes/header.php';
                 <?php csrf_field(); ?>
                 
                 <div class="form-group">
-                    <label class="text-sm font-bold text-slate-700 mb-2">User ID (Matric No or Username)</label>
+                    <label class="text-sm font-bold text-slate-700 mb-2">Username</label>
                     <input type="text" name="username" placeholder="admin" required class="input-auth">
                 </div>
                 
@@ -117,14 +113,14 @@ require_once 'includes/header.php';
                     <input type="password" name="password" placeholder="••••••••" required class="input-auth">
                 </div>
                 
-                <button class="btn btn-primary w-full mb-4">Sign In</button>
+                <button class="btn btn-warning w-full mb-4 text-slate-800"><i class="fa-solid fa-right-to-bracket mr-2"></i> Authenticate</button>
                 
-                <div class="flex justify-between text-sm mt-4">
-                    <a href="signup.php" class="text-primary fw-700">New Student? Create Account</a>
-                    <a href="forgot_password.php" class="text-muted">Forgot Password?</a>
+                <div class="text-center text-muted text-sm mb-6">
+                    <a href="forgot_password.php" class="hover:text-primary transition-colors">Forgot Password?</a>
                 </div>
-                <div class="text-center text-sm mt-6 pt-4 border-t border-slate-200 text-muted">
-                    Administrator? <a href="admin_login.php" class="text-primary fw-700">Admin Login</a>
+
+                <div class="text-center text-sm pt-4 border-t border-slate-200 text-muted">
+                    Student Portal? <a href="login.php" class="text-primary fw-700">Student Login</a>
                 </div>
             </form>
         </div>
