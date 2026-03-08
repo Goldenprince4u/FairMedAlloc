@@ -32,8 +32,8 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
         $hash = password_hash($pass, PASSWORD_DEFAULT);
         
         // 1. Create User
-        $stmt = $conn->prepare("INSERT INTO users (username, password_hash, role) VALUES (?, ?, ?)");
-        $stmt->bind_param("sss", $matric, $hash, $role);
+        $stmt = $conn->prepare("INSERT INTO users (username, full_name, email, password_hash, role) VALUES (?, ?, ?, ?, ?)");
+        $stmt->bind_param("sssss", $matric, $name, $email, $hash, $role);
         
         if ($stmt->execute()) {
             $new_id = $conn->insert_id;
@@ -43,8 +43,8 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
             $dept = sanitize_input($_POST['department']);
             $gen = sanitize_input($_POST['gender']);
             
-            $stmt2 = $conn->prepare("INSERT INTO student_profiles (user_id, matric_no, full_name, level, faculty, department, gender) VALUES (?, ?, ?, ?, ?, ?, ?)");
-            $stmt2->bind_param("ississs", $new_id, $matric, $name, $level, $fac, $dept, $gen);
+            $stmt2 = $conn->prepare("INSERT INTO student_profiles (user_id, matric_no, level, faculty, department, gender) VALUES (?, ?, ?, ?, ?, ?)");
+            $stmt2->bind_param("isisss", $new_id, $matric, $level, $fac, $dept, $gen);
             $stmt2->execute();
 
             // 3. Process Medical Record (Mandatory)

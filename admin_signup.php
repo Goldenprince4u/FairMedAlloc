@@ -31,8 +31,8 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
         $hash = password_hash($pass, PASSWORD_DEFAULT);
         
         // 1. Create User
-        $stmt = $conn->prepare("INSERT INTO users (username, password_hash, role) VALUES (?, ?, ?)");
-        $stmt->bind_param("sss", $username, $hash, $role);
+        $stmt = $conn->prepare("INSERT INTO users (username, full_name, email, password_hash, role) VALUES (?, ?, ?, ?, ?)");
+        $stmt->bind_param("sssss", $username, $name, $email, $hash, $role);
         
         if ($stmt->execute()) {
             $new_id = $conn->insert_id;

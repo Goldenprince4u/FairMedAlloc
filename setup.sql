@@ -26,6 +26,8 @@ SET FOREIGN_KEY_CHECKS = 1;
 CREATE TABLE users (
     user_id INT AUTO_INCREMENT PRIMARY KEY,
     username VARCHAR(50) UNIQUE NOT NULL, 
+    full_name VARCHAR(100),
+    email VARCHAR(100),
     password_hash VARCHAR(255) NOT NULL,
     role ENUM('student', 'admin', 'medical_officer') NOT NULL DEFAULT 'student',
     profile_pic VARCHAR(255) DEFAULT 'default.png',
@@ -47,16 +49,14 @@ CREATE TABLE payments (
 );
 
 -- Default Admin
-INSERT INTO users (username, password_hash, role) 
-VALUES ('AbdulQuadri', '$2y$10$y70s17lPl9im2LEN17zvFORoJSaH7tDAtcmX3CIlzETGuXLYdaeQ2', 'admin'); 
+INSERT INTO users (username, full_name, email, password_hash, role) 
+VALUES ('AbdulQuadri', 'Admin Default', 'admin@fairmedalloc.com', '$2y$10$y70s17lPl9im2LEN17zvFORoJSaH7tDAtcmX3CIlzETGuXLYdaeQ2', 'admin'); 
 
 -- 2. Student Profiles
 CREATE TABLE student_profiles (
     profile_id INT AUTO_INCREMENT PRIMARY KEY,
     user_id INT UNIQUE NOT NULL,
     matric_no VARCHAR(20) UNIQUE NOT NULL,
-    full_name VARCHAR(100) NOT NULL,
-    email VARCHAR(100),
     gender ENUM('Male', 'Female') NOT NULL,
     level INT NOT NULL,
     faculty VARCHAR(50) NOT NULL,
