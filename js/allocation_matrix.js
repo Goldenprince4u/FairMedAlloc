@@ -1,9 +1,17 @@
+/**
+ * allocation_matrix.js
+ * ====================
+ * Handles dynamic interactions on the administrative "Allocation Matrix" table.
+ * Manages modal popups, async room fetching, CSV exporting, and searching.
+ */
+
 document.addEventListener('DOMContentLoaded', () => {
 
     // --- 1. Event Delegation for dynamic buttons ---
+    // Event delegation is used because table rows may be re-rendered dynamically
     document.body.addEventListener('click', (e) => {
 
-        // Open Assign Modal
+        // Open Assign Modal when "Assign" button is clicked
         const assignBtn = e.target.closest('.btn-assign-trigger');
         if (assignBtn) {
             const id = assignBtn.dataset.id;
@@ -11,12 +19,12 @@ document.addEventListener('DOMContentLoaded', () => {
             openAssignModal(id, name);
         }
 
-        // Close Modal via Backdrop or Cancel Button
+        // Close Modal via clicking the grey Backdrop or the Cancel Button
         if (e.target.id === 'assignModal' || e.target.id === 'closeModalBtn') {
             closeAssignModal();
         }
 
-        // Export CSV
+        // Export table data to CSV file
         if (e.target.closest('#exportBtn')) {
             exportTableToCSV('allocation_matrix.csv');
         }
@@ -24,40 +32,51 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // --- 2. Input Listeners ---
 
-    // Search Filter
+    // Search Filter: Type to instantly filter table rows
     const searchInput = document.getElementById('searchInput');
     if (searchInput) {
         searchInput.addEventListener('keyup', filterTable);
     }
 
-    // Hostel Select Change
+    // Hostel Select Change: When a hostel is chosen in the manual assign modal,
+    // immediately query the DB API to find rooms specifically for that hostel.
     const hostelSelect = document.getElementById('assignHostel');
     if (hostelSelect) {
         hostelSelect.addEventListener('change', (e) => fetchRooms(e.target.value));
     }
 
-    // Form Submit
+    // Form Submit: Handling the manual allocation submission
     const assignForm = document.getElementById('assignForm');
     if (assignForm) {
         assignForm.addEventListener('submit', (e) => {
-            e.preventDefault();
-            submitAssignment();
+            e.preventDefault(); // Stop standard form submission
+            submitAssignment(); // Use AJAX instead
         });
     }
 });
 
 // --- Logic Functions ---
 
+/**
+ * Triggers the modal popup for manually overriding an allocation.
+ */
 function openAssignModal(id, name) {
     document.getElementById('assignStudentId').value = id;
     document.getElementById('assignStudentName').textContent = name;
     document.getElementById('assignModal').classList.remove('hidden');
 }
 
+/**
+ * Hides the modal popup window.
+ */
 function closeAssignModal() {
     document.getElementById('assignModal').classList.add('hidden');
 }
 
+/**
+ * Contacts the admin API to retrieve an array of open rooms for a given hostel ID.
+ * Updates the 'Room' select dropdown dynamically.
+ */
 function fetchRooms(hostelId) {
     const roomSelect = document.getElementById('assignRoom');
     if (!hostelId) {
@@ -84,6 +103,9 @@ function fetchRooms(hostelId) {
         });
 }
 
+/**
+ * Sends a manual allocation override request up to the Admin API.
+ */
 function submitAssignment() {
     const form = document.getElementById('assignForm');
     const formData = new FormData(form);
@@ -98,7 +120,7 @@ function submitAssignment() {
         .then(res => {
             if (res.status === 'success') {
                 alert('Allocation successful!');
-                location.reload();
+                location.reload(); // Refresh the matrix to show the new placement
             } else {
                 alert(res.message || 'Allocation failed');
             }
@@ -106,6 +128,9 @@ function submitAssignment() {
         .catch(err => alert('Network error'));
 }
 
+/**
+ * Client-side table filtering. Hides rows that don't match the search text.
+ */
 function filterTable() {
     const input = document.getElementById("searchInput");
     const filter = input.value.toUpperCase();
@@ -117,26 +142,32 @@ function filterTable() {
     });
 }
 
+/**
+ * Downloads the current visible table view as a CSV spreadsheet format.
+ */
 function exportTableToCSV(filename) {
     const csv = [];
     const rows = document.querySelectorAll("table tr");
 
     for (let i = 0; i < rows.length; i++) {
-        if (rows[i].style.display === 'none') continue; // Skip filtered rows
+        if (rows[i].style.display === 'none') continue; // Skip hidden/filtered rows
 
         const cols = rows[i].querySelectorAll("td, th");
         let rowData = [];
-        // Skip last column (Actions)
+
+        // Skip last column (Actions buttons don't need to be in CSV)
         const colCount = cols.length - 1;
 
         for (let j = 0; j < colCount; j++) {
             let data = cols[j].innerText.replace(/(\r\n|\n|\r)/gm, " ").trim();
+            // Escape double quotes to prevent CSV breakage
             data = data.replace(/"/g, '""');
             rowData.push(`"${data}"`);
         }
         if (rowData.length > 0) csv.push(rowData.join(","));
     }
 
+    // Trigger standard browser download
     const csvFile = new Blob([csv.join("\n")], { type: "text/csv" });
     const downloadLink = document.createElement("a");
     downloadLink.download = filename;

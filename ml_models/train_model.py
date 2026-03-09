@@ -21,24 +21,24 @@ import json
 import sys
 import os
 
-# Configuration
+# Configuration paths for saving the trained model and label encoders
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 MODEL_OUTPUT_PATH = os.path.join(SCRIPT_DIR, 'urgency_model.json')
 ENCODERS_OUTPUT_PATH = os.path.join(SCRIPT_DIR, 'label_encoders.json')
 
-# Feature columns
+# Define feature columns expected in the dataset
 CATEGORICAL_FEATURES = ['condition', 'mobility']
 NUMERICAL_FEATURES = ['severity', 'academic_level', 'distance_from_campus', 'has_special_needs']
 TARGET_COLUMN = 'urgency_score'
 
 
 def load_and_preprocess_data(csv_path):
-    """Load CSV and preprocess features."""
+    """Load CSV into a Pandas DataFrame and handle missing values."""
     print(f"[1/6] Loading data from: {csv_path}")
     df = pd.read_csv(csv_path)
     print(f"      Loaded {len(df)} rows")
     
-    # Handle missing values
+    # Fill missing values with sensible defaults
     df['condition'] = df['condition'].fillna('None')
     df['mobility'] = df['mobility'].fillna('Normal')
     df['severity'] = df['severity'].fillna(0)
@@ -50,41 +50,46 @@ def load_and_preprocess_data(csv_path):
 
 
 def analyze_strata(df):
-    """Analyze data distribution across strata (categories)."""
+    """Analyze data distribution across categories (strata) to ensure balanced splits."""
     print("[2/6] Analyzing strata distribution...")
     
+    # Print condition statistics
     print("\n      Condition Distribution:")
     for cond, count in df['condition'].value_counts().items():
         pct = (count / len(df)) * 100
         print(f"        {cond}: {count} ({pct:.1f}%)")
     
+    # Print mobility statistics
     print("\n      Mobility Distribution:")
     for mob, count in df['mobility'].value_counts().items():
         pct = (count / len(df)) * 100
         print(f"        {mob}: {count} ({pct:.1f}%)")
     
+    # Print severity statistics
     print("\n      Severity Distribution:")
     for sev, count in df['severity'].value_counts().sort_index().items():
         pct = (count / len(df)) * 100
         print(f"        Level {sev}: {count} ({pct:.1f}%)")
     
-    # Create stratification column for balanced splitting
+    # Create stratification column for balanced data splitting during training
     df['strata'] = df['condition'] + '_' + df['mobility']
     return df
 
 
 def encode_categorical_features(df):
-    """Encode categorical features and save encoders."""
+    """Convert text-based categorical features into numeric formats and save encoders to JSON."""
     print("\n[3/6] Encoding categorical features...")
     
     encoders = {}
     
+    # Iterate through categorical features and map them to integers
     for col in CATEGORICAL_FEATURES:
         le = LabelEncoder()
         df[f'{col}_encoded'] = le.fit_transform(df[col].astype(str))
         encoders[col] = {'classes': le.classes_.tolist()}
         print(f"      {col}: {le.classes_.tolist()}")
     
+    # Save mapping dictionary to disk so the prediction script can reuse the same integer mappings
     with open(ENCODERS_OUTPUT_PATH, 'w') as f:
         json.dump(encoders, f, indent=2)
     print(f"      Saved encoders to: {ENCODERS_OUTPUT_PATH}")
@@ -93,7 +98,7 @@ def encode_categorical_features(df):
 
 
 def prepare_features(df):
-    """Prepare feature matrix for training."""
+    """Prepare feature matrix (X) and target array (y) for XGBoost training."""
     print("\n[4/6] Preparing feature matrix...")
     
     feature_columns = [
@@ -116,17 +121,17 @@ def prepare_features(df):
 
 
 def train_model(X, y, strata):
-    """Train XGBoost model with stratified split."""
+    """Train XGBoost regression model using a train/test split."""
     print("\n[5/6] Training XGBoost model...")
     
-    # Stratified split - ensures each stratum is represented in train/test
     try:
+        # Stratified split ensures all sub-categories (strata) exist in both train and test sets
         X_train, X_test, y_train, y_test = train_test_split(
             X, y, test_size=0.2, random_state=42, stratify=strata
         )
         print("      Using stratified split")
     except ValueError:
-        # Fallback if strata have too few samples
+        # Fallback to random split if a category has too few samples
         X_train, X_test, y_train, y_test = train_test_split(
             X, y, test_size=0.2, random_state=42
         )
@@ -135,7 +140,7 @@ def train_model(X, y, strata):
     print(f"      Training samples: {len(X_train)}")
     print(f"      Testing samples: {len(X_test)}")
     
-    # XGBoost parameters
+    # Configure and fit the XGBoost Regression model
     model = xgb.XGBRegressor(
         n_estimators=100,
         max_depth=5,
@@ -148,7 +153,7 @@ def train_model(X, y, strata):
     
     model.fit(X_train, y_train, eval_set=[(X_test, y_test)], verbose=False)
     
-    # Evaluate
+    # Evaluate model accuracy on the test set
     y_pred = model.predict(X_test)
     mse = mean_squared_error(y_test, y_pred)
     r2 = r2_score(y_test, y_pred)
@@ -160,12 +165,13 @@ def train_model(X, y, strata):
 
 
 def save_model(model, feature_columns):
-    """Save trained model and show feature importance."""
+    """Save the trained XGBoost model and display feature importance."""
     print("\n[6/6] Saving model...")
     
     model.save_model(MODEL_OUTPUT_PATH)
     print(f"      Model saved to: {MODEL_OUTPUT_PATH}")
     
+    # Calculate and display which features strongly influenced the model's decisions
     importance = dict(zip(feature_columns, model.feature_importances_.tolist()))
     print("\n      Feature Importance:")
     for feat, imp in sorted(importance.items(), key=lambda x: -x[1]):
@@ -174,6 +180,8 @@ def save_model(model, feature_columns):
 
 
 def main():
+    """Main execution flow."""
+    # Read CLI args
     if len(sys.argv) < 2:
         csv_path = os.path.join(SCRIPT_DIR, 'training_data_template.csv')
         print(f"No CSV specified, using: {csv_path}")
@@ -189,6 +197,7 @@ def main():
     print("  With Stratified Sampling Support")
     print("=" * 55)
     
+    # Execute training pipeline step-by-step
     df = load_and_preprocess_data(csv_path)
     df = analyze_strata(df)
     df, encoders = encode_categorical_features(df)

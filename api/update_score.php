@@ -2,23 +2,25 @@
 /**
  * FairMedAlloc - ML Score Update API
  * ==================================
- * Receives JSON data from the Python ML Model.
- * Payload: { "matric": "RUN/2026/001", "score": 85.5 }
+ * Secondary Webhook Endpoint: Receives JSON data updates directly from the Background Python ML process.
+ * Used internally for syncing scores across services.
+ * Payload example: { "matric": "RUN/2026/001", "score": 85.5 }
  */
 
 header("Content-Type: application/json");
 require_once '../db_config.php';
 
-// Only accept POST
+// Only accept POST requests for state mutations
 if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
     http_response_code(405);
     echo json_encode(["status" => "error", "message" => "Method not allowed"]);
     exit();
 }
 
-// Read JSON Input
+// Read the incoming raw JSON payload (sent from Python script via HTTP POST)
 $input = json_decode(file_get_contents("php://input"), true);
 
+// Validate minimum required fields
 if (!isset($input['matric']) || !isset($input['score'])) {
     http_response_code(400);
     echo json_encode(["status" => "error", "message" => "Missing 'matric' or 'score'"]);
@@ -28,15 +30,14 @@ if (!isset($input['matric']) || !isset($input['score'])) {
 $matric = $input['matric'];
 $score  = floatval($input['score']);
 
-// Validate
+// Ensure the ML model hasn't sent an out-of-bounds score error
 if ($score < 0 || $score > 100) {
     echo json_encode(["status" => "error", "message" => "Score must be 0-100"]);
     exit();
 }
 
-// Update Database
-// Update Database
-// 1. Get User ID from Matric
+// --- Sync Mechanism ---
+// 1. Get corresponding User ID assigned to that Matric Number
 $stmtp = $conn->prepare("SELECT user_id FROM student_profiles WHERE matric_no = ?");
 $stmtp->bind_param("s", $matric);
 $stmtp->execute();
@@ -49,16 +50,11 @@ if ($res->num_rows === 0) {
 
 $uid = $res->fetch_assoc()['user_id'];
 
-// 2. Update Medical Record
-// Upsert score (Insert if not exists, though seed_data ensures it usually does)
-$stmt = $conn->prepare("INSERT INTO medical_records (student_id, urgency_score) VALUES (?, ?) ON DUPLICATE KEY UPDATE urgency_score = VALUES(urgency_score)");
-// Wait, medical_records has other fields. We should just update if exists.
-// Logic: If profile exists, medical record might not.
-// Safe bet: UPDATE using student_id. If 0 rows affected, INSERT default?
-// For simpler demo, let's just UPDATE.
+// 2. Update Medical Record explicitly assigning the new python-calculated Urgency Score
 $stmt = $conn->prepare("UPDATE medical_records SET urgency_score = ? WHERE student_id = ?");
 $stmt->bind_param("di", $score, $uid);
 
+// Process the execution and report success/failure back to Python script calling the webhook
 if ($stmt->execute()) {
     if ($stmt->affected_rows > 0) {
         echo json_encode(["status" => "success", "message" => "Updated score for $matric"]);

@@ -31,14 +31,16 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
     } else {
         $hash = password_hash($pass, PASSWORD_DEFAULT);
         
-        // 1. Create User
+        // --- 1. Create Core User Account ---
+        // Insert standard authentication credentials into the main users table
         $stmt = $conn->prepare("INSERT INTO users (username, full_name, email, password_hash, role) VALUES (?, ?, ?, ?, ?)");
         $stmt->bind_param("sssss", $matric, $name, $email, $hash, $role);
         
         if ($stmt->execute()) {
-            $new_id = $conn->insert_id;
+            $new_id = $conn->insert_id; // Capture new user_id for relational linkage
             
-            // 2. Create Profile
+            // --- 2. Create Student Academic Profile ---
+            // Link the new user to their specific university department and level metadata
             $dept_id = (int)$_POST['department'];
             $gen = sanitize_input($_POST['gender']);
             
@@ -46,12 +48,15 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
             $stmt2->bind_param("isiis", $new_id, $matric, $level, $dept_id, $gen);
             $stmt2->execute();
 
-            // 3. Process Medical Record (Mandatory)
-                $condition = sanitize_input($_POST['medical_condition']);
-                if ($condition && $condition !== 'None') {
-                    $severity = (int)($_POST['severity'] ?? 1);
-                    $details = "$condition (Self-Reported)";
-                    $score = $severity * 10; // Simple heuristic
+            // --- 3. Process Medical Record (Mandatory step for ML logic) ---
+            // Stores initial self-reported health statuses. Later used by the XGBoost ML model to calculate urgency.
+            $condition = sanitize_input($_POST['medical_condition']);
+            if ($condition && $condition !== 'None') {
+                $severity = (int)($_POST['severity'] ?? 1);
+                $details = "$condition (Self-Reported)";
+                
+                // Assign a temporary heuristic baseline score immediately upon registration before ML batch processing
+                $score = $severity * 10;
 
                     $stmt_med = $conn->prepare("INSERT INTO medical_records (student_id, condition_category, condition_details, severity_level, urgency_score) VALUES (?, ?, ?, ?, ?)");
                     $stmt_med->bind_param("issid", $new_id, $condition, $details, $severity, $score);
@@ -122,11 +127,10 @@ require_once 'includes/header.php';
                     <input type="text" name="full_name" placeholder="Surname Firstname Middle" required class="input-auth">
                 </div>
 
-                <div class="grid grid-cols-2 gap-4 mb-4">
-                    <div class="form-group">
-                       <label class="text-sm font-bold text-slate-700 mb-2">Matric Number</label>
-                       <input type="text" name="matric_no" placeholder="RUN/CMP/22/..." required class="input-auth">
-                    </div>
+                <div class="form-group mb-4">
+                    <label class="text-sm font-bold text-slate-700 mb-2">Matric Number</label>
+                    <input type="text" name="matric_no" placeholder="RUN/CMP/22/..." required class="input-auth">
+                </div>
                 <div class="grid grid-cols-2 gap-4 mb-4">
                     <div class="form-group">
                         <label class="text-sm font-bold text-slate-700 mb-2">Level</label>

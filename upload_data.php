@@ -26,8 +26,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_FILES['csv_file'])) {
         $stmt_dept_lookup = $conn->prepare("SELECT department_id FROM departments WHERE name LIKE ? LIMIT 1");
         
         while (($row = fgetcsv($file)) !== false) {
-            // Expected CSV: Matric No, Full Name, Level, Faculty, Department, Gender, Medical Condition
-            if (count($row) < 7) continue; // Skip if mandatory columns are missing
+            // Expected CSV Order format: 
+            // Matric No [0], Full Name [1], Level [2], Faculty [3], Department [4], Gender [5], Medical Condition [6]
+            if (count($row) < 7) continue; // Skip entirely malformed rows missing required indices
             
             $matric = trim($row[0]);
             $name   = trim($row[1]);
@@ -59,8 +60,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_FILES['csv_file'])) {
             if ($stmt_user->execute()) {
                 $uid = $conn->insert_id;
                 
-                // Lookup Department ID from String
-                $dept_id = 1; // Fallback
+                // --- Department String-to-ID Mapping ---
+                // The CSV contains string names ("Computer Science"), but DB expects integer IDs.
+                // We use a LIKE query to loosely match the string to the correct internal ID.
+                $dept_id = 1; // Fallback ID if lookup completely fails
                 $search_dept = "%" . $dept . "%";
                 $stmt_dept_lookup->bind_param("s", $search_dept);
                 $stmt_dept_lookup->execute();
@@ -89,17 +92,23 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_FILES['csv_file'])) {
                         'academic_level' => $level
                     ];
                     
+                    // --- Machine Learning Call (Data Bridging) ---
+                    // Since ML logic is in Python, we package the payload into a temporary inline JSON file.
+                    // The Python script reads this file from disk, runs XGBoost, and echoes back the calculated score.
                     $temp_file = sys_get_temp_dir() . DIRECTORY_SEPARATOR . 'fairmed_csv_' . uniqid() . '.json';
                     file_put_contents($temp_file, json_encode($student_data));
                     
                     $script_path = __DIR__ . '/ml_models/predict.py';
                     $command = "python \"$script_path\" \"$temp_file\"";
+                    
+                    // Trigger sub-shell execution
                     $output = shell_exec($command);
                     $result = json_decode($output, true);
                     
+                    // Cleanup tmp bridging file
                     if (file_exists($temp_file)) unlink($temp_file);
                     
-                    // Extract score from ML result or fallback
+                    // Extract definitive score. If the ML module entirely failed, fallback to a heuristic scale.
                     $score = ($result['status'] === 'success' && isset($result['results'][$uid])) 
                         ? $result['results'][$uid] 
                         : ($severity * 15); // Fallback

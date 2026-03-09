@@ -6,7 +6,8 @@
 session_start();
 require_once 'db_config.php';
 
-// Fetch Allocation Status
+// Fetch Allocation Status (Open vs Locked)
+// This strictly controls whether the run algorithm button is even clickable, preventing accidental re-runs
 $stmt = $conn->query("SELECT setting_value FROM settings WHERE setting_key = 'allocation_status'");
 $status_row = $stmt->fetch_assoc();
 $is_locked = ($status_row['setting_value'] ?? 'open') === 'locked';
@@ -66,7 +67,9 @@ function startAllocation() {
     const console = document.getElementById('console');
     console.innerHTML = '<div class="mb-2 text-warning">Initializing Engine...</div>';
     
-    // Start Visualization
+    // --- 1. Start Simulated Visualization ---
+    // Since algorithm processing happens on the backend and is usually very fast,
+    // this timeout block adds an artificial staging delay to make the process visually apparent to the admin.
     setTimeout(() => {
         console.innerHTML += '<div class="mb-2">Fetching Student Data (Algorithm Input)...</div>';
     }, 500);

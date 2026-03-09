@@ -19,7 +19,8 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
     $username = trim($_POST['username']);
     $password = trim($_POST['password']);
     
-    // Auth Logic
+    // --- Authentication Logic Flow ---
+    // 1. Fetch user credentials and current lockout status by username
     $stmt = $conn->prepare("SELECT user_id, username, password_hash, role, login_attempts, lock_until FROM users WHERE username = ?");
     $stmt->bind_param("s", $username);
     $stmt->execute();
@@ -28,14 +29,16 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
     if ($res->num_rows === 1) {
         $user = $res->fetch_assoc();
 
-        // 1. Check Lockout
+        // --- 1. Security Check: Brute Force Lockout ---
+        // Verify if the user is currently serving a temporary ban due to too many failed attempts
         if ($user['lock_until'] && strtotime($user['lock_until']) > time()) {
             $remaining = ceil((strtotime($user['lock_until']) - time()) / 60);
             $error = "Account locked due to too many failed attempts. Try again in $remaining minutes.";
         } else {
-            // 2. Verify Password
+            // --- 2. Password Verification ---
+            // Compare plaintext password string against the hashed database value
             if (password_verify($password, $user['password_hash'])) {
-                // Success: Reset Attempts
+                // Success: Reset the failed login attempts counter to 0
                 $conn->query("UPDATE users SET login_attempts = 0, lock_until = NULL WHERE user_id = " . $user['user_id']);
 
                 if ($user['role'] !== 'student') {
