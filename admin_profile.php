@@ -15,28 +15,39 @@ $msg_type = '';
 
 // Handle Form Submission
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    
+    check_csrf(); // ADD THIS LINE    
+
     // 1. Profile Picture Upload
     if (isset($_FILES['profile_pic']) && $_FILES['profile_pic']['error'] === 0) {
         $allowed = ['jpg', 'jpeg', 'png', 'gif'];
         $ext = strtolower(pathinfo($_FILES['profile_pic']['name'], PATHINFO_EXTENSION));
         
         if (in_array($ext, $allowed)) {
-            $upload_dir = __DIR__ . "/uploads/profile_pics/";
-            if (!file_exists($upload_dir)) {
-                mkdir($upload_dir, 0777, true);
-            }
-            
-            $new_name = "admin_{$user_id}_" . time() . ".$ext";
-            $dest = $upload_dir . $new_name;
-            
-            if (move_uploaded_file($_FILES['profile_pic']['tmp_name'], $dest)) {
-                $conn->query("UPDATE users SET profile_pic='$new_name' WHERE user_id=$user_id");
-                $_SESSION['profile_pic'] = $new_name;
-                $msg = "Profile photo updated successfully.";
-                $msg_type = "success";
+            $finfo = finfo_open(FILEINFO_MIME_TYPE);
+            $mime = finfo_file($finfo, $_FILES['profile_pic']['tmp_name']);
+            finfo_close($finfo);
+
+            $allowed_mimes = ['image/jpeg', 'image/png', 'image/gif'];
+            if (in_array($mime, $allowed_mimes)) {
+                $upload_dir = __DIR__ . "/uploads/profile_pics/";
+                if (!file_exists($upload_dir)) {
+                    mkdir($upload_dir, 0755, true);
+                }
+                
+                $new_name = "admin_{$user_id}_" . time() . ".$ext";
+                $dest = $upload_dir . $new_name;
+                
+                if (move_uploaded_file($_FILES['profile_pic']['tmp_name'], $dest)) {
+                    $conn->query("UPDATE users SET profile_pic='$new_name' WHERE user_id=$user_id");
+                    $_SESSION['profile_pic'] = $new_name;
+                    $msg = "Profile photo updated successfully.";
+                    $msg_type = "success";
+                } else {
+                    $msg = "Failed to move uploaded file.";
+                    $msg_type = "error";
+                }
             } else {
-                $msg = "Failed to move uploaded file.";
+                $msg = "Invalid image content. Allowed MIME types are image/jpeg, image/png, image/gif.";
                 $msg_type = "error";
             }
         } else {
@@ -116,6 +127,7 @@ require_once 'includes/header.php';
                          class="avatar-lg bg-white">
                     
                     <form method="post" enctype="multipart/form-data" id="picForm">
+                        <?php csrf_field(); ?>
                         <label class="absolute bottom-0 right-0 bg-primary text-white p-2 rounded-full cursor-pointer hover:bg-blue-800 transition-colors shadow-md w-9 h-9 flex items-center justify-center" title="Change Photo">
                             <i class="fa-solid fa-camera"></i>
                             <input type="file" name="profile_pic" class="hidden" onchange="document.getElementById('picForm').submit()">
@@ -149,6 +161,7 @@ require_once 'includes/header.php';
                 </div>
 
                 <form method="post" class="max-w-[600px]">
+                    <?php csrf_field(); ?>
                     <div class="form-group mb-6">
                         <label class="block mb-2 font-bold">Current Password</label>
                         <div class="relative">

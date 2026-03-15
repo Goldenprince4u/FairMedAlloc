@@ -9,6 +9,7 @@ USE fairmedalloc;
 -- Disable foreign key checks for clean teardown/setup
 SET FOREIGN_KEY_CHECKS = 0;
 DROP TABLE IF EXISTS algorithm_audit_logs;
+DROP TABLE IF EXISTS admin_audit_logs;
 DROP TABLE IF EXISTS allocations;
 DROP TABLE IF EXISTS rooms;
 DROP TABLE IF EXISTS hostels;
@@ -77,6 +78,9 @@ CREATE TABLE student_profiles (
     gender ENUM('Male', 'Female') NOT NULL,
     level INT NOT NULL,
     department_id INT NOT NULL,
+    allocation_status ENUM('Unallocated', 'Queued', 'Allocated') DEFAULT 'Unallocated',
+    distance_from_campus FLOAT DEFAULT 0.0,
+    has_special_needs BOOLEAN DEFAULT FALSE,
     FOREIGN KEY (user_id) REFERENCES users(user_id) ON DELETE CASCADE,
     FOREIGN KEY (department_id) REFERENCES departments(department_id) ON DELETE RESTRICT
 );
@@ -86,7 +90,7 @@ CREATE TABLE medical_records (
     record_id INT AUTO_INCREMENT PRIMARY KEY,
     student_id INT NOT NULL,
     condition_category ENUM('None', 'Mobility', 'Respiratory', 'Visual', 'Other') DEFAULT 'None',
-    mobility_status VARCHAR(50) DEFAULT 'Normal Mobility',
+    mobility_status ENUM('Normal Mobility', 'Wheelchair User', 'Crutches/Walker', 'Artificial Limb') DEFAULT 'Normal Mobility',
     condition_details TEXT,
     severity_level INT DEFAULT 0,
     urgency_score FLOAT DEFAULT 0,
@@ -151,6 +155,15 @@ CREATE TABLE algorithm_audit_logs (
     allocation_decision ENUM('Allocated', 'Waitlisted', 'No Bed'),
     assigned_hostel_id INT,
     FOREIGN KEY (student_id) REFERENCES users(user_id) ON DELETE CASCADE
+);
+
+CREATE TABLE admin_audit_logs (
+    log_id INT AUTO_INCREMENT PRIMARY KEY,
+    admin_id INT NOT NULL,
+    action_description VARCHAR(255) NOT NULL,
+    ip_address VARCHAR(45),
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (admin_id) REFERENCES users(user_id) ON DELETE CASCADE
 );
 
 -- 10. Settings
@@ -224,7 +237,7 @@ INSERT INTO departments (faculty_id, name) VALUES
 
 -- MALE HOSTELS
 INSERT INTO hostels (hostel_id, name, block_name, gender_allowed, proximal_faculty_id, is_proximal, description, total_capacity) VALUES
-(1, 'Prophet Moses Hall', 'Block 1', 'Male', NULL, FALSE, 'Male Hostel', 80);
+(1, 'Prophet Moses Hall', 'Block 1', 'Male', NULL, FALSE, 'Male Hostel', 76);
 INSERT INTO rooms (hostel_id, room_number, floor_level, capacity, is_corner, bed_config) VALUES
 (1, '1', 0, 4, 1, 'LB, UB, LB, UB'),
 (1, '2', 0, 3, 0, 'SB, LB, UB'),
@@ -252,7 +265,7 @@ INSERT INTO rooms (hostel_id, room_number, floor_level, capacity, is_corner, bed
 (1, '24', 1, 4, 1, 'LB, UB, LB, UB');
 
 INSERT INTO hostels (hostel_id, name, block_name, gender_allowed, proximal_faculty_id, is_proximal, description, total_capacity) VALUES
-(2, 'Prophet Moses Hall', 'Block 2', 'Male', NULL, FALSE, 'Male Hostel', 80);
+(2, 'Prophet Moses Hall', 'Block 2', 'Male', NULL, FALSE, 'Male Hostel', 76);
 INSERT INTO rooms (hostel_id, room_number, floor_level, capacity, is_corner, bed_config) VALUES
 (2, '1', 0, 4, 1, 'LB, UB, LB, UB'),
 (2, '2', 0, 3, 0, 'SB, LB, UB'),
@@ -280,7 +293,7 @@ INSERT INTO rooms (hostel_id, room_number, floor_level, capacity, is_corner, bed
 (2, '24', 1, 4, 1, 'LB, UB, LB, UB');
 
 INSERT INTO hostels (hostel_id, name, block_name, gender_allowed, proximal_faculty_id, is_proximal, description, total_capacity) VALUES
-(3, 'Prophet Moses Hall', 'Block 3', 'Male', NULL, FALSE, 'Male Hostel', 80);
+(3, 'Prophet Moses Hall', 'Block 3', 'Male', NULL, FALSE, 'Male Hostel', 76);
 INSERT INTO rooms (hostel_id, room_number, floor_level, capacity, is_corner, bed_config) VALUES
 (3, '1', 0, 4, 1, 'LB, UB, LB, UB'),
 (3, '2', 0, 3, 0, 'SB, LB, UB'),
@@ -308,7 +321,7 @@ INSERT INTO rooms (hostel_id, room_number, floor_level, capacity, is_corner, bed
 (3, '24', 1, 4, 1, 'LB, UB, LB, UB');
 
 INSERT INTO hostels (hostel_id, name, block_name, gender_allowed, proximal_faculty_id, is_proximal, description, total_capacity) VALUES
-(4, 'Prophet Moses Extension Hall', 'Block 1', 'Male', 3, TRUE, 'Male Hostel', 80);
+(4, 'Prophet Moses Hall', 'Block 4', 'Male', NULL, FALSE, 'Male Hostel', 76);
 INSERT INTO rooms (hostel_id, room_number, floor_level, capacity, is_corner, bed_config) VALUES
 (4, '1', 0, 4, 1, 'LB, UB, LB, UB'),
 (4, '2', 0, 3, 0, 'SB, LB, UB'),
@@ -336,7 +349,7 @@ INSERT INTO rooms (hostel_id, room_number, floor_level, capacity, is_corner, bed
 (4, '24', 1, 4, 1, 'LB, UB, LB, UB');
 
 INSERT INTO hostels (hostel_id, name, block_name, gender_allowed, proximal_faculty_id, is_proximal, description, total_capacity) VALUES
-(5, 'Prophet Moses Extension Hall', 'Block 2', 'Male', 3, TRUE, 'Male Hostel', 80);
+(5, 'Prophet Moses Hall', 'Block 5', 'Male', NULL, FALSE, 'Male Hostel', 76);
 INSERT INTO rooms (hostel_id, room_number, floor_level, capacity, is_corner, bed_config) VALUES
 (5, '1', 0, 4, 1, 'LB, UB, LB, UB'),
 (5, '2', 0, 3, 0, 'SB, LB, UB'),
@@ -364,7 +377,7 @@ INSERT INTO rooms (hostel_id, room_number, floor_level, capacity, is_corner, bed
 (5, '24', 1, 4, 1, 'LB, UB, LB, UB');
 
 INSERT INTO hostels (hostel_id, name, block_name, gender_allowed, proximal_faculty_id, is_proximal, description, total_capacity) VALUES
-(6, 'Prophet Moses Extension Hall', 'Block 3', 'Male', 3, TRUE, 'Male Hostel', 80);
+(6, 'Prophet Moses Hall', 'Block 6', 'Male', NULL, FALSE, 'Male Hostel', 76);
 INSERT INTO rooms (hostel_id, room_number, floor_level, capacity, is_corner, bed_config) VALUES
 (6, '1', 0, 4, 1, 'LB, UB, LB, UB'),
 (6, '2', 0, 3, 0, 'SB, LB, UB'),
@@ -392,7 +405,7 @@ INSERT INTO rooms (hostel_id, room_number, floor_level, capacity, is_corner, bed
 (6, '24', 1, 4, 1, 'LB, UB, LB, UB');
 
 INSERT INTO hostels (hostel_id, name, block_name, gender_allowed, proximal_faculty_id, is_proximal, description, total_capacity) VALUES
-(7, 'Prophet Moses Engineering Hall', 'Block 1', 'Male', 5, FALSE, 'Male Hostel', 80);
+(7, 'Prophet Moses Hall', 'Block 7', 'Male', NULL, FALSE, 'Male Hostel', 76);
 INSERT INTO rooms (hostel_id, room_number, floor_level, capacity, is_corner, bed_config) VALUES
 (7, '1', 0, 4, 1, 'LB, UB, LB, UB'),
 (7, '2', 0, 3, 0, 'SB, LB, UB'),
@@ -420,7 +433,7 @@ INSERT INTO rooms (hostel_id, room_number, floor_level, capacity, is_corner, bed
 (7, '24', 1, 4, 1, 'LB, UB, LB, UB');
 
 INSERT INTO hostels (hostel_id, name, block_name, gender_allowed, proximal_faculty_id, is_proximal, description, total_capacity) VALUES
-(8, 'Prophet Moses Engineering Hall', 'Block 2', 'Male', 5, FALSE, 'Male Hostel', 80);
+(8, 'Prophet Moses Hall', 'Block 8', 'Male', NULL, FALSE, 'Male Hostel', 76);
 INSERT INTO rooms (hostel_id, room_number, floor_level, capacity, is_corner, bed_config) VALUES
 (8, '1', 0, 4, 1, 'LB, UB, LB, UB'),
 (8, '2', 0, 3, 0, 'SB, LB, UB'),
@@ -448,7 +461,7 @@ INSERT INTO rooms (hostel_id, room_number, floor_level, capacity, is_corner, bed
 (8, '24', 1, 4, 1, 'LB, UB, LB, UB');
 
 INSERT INTO hostels (hostel_id, name, block_name, gender_allowed, proximal_faculty_id, is_proximal, description, total_capacity) VALUES
-(9, 'Prophet Moses Engineering Hall', 'Block 3', 'Male', 5, FALSE, 'Male Hostel', 80);
+(9, 'Prophet Moses Hall', 'Block 9', 'Male', NULL, FALSE, 'Male Hostel', 76);
 INSERT INTO rooms (hostel_id, room_number, floor_level, capacity, is_corner, bed_config) VALUES
 (9, '1', 0, 4, 1, 'LB, UB, LB, UB'),
 (9, '2', 0, 3, 0, 'SB, LB, UB'),
@@ -475,9 +488,8 @@ INSERT INTO rooms (hostel_id, room_number, floor_level, capacity, is_corner, bed
 (9, '23', 1, 3, 0, 'SB, LB, UB'),
 (9, '24', 1, 4, 1, 'LB, UB, LB, UB');
 
--- FEMALE HOSTELS
 INSERT INTO hostels (hostel_id, name, block_name, gender_allowed, proximal_faculty_id, is_proximal, description, total_capacity) VALUES
-(10, 'Queen Esther Main Hall', 'Block 1', 'Female', NULL, FALSE, 'Female Hostel', 80);
+(10, 'Prophet Moses Hall', 'Block 10', 'Male', NULL, FALSE, 'Male Hostel', 76);
 INSERT INTO rooms (hostel_id, room_number, floor_level, capacity, is_corner, bed_config) VALUES
 (10, '1', 0, 4, 1, 'LB, UB, LB, UB'),
 (10, '2', 0, 3, 0, 'SB, LB, UB'),
@@ -505,7 +517,7 @@ INSERT INTO rooms (hostel_id, room_number, floor_level, capacity, is_corner, bed
 (10, '24', 1, 4, 1, 'LB, UB, LB, UB');
 
 INSERT INTO hostels (hostel_id, name, block_name, gender_allowed, proximal_faculty_id, is_proximal, description, total_capacity) VALUES
-(11, 'Queen Esther Main Hall', 'Block 2', 'Female', NULL, FALSE, 'Female Hostel', 80);
+(11, 'Prophet Moses Hall', 'Block 11', 'Male', NULL, FALSE, 'Male Hostel', 76);
 INSERT INTO rooms (hostel_id, room_number, floor_level, capacity, is_corner, bed_config) VALUES
 (11, '1', 0, 4, 1, 'LB, UB, LB, UB'),
 (11, '2', 0, 3, 0, 'SB, LB, UB'),
@@ -533,7 +545,7 @@ INSERT INTO rooms (hostel_id, room_number, floor_level, capacity, is_corner, bed
 (11, '24', 1, 4, 1, 'LB, UB, LB, UB');
 
 INSERT INTO hostels (hostel_id, name, block_name, gender_allowed, proximal_faculty_id, is_proximal, description, total_capacity) VALUES
-(12, 'Queen Esther Main Hall', 'Block 3', 'Female', NULL, FALSE, 'Female Hostel', 80);
+(12, 'Prophet Moses Hall', 'Block 12', 'Male', NULL, FALSE, 'Male Hostel', 76);
 INSERT INTO rooms (hostel_id, room_number, floor_level, capacity, is_corner, bed_config) VALUES
 (12, '1', 0, 4, 1, 'LB, UB, LB, UB'),
 (12, '2', 0, 3, 0, 'SB, LB, UB'),
@@ -561,7 +573,7 @@ INSERT INTO rooms (hostel_id, room_number, floor_level, capacity, is_corner, bed
 (12, '24', 1, 4, 1, 'LB, UB, LB, UB');
 
 INSERT INTO hostels (hostel_id, name, block_name, gender_allowed, proximal_faculty_id, is_proximal, description, total_capacity) VALUES
-(13, 'Queen Esther Extension Hall', 'Block 1', 'Female', 3, TRUE, 'Female Hostel', 80);
+(13, 'Prophet Moses Hall', 'Block 13', 'Male', NULL, FALSE, 'Male Hostel', 76);
 INSERT INTO rooms (hostel_id, room_number, floor_level, capacity, is_corner, bed_config) VALUES
 (13, '1', 0, 4, 1, 'LB, UB, LB, UB'),
 (13, '2', 0, 3, 0, 'SB, LB, UB'),
@@ -589,7 +601,7 @@ INSERT INTO rooms (hostel_id, room_number, floor_level, capacity, is_corner, bed
 (13, '24', 1, 4, 1, 'LB, UB, LB, UB');
 
 INSERT INTO hostels (hostel_id, name, block_name, gender_allowed, proximal_faculty_id, is_proximal, description, total_capacity) VALUES
-(14, 'Queen Esther Extension Hall', 'Block 2', 'Female', 3, TRUE, 'Female Hostel', 80);
+(14, 'Prophet Moses Hall', 'Block 14', 'Male', NULL, FALSE, 'Male Hostel', 76);
 INSERT INTO rooms (hostel_id, room_number, floor_level, capacity, is_corner, bed_config) VALUES
 (14, '1', 0, 4, 1, 'LB, UB, LB, UB'),
 (14, '2', 0, 3, 0, 'SB, LB, UB'),
@@ -617,7 +629,7 @@ INSERT INTO rooms (hostel_id, room_number, floor_level, capacity, is_corner, bed
 (14, '24', 1, 4, 1, 'LB, UB, LB, UB');
 
 INSERT INTO hostels (hostel_id, name, block_name, gender_allowed, proximal_faculty_id, is_proximal, description, total_capacity) VALUES
-(15, 'Queen Esther Extension Hall', 'Block 3', 'Female', 3, TRUE, 'Female Hostel', 80);
+(15, 'Prophet Moses Hall', 'Block 15', 'Male', NULL, FALSE, 'Male Hostel', 76);
 INSERT INTO rooms (hostel_id, room_number, floor_level, capacity, is_corner, bed_config) VALUES
 (15, '1', 0, 4, 1, 'LB, UB, LB, UB'),
 (15, '2', 0, 3, 0, 'SB, LB, UB'),
@@ -645,7 +657,7 @@ INSERT INTO rooms (hostel_id, room_number, floor_level, capacity, is_corner, bed
 (15, '24', 1, 4, 1, 'LB, UB, LB, UB');
 
 INSERT INTO hostels (hostel_id, name, block_name, gender_allowed, proximal_faculty_id, is_proximal, description, total_capacity) VALUES
-(16, 'Queen Esther Engineering Hall (New)', 'Block 1', 'Female', 5, FALSE, 'Female Hostel', 80);
+(16, 'Prophet Moses Hall', 'Block 16', 'Male', NULL, FALSE, 'Male Hostel', 76);
 INSERT INTO rooms (hostel_id, room_number, floor_level, capacity, is_corner, bed_config) VALUES
 (16, '1', 0, 4, 1, 'LB, UB, LB, UB'),
 (16, '2', 0, 3, 0, 'SB, LB, UB'),
@@ -673,7 +685,7 @@ INSERT INTO rooms (hostel_id, room_number, floor_level, capacity, is_corner, bed
 (16, '24', 1, 4, 1, 'LB, UB, LB, UB');
 
 INSERT INTO hostels (hostel_id, name, block_name, gender_allowed, proximal_faculty_id, is_proximal, description, total_capacity) VALUES
-(17, 'Queen Esther Engineering Hall (New)', 'Block 2', 'Female', 5, FALSE, 'Female Hostel', 80);
+(17, 'Prophet Moses Hall', 'Block 17', 'Male', NULL, FALSE, 'Male Hostel', 76);
 INSERT INTO rooms (hostel_id, room_number, floor_level, capacity, is_corner, bed_config) VALUES
 (17, '1', 0, 4, 1, 'LB, UB, LB, UB'),
 (17, '2', 0, 3, 0, 'SB, LB, UB'),
@@ -701,7 +713,7 @@ INSERT INTO rooms (hostel_id, room_number, floor_level, capacity, is_corner, bed
 (17, '24', 1, 4, 1, 'LB, UB, LB, UB');
 
 INSERT INTO hostels (hostel_id, name, block_name, gender_allowed, proximal_faculty_id, is_proximal, description, total_capacity) VALUES
-(18, 'Queen Esther Engineering Hall (New)', 'Block 3', 'Female', 5, FALSE, 'Female Hostel', 80);
+(18, 'Prophet Moses Hall', 'Block 18', 'Male', NULL, FALSE, 'Male Hostel', 76);
 INSERT INTO rooms (hostel_id, room_number, floor_level, capacity, is_corner, bed_config) VALUES
 (18, '1', 0, 4, 1, 'LB, UB, LB, UB'),
 (18, '2', 0, 3, 0, 'SB, LB, UB'),
@@ -727,3 +739,428 @@ INSERT INTO rooms (hostel_id, room_number, floor_level, capacity, is_corner, bed
 (18, '22', 1, 3, 0, 'SB, LB, UB'),
 (18, '23', 1, 3, 0, 'SB, LB, UB'),
 (18, '24', 1, 4, 1, 'LB, UB, LB, UB');
+
+INSERT INTO hostels (hostel_id, name, block_name, gender_allowed, proximal_faculty_id, is_proximal, description, total_capacity) VALUES
+(19, 'Prophet Moses Extension Hall', 'Block 21', 'Male', NULL, FALSE, 'Male Hostel', 80);
+INSERT INTO rooms (hostel_id, room_number, floor_level, capacity, is_corner, bed_config) VALUES
+(19, '1', 0, 4, 1, 'LB, UB, LB, UB'),
+(19, '2', 0, 3, 0, 'SB, LB, UB'),
+(19, '3', 0, 3, 0, 'SB, LB, UB'),
+(19, '4', 0, 3, 0, 'SB, LB, UB'),
+(19, '5', 0, 3, 0, 'SB, LB, UB'),
+(19, '6', 0, 3, 0, 'SB, LB, UB'),
+(19, '7', 0, 3, 0, 'SB, LB, UB'),
+(19, '8', 0, 3, 0, 'SB, LB, UB'),
+(19, '9', 0, 3, 0, 'SB, LB, UB'),
+(19, '10', 0, 3, 0, 'SB, LB, UB'),
+(19, '11', 0, 3, 0, 'SB, LB, UB'),
+(19, '12', 0, 6, 1, 'LB, UB, LB, UB, LB, UB'),
+(19, '13', 1, 6, 1, 'LB, UB, LB, UB, LB, UB'),
+(19, '14', 1, 3, 0, 'SB, LB, UB'),
+(19, '15', 1, 3, 0, 'SB, LB, UB'),
+(19, '16', 1, 3, 0, 'SB, LB, UB'),
+(19, '17', 1, 3, 0, 'SB, LB, UB'),
+(19, '18', 1, 3, 0, 'SB, LB, UB'),
+(19, '19', 1, 3, 0, 'SB, LB, UB'),
+(19, '20', 1, 3, 0, 'SB, LB, UB'),
+(19, '21', 1, 3, 0, 'SB, LB, UB'),
+(19, '22', 1, 3, 0, 'SB, LB, UB'),
+(19, '23', 1, 3, 0, 'SB, LB, UB'),
+(19, '24', 1, 4, 1, 'LB, UB, LB, UB');
+
+INSERT INTO hostels (hostel_id, name, block_name, gender_allowed, proximal_faculty_id, is_proximal, description, total_capacity) VALUES
+(20, 'Prophet Moses Extension Hall', 'Block 22', 'Male', NULL, FALSE, 'Male Hostel', 76);
+INSERT INTO rooms (hostel_id, room_number, floor_level, capacity, is_corner, bed_config) VALUES
+(20, '1', 0, 4, 1, 'LB, UB, LB, UB'),
+(20, '2', 0, 3, 0, 'SB, LB, UB'),
+(20, '3', 0, 3, 0, 'SB, LB, UB'),
+(20, '4', 0, 3, 0, 'SB, LB, UB'),
+(20, '5', 0, 3, 0, 'SB, LB, UB'),
+(20, '6', 0, 3, 0, 'SB, LB, UB'),
+(20, '7', 0, 3, 0, 'SB, LB, UB'),
+(20, '8', 0, 3, 0, 'SB, LB, UB'),
+(20, '9', 0, 3, 0, 'SB, LB, UB'),
+(20, '10', 0, 3, 0, 'SB, LB, UB'),
+(20, '11', 0, 3, 0, 'SB, LB, UB'),
+(20, '12', 0, 4, 1, 'LB, UB, LB, UB'),
+(20, '13', 1, 4, 1, 'LB, UB, LB, UB'),
+(20, '14', 1, 3, 0, 'SB, LB, UB'),
+(20, '15', 1, 3, 0, 'SB, LB, UB'),
+(20, '16', 1, 3, 0, 'SB, LB, UB'),
+(20, '17', 1, 3, 0, 'SB, LB, UB'),
+(20, '18', 1, 3, 0, 'SB, LB, UB'),
+(20, '19', 1, 3, 0, 'SB, LB, UB'),
+(20, '20', 1, 3, 0, 'SB, LB, UB'),
+(20, '21', 1, 3, 0, 'SB, LB, UB'),
+(20, '22', 1, 3, 0, 'SB, LB, UB'),
+(20, '23', 1, 3, 0, 'SB, LB, UB'),
+(20, '24', 1, 4, 1, 'LB, UB, LB, UB');
+
+INSERT INTO hostels (hostel_id, name, block_name, gender_allowed, proximal_faculty_id, is_proximal, description, total_capacity) VALUES
+(21, 'Prophet Moses Extension Hall', 'Block 23', 'Male', NULL, FALSE, 'Male Hostel', 76);
+INSERT INTO rooms (hostel_id, room_number, floor_level, capacity, is_corner, bed_config) VALUES
+(21, '1', 0, 4, 1, 'LB, UB, LB, UB'),
+(21, '2', 0, 3, 0, 'SB, LB, UB'),
+(21, '3', 0, 3, 0, 'SB, LB, UB'),
+(21, '4', 0, 3, 0, 'SB, LB, UB'),
+(21, '5', 0, 3, 0, 'SB, LB, UB'),
+(21, '6', 0, 3, 0, 'SB, LB, UB'),
+(21, '7', 0, 3, 0, 'SB, LB, UB'),
+(21, '8', 0, 3, 0, 'SB, LB, UB'),
+(21, '9', 0, 3, 0, 'SB, LB, UB'),
+(21, '10', 0, 3, 0, 'SB, LB, UB'),
+(21, '11', 0, 3, 0, 'SB, LB, UB'),
+(21, '12', 0, 4, 1, 'LB, UB, LB, UB'),
+(21, '13', 1, 4, 1, 'LB, UB, LB, UB'),
+(21, '14', 1, 3, 0, 'SB, LB, UB'),
+(21, '15', 1, 3, 0, 'SB, LB, UB'),
+(21, '16', 1, 3, 0, 'SB, LB, UB'),
+(21, '17', 1, 3, 0, 'SB, LB, UB'),
+(21, '18', 1, 3, 0, 'SB, LB, UB'),
+(21, '19', 1, 3, 0, 'SB, LB, UB'),
+(21, '20', 1, 3, 0, 'SB, LB, UB'),
+(21, '21', 1, 3, 0, 'SB, LB, UB'),
+(21, '22', 1, 3, 0, 'SB, LB, UB'),
+(21, '23', 1, 3, 0, 'SB, LB, UB'),
+(21, '24', 1, 4, 1, 'LB, UB, LB, UB');
+
+INSERT INTO hostels (hostel_id, name, block_name, gender_allowed, proximal_faculty_id, is_proximal, description, total_capacity) VALUES
+(22, 'Prophet Moses Extension Hall', 'Block 24', 'Male', NULL, FALSE, 'Male Hostel', 76);
+INSERT INTO rooms (hostel_id, room_number, floor_level, capacity, is_corner, bed_config) VALUES
+(22, '1', 0, 4, 1, 'LB, UB, LB, UB'),
+(22, '2', 0, 3, 0, 'SB, LB, UB'),
+(22, '3', 0, 3, 0, 'SB, LB, UB'),
+(22, '4', 0, 3, 0, 'SB, LB, UB'),
+(22, '5', 0, 3, 0, 'SB, LB, UB'),
+(22, '6', 0, 3, 0, 'SB, LB, UB'),
+(22, '7', 0, 3, 0, 'SB, LB, UB'),
+(22, '8', 0, 3, 0, 'SB, LB, UB'),
+(22, '9', 0, 3, 0, 'SB, LB, UB'),
+(22, '10', 0, 3, 0, 'SB, LB, UB'),
+(22, '11', 0, 3, 0, 'SB, LB, UB'),
+(22, '12', 0, 4, 1, 'LB, UB, LB, UB'),
+(22, '13', 1, 4, 1, 'LB, UB, LB, UB'),
+(22, '14', 1, 3, 0, 'SB, LB, UB'),
+(22, '15', 1, 3, 0, 'SB, LB, UB'),
+(22, '16', 1, 3, 0, 'SB, LB, UB'),
+(22, '17', 1, 3, 0, 'SB, LB, UB'),
+(22, '18', 1, 3, 0, 'SB, LB, UB'),
+(22, '19', 1, 3, 0, 'SB, LB, UB'),
+(22, '20', 1, 3, 0, 'SB, LB, UB'),
+(22, '21', 1, 3, 0, 'SB, LB, UB'),
+(22, '22', 1, 3, 0, 'SB, LB, UB'),
+(22, '23', 1, 3, 0, 'SB, LB, UB'),
+(22, '24', 1, 4, 1, 'LB, UB, LB, UB');
+
+INSERT INTO hostels (hostel_id, name, block_name, gender_allowed, proximal_faculty_id, is_proximal, description, total_capacity) VALUES
+(23, 'Prophet Moses Extension Hall', 'Block 25', 'Male', NULL, FALSE, 'Male Hostel', 76);
+INSERT INTO rooms (hostel_id, room_number, floor_level, capacity, is_corner, bed_config) VALUES
+(23, '1', 0, 4, 1, 'LB, UB, LB, UB'),
+(23, '2', 0, 3, 0, 'SB, LB, UB'),
+(23, '3', 0, 3, 0, 'SB, LB, UB'),
+(23, '4', 0, 3, 0, 'SB, LB, UB'),
+(23, '5', 0, 3, 0, 'SB, LB, UB'),
+(23, '6', 0, 3, 0, 'SB, LB, UB'),
+(23, '7', 0, 3, 0, 'SB, LB, UB'),
+(23, '8', 0, 3, 0, 'SB, LB, UB'),
+(23, '9', 0, 3, 0, 'SB, LB, UB'),
+(23, '10', 0, 3, 0, 'SB, LB, UB'),
+(23, '11', 0, 3, 0, 'SB, LB, UB'),
+(23, '12', 0, 4, 1, 'LB, UB, LB, UB'),
+(23, '13', 1, 4, 1, 'LB, UB, LB, UB'),
+(23, '14', 1, 3, 0, 'SB, LB, UB'),
+(23, '15', 1, 3, 0, 'SB, LB, UB'),
+(23, '16', 1, 3, 0, 'SB, LB, UB'),
+(23, '17', 1, 3, 0, 'SB, LB, UB'),
+(23, '18', 1, 3, 0, 'SB, LB, UB'),
+(23, '19', 1, 3, 0, 'SB, LB, UB'),
+(23, '20', 1, 3, 0, 'SB, LB, UB'),
+(23, '21', 1, 3, 0, 'SB, LB, UB'),
+(23, '22', 1, 3, 0, 'SB, LB, UB'),
+(23, '23', 1, 3, 0, 'SB, LB, UB'),
+(23, '24', 1, 4, 1, 'LB, UB, LB, UB');
+
+INSERT INTO hostels (hostel_id, name, block_name, gender_allowed, proximal_faculty_id, is_proximal, description, total_capacity) VALUES
+(24, 'Prophet Moses Extension Hall', 'Block 26', 'Male', NULL, FALSE, 'Male Hostel', 112);
+INSERT INTO rooms (hostel_id, room_number, floor_level, capacity, is_corner, bed_config) VALUES
+(24, '1', 0, 4, 0, 'LB, UB, LB, UB'),
+(24, '2', 0, 4, 0, 'LB, UB, LB, UB'),
+(24, '3', 0, 4, 0, 'LB, UB, LB, UB'),
+(24, '4', 0, 4, 0, 'LB, UB, LB, UB'),
+(24, '5', 0, 4, 0, 'LB, UB, LB, UB'),
+(24, '6', 0, 4, 0, 'LB, UB, LB, UB'),
+(24, '7', 0, 4, 0, 'LB, UB, LB, UB'),
+(24, '8', 0, 4, 0, 'LB, UB, LB, UB'),
+(24, '9', 0, 4, 0, 'LB, UB, LB, UB'),
+(24, '10', 0, 4, 0, 'LB, UB, LB, UB'),
+(24, '11', 0, 4, 0, 'LB, UB, LB, UB'),
+(24, '12', 0, 4, 0, 'LB, UB, LB, UB'),
+(24, '13', 0, 4, 0, 'LB, UB, LB, UB'),
+(24, '14', 1, 4, 0, 'LB, UB, LB, UB'),
+(24, '15', 1, 4, 0, 'LB, UB, LB, UB'),
+(24, '16', 1, 4, 0, 'LB, UB, LB, UB'),
+(24, '17', 1, 4, 0, 'LB, UB, LB, UB'),
+(24, '18', 1, 4, 0, 'LB, UB, LB, UB'),
+(24, '19', 1, 4, 0, 'LB, UB, LB, UB'),
+(24, '20', 1, 4, 0, 'LB, UB, LB, UB'),
+(24, '21', 1, 4, 0, 'LB, UB, LB, UB'),
+(24, '22', 1, 4, 0, 'LB, UB, LB, UB'),
+(24, '23', 1, 4, 0, 'LB, UB, LB, UB'),
+(24, '24', 1, 4, 0, 'LB, UB, LB, UB'),
+(24, '25', 1, 4, 0, 'LB, UB, LB, UB'),
+(24, '26', 1, 8, 1, 'LB, UB, LB, UB, LB, UB, LB, UB'),
+(24, '27', 1, 4, 0, 'LB, UB, LB, UB');
+
+-- FEMALE HOSTELS
+INSERT INTO hostels (hostel_id, name, block_name, gender_allowed, proximal_faculty_id, is_proximal, description, total_capacity) VALUES
+(25, 'Queen Esther Main Hall', 'Block 1', 'Female', NULL, FALSE, 'Female Hostel', 76);
+INSERT INTO rooms (hostel_id, room_number, floor_level, capacity, is_corner, bed_config) VALUES
+(25, '1', 0, 4, 1, 'LB, UB, LB, UB'),
+(25, '2', 0, 3, 0, 'SB, LB, UB'),
+(25, '3', 0, 3, 0, 'SB, LB, UB'),
+(25, '4', 0, 3, 0, 'SB, LB, UB'),
+(25, '5', 0, 3, 0, 'SB, LB, UB'),
+(25, '6', 0, 3, 0, 'SB, LB, UB'),
+(25, '7', 0, 3, 0, 'SB, LB, UB'),
+(25, '8', 0, 3, 0, 'SB, LB, UB'),
+(25, '9', 0, 3, 0, 'SB, LB, UB'),
+(25, '10', 0, 3, 0, 'SB, LB, UB'),
+(25, '11', 0, 3, 0, 'SB, LB, UB'),
+(25, '12', 0, 4, 1, 'LB, UB, LB, UB'),
+(25, '13', 1, 4, 1, 'LB, UB, LB, UB'),
+(25, '14', 1, 3, 0, 'SB, LB, UB'),
+(25, '15', 1, 3, 0, 'SB, LB, UB'),
+(25, '16', 1, 3, 0, 'SB, LB, UB'),
+(25, '17', 1, 3, 0, 'SB, LB, UB'),
+(25, '18', 1, 3, 0, 'SB, LB, UB'),
+(25, '19', 1, 3, 0, 'SB, LB, UB'),
+(25, '20', 1, 3, 0, 'SB, LB, UB'),
+(25, '21', 1, 3, 0, 'SB, LB, UB'),
+(25, '22', 1, 3, 0, 'SB, LB, UB'),
+(25, '23', 1, 3, 0, 'SB, LB, UB'),
+(25, '24', 1, 4, 1, 'LB, UB, LB, UB');
+
+INSERT INTO hostels (hostel_id, name, block_name, gender_allowed, proximal_faculty_id, is_proximal, description, total_capacity) VALUES
+(26, 'Queen Esther Main Hall', 'Block 2', 'Female', NULL, FALSE, 'Female Hostel', 76);
+INSERT INTO rooms (hostel_id, room_number, floor_level, capacity, is_corner, bed_config) VALUES
+(26, '1', 0, 4, 1, 'LB, UB, LB, UB'),
+(26, '2', 0, 3, 0, 'SB, LB, UB'),
+(26, '3', 0, 3, 0, 'SB, LB, UB'),
+(26, '4', 0, 3, 0, 'SB, LB, UB'),
+(26, '5', 0, 3, 0, 'SB, LB, UB'),
+(26, '6', 0, 3, 0, 'SB, LB, UB'),
+(26, '7', 0, 3, 0, 'SB, LB, UB'),
+(26, '8', 0, 3, 0, 'SB, LB, UB'),
+(26, '9', 0, 3, 0, 'SB, LB, UB'),
+(26, '10', 0, 3, 0, 'SB, LB, UB'),
+(26, '11', 0, 3, 0, 'SB, LB, UB'),
+(26, '12', 0, 4, 1, 'LB, UB, LB, UB'),
+(26, '13', 1, 4, 1, 'LB, UB, LB, UB'),
+(26, '14', 1, 3, 0, 'SB, LB, UB'),
+(26, '15', 1, 3, 0, 'SB, LB, UB'),
+(26, '16', 1, 3, 0, 'SB, LB, UB'),
+(26, '17', 1, 3, 0, 'SB, LB, UB'),
+(26, '18', 1, 3, 0, 'SB, LB, UB'),
+(26, '19', 1, 3, 0, 'SB, LB, UB'),
+(26, '20', 1, 3, 0, 'SB, LB, UB'),
+(26, '21', 1, 3, 0, 'SB, LB, UB'),
+(26, '22', 1, 3, 0, 'SB, LB, UB'),
+(26, '23', 1, 3, 0, 'SB, LB, UB'),
+(26, '24', 1, 4, 1, 'LB, UB, LB, UB');
+
+INSERT INTO hostels (hostel_id, name, block_name, gender_allowed, proximal_faculty_id, is_proximal, description, total_capacity) VALUES
+(27, 'Queen Esther Main Hall', 'Block 3', 'Female', NULL, FALSE, 'Female Hostel', 76);
+INSERT INTO rooms (hostel_id, room_number, floor_level, capacity, is_corner, bed_config) VALUES
+(27, '1', 0, 4, 1, 'LB, UB, LB, UB'),
+(27, '2', 0, 3, 0, 'SB, LB, UB'),
+(27, '3', 0, 3, 0, 'SB, LB, UB'),
+(27, '4', 0, 3, 0, 'SB, LB, UB'),
+(27, '5', 0, 3, 0, 'SB, LB, UB'),
+(27, '6', 0, 3, 0, 'SB, LB, UB'),
+(27, '7', 0, 3, 0, 'SB, LB, UB'),
+(27, '8', 0, 3, 0, 'SB, LB, UB'),
+(27, '9', 0, 3, 0, 'SB, LB, UB'),
+(27, '10', 0, 3, 0, 'SB, LB, UB'),
+(27, '11', 0, 3, 0, 'SB, LB, UB'),
+(27, '12', 0, 4, 1, 'LB, UB, LB, UB'),
+(27, '13', 1, 4, 1, 'LB, UB, LB, UB'),
+(27, '14', 1, 3, 0, 'SB, LB, UB'),
+(27, '15', 1, 3, 0, 'SB, LB, UB'),
+(27, '16', 1, 3, 0, 'SB, LB, UB'),
+(27, '17', 1, 3, 0, 'SB, LB, UB'),
+(27, '18', 1, 3, 0, 'SB, LB, UB'),
+(27, '19', 1, 3, 0, 'SB, LB, UB'),
+(27, '20', 1, 3, 0, 'SB, LB, UB'),
+(27, '21', 1, 3, 0, 'SB, LB, UB'),
+(27, '22', 1, 3, 0, 'SB, LB, UB'),
+(27, '23', 1, 3, 0, 'SB, LB, UB'),
+(27, '24', 1, 4, 1, 'LB, UB, LB, UB');
+
+INSERT INTO hostels (hostel_id, name, block_name, gender_allowed, proximal_faculty_id, is_proximal, description, total_capacity) VALUES
+(28, 'Queen Esther Extension Hall', 'Block 1', 'Female', 3, TRUE, 'Female Hostel', 76);
+INSERT INTO rooms (hostel_id, room_number, floor_level, capacity, is_corner, bed_config) VALUES
+(28, '1', 0, 4, 1, 'LB, UB, LB, UB'),
+(28, '2', 0, 3, 0, 'SB, LB, UB'),
+(28, '3', 0, 3, 0, 'SB, LB, UB'),
+(28, '4', 0, 3, 0, 'SB, LB, UB'),
+(28, '5', 0, 3, 0, 'SB, LB, UB'),
+(28, '6', 0, 3, 0, 'SB, LB, UB'),
+(28, '7', 0, 3, 0, 'SB, LB, UB'),
+(28, '8', 0, 3, 0, 'SB, LB, UB'),
+(28, '9', 0, 3, 0, 'SB, LB, UB'),
+(28, '10', 0, 3, 0, 'SB, LB, UB'),
+(28, '11', 0, 3, 0, 'SB, LB, UB'),
+(28, '12', 0, 4, 1, 'LB, UB, LB, UB'),
+(28, '13', 1, 4, 1, 'LB, UB, LB, UB'),
+(28, '14', 1, 3, 0, 'SB, LB, UB'),
+(28, '15', 1, 3, 0, 'SB, LB, UB'),
+(28, '16', 1, 3, 0, 'SB, LB, UB'),
+(28, '17', 1, 3, 0, 'SB, LB, UB'),
+(28, '18', 1, 3, 0, 'SB, LB, UB'),
+(28, '19', 1, 3, 0, 'SB, LB, UB'),
+(28, '20', 1, 3, 0, 'SB, LB, UB'),
+(28, '21', 1, 3, 0, 'SB, LB, UB'),
+(28, '22', 1, 3, 0, 'SB, LB, UB'),
+(28, '23', 1, 3, 0, 'SB, LB, UB'),
+(28, '24', 1, 4, 1, 'LB, UB, LB, UB');
+
+INSERT INTO hostels (hostel_id, name, block_name, gender_allowed, proximal_faculty_id, is_proximal, description, total_capacity) VALUES
+(29, 'Queen Esther Extension Hall', 'Block 2', 'Female', 3, TRUE, 'Female Hostel', 76);
+INSERT INTO rooms (hostel_id, room_number, floor_level, capacity, is_corner, bed_config) VALUES
+(29, '1', 0, 4, 1, 'LB, UB, LB, UB'),
+(29, '2', 0, 3, 0, 'SB, LB, UB'),
+(29, '3', 0, 3, 0, 'SB, LB, UB'),
+(29, '4', 0, 3, 0, 'SB, LB, UB'),
+(29, '5', 0, 3, 0, 'SB, LB, UB'),
+(29, '6', 0, 3, 0, 'SB, LB, UB'),
+(29, '7', 0, 3, 0, 'SB, LB, UB'),
+(29, '8', 0, 3, 0, 'SB, LB, UB'),
+(29, '9', 0, 3, 0, 'SB, LB, UB'),
+(29, '10', 0, 3, 0, 'SB, LB, UB'),
+(29, '11', 0, 3, 0, 'SB, LB, UB'),
+(29, '12', 0, 4, 1, 'LB, UB, LB, UB'),
+(29, '13', 1, 4, 1, 'LB, UB, LB, UB'),
+(29, '14', 1, 3, 0, 'SB, LB, UB'),
+(29, '15', 1, 3, 0, 'SB, LB, UB'),
+(29, '16', 1, 3, 0, 'SB, LB, UB'),
+(29, '17', 1, 3, 0, 'SB, LB, UB'),
+(29, '18', 1, 3, 0, 'SB, LB, UB'),
+(29, '19', 1, 3, 0, 'SB, LB, UB'),
+(29, '20', 1, 3, 0, 'SB, LB, UB'),
+(29, '21', 1, 3, 0, 'SB, LB, UB'),
+(29, '22', 1, 3, 0, 'SB, LB, UB'),
+(29, '23', 1, 3, 0, 'SB, LB, UB'),
+(29, '24', 1, 4, 1, 'LB, UB, LB, UB');
+
+INSERT INTO hostels (hostel_id, name, block_name, gender_allowed, proximal_faculty_id, is_proximal, description, total_capacity) VALUES
+(30, 'Queen Esther Extension Hall', 'Block 3', 'Female', 3, TRUE, 'Female Hostel', 76);
+INSERT INTO rooms (hostel_id, room_number, floor_level, capacity, is_corner, bed_config) VALUES
+(30, '1', 0, 4, 1, 'LB, UB, LB, UB'),
+(30, '2', 0, 3, 0, 'SB, LB, UB'),
+(30, '3', 0, 3, 0, 'SB, LB, UB'),
+(30, '4', 0, 3, 0, 'SB, LB, UB'),
+(30, '5', 0, 3, 0, 'SB, LB, UB'),
+(30, '6', 0, 3, 0, 'SB, LB, UB'),
+(30, '7', 0, 3, 0, 'SB, LB, UB'),
+(30, '8', 0, 3, 0, 'SB, LB, UB'),
+(30, '9', 0, 3, 0, 'SB, LB, UB'),
+(30, '10', 0, 3, 0, 'SB, LB, UB'),
+(30, '11', 0, 3, 0, 'SB, LB, UB'),
+(30, '12', 0, 4, 1, 'LB, UB, LB, UB'),
+(30, '13', 1, 4, 1, 'LB, UB, LB, UB'),
+(30, '14', 1, 3, 0, 'SB, LB, UB'),
+(30, '15', 1, 3, 0, 'SB, LB, UB'),
+(30, '16', 1, 3, 0, 'SB, LB, UB'),
+(30, '17', 1, 3, 0, 'SB, LB, UB'),
+(30, '18', 1, 3, 0, 'SB, LB, UB'),
+(30, '19', 1, 3, 0, 'SB, LB, UB'),
+(30, '20', 1, 3, 0, 'SB, LB, UB'),
+(30, '21', 1, 3, 0, 'SB, LB, UB'),
+(30, '22', 1, 3, 0, 'SB, LB, UB'),
+(30, '23', 1, 3, 0, 'SB, LB, UB'),
+(30, '24', 1, 4, 1, 'LB, UB, LB, UB');
+
+INSERT INTO hostels (hostel_id, name, block_name, gender_allowed, proximal_faculty_id, is_proximal, description, total_capacity) VALUES
+(31, 'Queen Esther Engineering Hall (New)', 'Block 1', 'Female', 5, FALSE, 'Female Hostel', 76);
+INSERT INTO rooms (hostel_id, room_number, floor_level, capacity, is_corner, bed_config) VALUES
+(31, '1', 0, 4, 1, 'LB, UB, LB, UB'),
+(31, '2', 0, 3, 0, 'SB, LB, UB'),
+(31, '3', 0, 3, 0, 'SB, LB, UB'),
+(31, '4', 0, 3, 0, 'SB, LB, UB'),
+(31, '5', 0, 3, 0, 'SB, LB, UB'),
+(31, '6', 0, 3, 0, 'SB, LB, UB'),
+(31, '7', 0, 3, 0, 'SB, LB, UB'),
+(31, '8', 0, 3, 0, 'SB, LB, UB'),
+(31, '9', 0, 3, 0, 'SB, LB, UB'),
+(31, '10', 0, 3, 0, 'SB, LB, UB'),
+(31, '11', 0, 3, 0, 'SB, LB, UB'),
+(31, '12', 0, 4, 1, 'LB, UB, LB, UB'),
+(31, '13', 1, 4, 1, 'LB, UB, LB, UB'),
+(31, '14', 1, 3, 0, 'SB, LB, UB'),
+(31, '15', 1, 3, 0, 'SB, LB, UB'),
+(31, '16', 1, 3, 0, 'SB, LB, UB'),
+(31, '17', 1, 3, 0, 'SB, LB, UB'),
+(31, '18', 1, 3, 0, 'SB, LB, UB'),
+(31, '19', 1, 3, 0, 'SB, LB, UB'),
+(31, '20', 1, 3, 0, 'SB, LB, UB'),
+(31, '21', 1, 3, 0, 'SB, LB, UB'),
+(31, '22', 1, 3, 0, 'SB, LB, UB'),
+(31, '23', 1, 3, 0, 'SB, LB, UB'),
+(31, '24', 1, 4, 1, 'LB, UB, LB, UB');
+
+INSERT INTO hostels (hostel_id, name, block_name, gender_allowed, proximal_faculty_id, is_proximal, description, total_capacity) VALUES
+(32, 'Queen Esther Engineering Hall (New)', 'Block 2', 'Female', 5, FALSE, 'Female Hostel', 76);
+INSERT INTO rooms (hostel_id, room_number, floor_level, capacity, is_corner, bed_config) VALUES
+(32, '1', 0, 4, 1, 'LB, UB, LB, UB'),
+(32, '2', 0, 3, 0, 'SB, LB, UB'),
+(32, '3', 0, 3, 0, 'SB, LB, UB'),
+(32, '4', 0, 3, 0, 'SB, LB, UB'),
+(32, '5', 0, 3, 0, 'SB, LB, UB'),
+(32, '6', 0, 3, 0, 'SB, LB, UB'),
+(32, '7', 0, 3, 0, 'SB, LB, UB'),
+(32, '8', 0, 3, 0, 'SB, LB, UB'),
+(32, '9', 0, 3, 0, 'SB, LB, UB'),
+(32, '10', 0, 3, 0, 'SB, LB, UB'),
+(32, '11', 0, 3, 0, 'SB, LB, UB'),
+(32, '12', 0, 4, 1, 'LB, UB, LB, UB'),
+(32, '13', 1, 4, 1, 'LB, UB, LB, UB'),
+(32, '14', 1, 3, 0, 'SB, LB, UB'),
+(32, '15', 1, 3, 0, 'SB, LB, UB'),
+(32, '16', 1, 3, 0, 'SB, LB, UB'),
+(32, '17', 1, 3, 0, 'SB, LB, UB'),
+(32, '18', 1, 3, 0, 'SB, LB, UB'),
+(32, '19', 1, 3, 0, 'SB, LB, UB'),
+(32, '20', 1, 3, 0, 'SB, LB, UB'),
+(32, '21', 1, 3, 0, 'SB, LB, UB'),
+(32, '22', 1, 3, 0, 'SB, LB, UB'),
+(32, '23', 1, 3, 0, 'SB, LB, UB'),
+(32, '24', 1, 4, 1, 'LB, UB, LB, UB');
+
+INSERT INTO hostels (hostel_id, name, block_name, gender_allowed, proximal_faculty_id, is_proximal, description, total_capacity) VALUES
+(33, 'Queen Esther Engineering Hall (New)', 'Block 3', 'Female', 5, FALSE, 'Female Hostel', 76);
+INSERT INTO rooms (hostel_id, room_number, floor_level, capacity, is_corner, bed_config) VALUES
+(33, '1', 0, 4, 1, 'LB, UB, LB, UB'),
+(33, '2', 0, 3, 0, 'SB, LB, UB'),
+(33, '3', 0, 3, 0, 'SB, LB, UB'),
+(33, '4', 0, 3, 0, 'SB, LB, UB'),
+(33, '5', 0, 3, 0, 'SB, LB, UB'),
+(33, '6', 0, 3, 0, 'SB, LB, UB'),
+(33, '7', 0, 3, 0, 'SB, LB, UB'),
+(33, '8', 0, 3, 0, 'SB, LB, UB'),
+(33, '9', 0, 3, 0, 'SB, LB, UB'),
+(33, '10', 0, 3, 0, 'SB, LB, UB'),
+(33, '11', 0, 3, 0, 'SB, LB, UB'),
+(33, '12', 0, 4, 1, 'LB, UB, LB, UB'),
+(33, '13', 1, 4, 1, 'LB, UB, LB, UB'),
+(33, '14', 1, 3, 0, 'SB, LB, UB'),
+(33, '15', 1, 3, 0, 'SB, LB, UB'),
+(33, '16', 1, 3, 0, 'SB, LB, UB'),
+(33, '17', 1, 3, 0, 'SB, LB, UB'),
+(33, '18', 1, 3, 0, 'SB, LB, UB'),
+(33, '19', 1, 3, 0, 'SB, LB, UB'),
+(33, '20', 1, 3, 0, 'SB, LB, UB'),
+(33, '21', 1, 3, 0, 'SB, LB, UB'),
+(33, '22', 1, 3, 0, 'SB, LB, UB'),
+(33, '23', 1, 3, 0, 'SB, LB, UB'),
+(33, '24', 1, 4, 1, 'LB, UB, LB, UB');
+

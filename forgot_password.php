@@ -12,14 +12,14 @@ $msg_type = '';
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $username = trim($_POST['username']);
     
-    // 1. Verify User (Join with student_profiles to check email)
+    // 1. Verify User (Check users table AND student_profiles)
     $stmt = $conn->prepare("
-        SELECT u.user_id, p.email 
+        SELECT u.user_id, COALESCE(u.email, p.email) as email 
         FROM users u 
         LEFT JOIN student_profiles p ON u.user_id = p.user_id 
-        WHERE u.username = ? OR p.email = ?
+        WHERE u.username = ? OR u.email = ? OR p.email = ?
     ");
-    $stmt->bind_param("ss", $username, $username);
+    $stmt->bind_param("sss", $username, $username, $username);
     $stmt->execute();
     $res = $stmt->get_result();
 

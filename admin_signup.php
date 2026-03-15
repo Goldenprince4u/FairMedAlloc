@@ -4,6 +4,13 @@
  * New administrator registration.
  */
 session_start();
+
+// Auth Guard - Only admins can create new admins!
+if (!isset($_SESSION['logged_in']) || ($_SESSION['role'] ?? '') !== 'admin') { 
+    header("Location: admin_login.php"); 
+    exit(); 
+}
+
 require_once 'db_config.php';
 require_once 'includes/security_helper.php';
 

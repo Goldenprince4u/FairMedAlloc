@@ -100,4 +100,24 @@ function sanitize_input($data) {
     $data = stripslashes($data);
     return htmlspecialchars($data, ENT_QUOTES, 'UTF-8');
 }
+
+/**
+ * Log Admin Action
+ * 
+ * Records an administrative action in the database for auditing purposes.
+ * 
+ * @param mysqli $conn The database connection
+ * @param int $admin_id The user ID of the admin
+ * @param string $action_description Description of the action performed
+ * @return void
+ */
+function log_admin_action($conn, int $admin_id, string $action_description): void {
+    $ip_address = $_SERVER['REMOTE_ADDR'] ?? 'UNKNOWN';
+    $stmt = $conn->prepare("INSERT INTO admin_audit_logs (admin_id, action_description, ip_address) VALUES (?, ?, ?)");
+    if ($stmt) {
+        $stmt->bind_param("iss", $admin_id, $action_description, $ip_address);
+        $stmt->execute();
+        $stmt->close();
+    }
+}
 ?>

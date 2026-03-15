@@ -32,7 +32,9 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
             // 2. Verify Password
             if (password_verify($password, $user['password_hash'])) {
                 // Success: Reset Attempts
-                $conn->query("UPDATE users SET login_attempts = 0, lock_until = NULL WHERE user_id = " . $user['user_id']);
+                $stmt_reset = $conn->prepare("UPDATE users SET login_attempts = 0, lock_until = NULL WHERE user_id = ?");
+                $stmt_reset->bind_param("i", $user['user_id']);
+                $stmt_reset->execute();
 
                 if ($user['role'] !== 'admin') {
                     $error = "Access Denied: Admin privileges required.";
@@ -47,6 +49,8 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
                     $pic = $conn->query("SELECT profile_pic FROM users WHERE user_id=$pid")->fetch_assoc();
                     $_SESSION['profile_pic'] = $pic['profile_pic'] ?? 'default.png';
 
+                    log_admin_action($conn, $user['user_id'], 'Successful Admin Login');
+
                     header("Location: admin_dashboard.php");
                     exit();
                 }
@@ -55,10 +59,18 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
                 $attempts = $user['login_attempts'] + 1;
                 
                 if ($attempts >= 5) {
-                    $conn->query("UPDATE users SET login_attempts = $attempts, lock_until = DATE_ADD(NOW(), INTERVAL 15 MINUTE) WHERE user_id = " . $user['user_id']);
+                    $stmt_lock = $conn->prepare("UPDATE users SET login_attempts = ?, lock_until = DATE_ADD(NOW(), INTERVAL 15 MINUTE) WHERE user_id = ?");
+                    $stmt_lock->bind_param("ii", $attempts, $user['user_id']);
+                    $stmt_lock->execute();
                     $error = "Too many failed attempts. Account locked for 15 minutes.";
+                    
+                    if ($user['role'] === 'admin') {
+                        log_admin_action($conn, $user['user_id'], 'Admin Account Locked Out (5 Failed Attempts)');
+                    }
                 } else {
-                    $conn->query("UPDATE users SET login_attempts = $attempts WHERE user_id = " . $user['user_id']);
+                    $stmt_inc = $conn->prepare("UPDATE users SET login_attempts = ? WHERE user_id = ?");
+                    $stmt_inc->bind_param("ii", $attempts, $user['user_id']);
+                    $stmt_inc->execute();
                     $error = "Invalid credentials provided. ($attempts/5 attempts)";
                 }
             }

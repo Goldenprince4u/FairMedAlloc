@@ -8,10 +8,12 @@
 // 1. Connection Parameters
 // Note: 'localhost' usually works, but if you get "Connection Refused", 
 // try using '127.0.0.1' instead.
-define('DB_HOST', '127.0.0.1');
-define('DB_USER', 'root');      // Default XAMPP user
-define('DB_PASS', '');          // Default XAMPP password (empty)
-define('DB_NAME', 'fairmedalloc'); // Database Name
+$env = parse_ini_file(__DIR__ . '/.env');
+
+define('DB_HOST', $env['DB_HOST'] ?? '127.0.0.1');
+define('DB_USER', $env['DB_USER'] ?? 'root');
+define('DB_PASS', $env['DB_PASS'] ?? '');
+define('DB_NAME', $env['DB_NAME'] ?? 'fairmedalloc');
 
 // 2. Establish Connection
 // We use the 'mysqli' library (standard for PHP)

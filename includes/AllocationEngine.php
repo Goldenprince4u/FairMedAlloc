@@ -23,16 +23,16 @@ class AllocationEngine {
             $this->syncRoomOccupancy();
 
             // 2. Fetch ONLY NEW students (Not yet allocated) AND who have PAID
-            $sql = "SELECT p.user_id as id, p.gender, f.name as faculty, 
+            $sql = "SELECT p.user_id as id, p.gender, f.name as faculty, p.distance_from_campus, p.has_special_needs, p.allocation_status, 
                            COALESCE(m.urgency_score, 0) as score, 
-                           COALESCE(m.mobility_status, 'Normal') as mobility 
+                           COALESCE(m.severity_level, 0) as severity, 
+                           COALESCE(m.mobility_status, 'Normal Mobility') as mobility 
                     FROM student_profiles p 
                     JOIN departments d ON p.department_id = d.department_id
                     JOIN faculties f ON d.faculty_id = f.faculty_id
                     LEFT JOIN medical_records m ON p.user_id = m.student_id 
-                    LEFT JOIN allocations a ON p.user_id = a.student_id
                     JOIN payments py ON p.user_id = py.student_id
-                    WHERE a.student_id IS NULL 
+                    WHERE p.allocation_status = 'Unallocated' 
                     AND py.status = 'paid'
                     ORDER BY m.urgency_score DESC";
             
@@ -49,10 +49,13 @@ class AllocationEngine {
             //    To keep it fully backwards compatible we evaluate predict.py first:
             $batch_payload = [];
             foreach ($students as $student) {
+                // Ensure correct format for predict.py expected numerical/string mappings
                 $batch_payload[] = [
                     'id' => $student['id'],
                     'mobility' => $student['mobility'],
-                    'severity' => 0 // Fallback
+                    'severity' => (int)$student['severity'],
+                    'distance_from_campus' => (float)$student['distance_from_campus'],
+                    'has_special_needs' => (int)$student['has_special_needs']
                 ];
             }
             
@@ -167,6 +170,9 @@ class AllocationEngine {
                     if ($this->assignBed($room_id, $student_id, $current_session)) {
                         $allocated_count++;
                     
+                        // UPDATE QUEUE STATUS
+                        $this->conn->query("UPDATE student_profiles SET allocation_status = 'Allocated' WHERE user_id = $student_id");
+
                         // AUDIT LOGGING
                         $hid_res = $this->conn->query("SELECT h.hostel_id, h.name FROM rooms r JOIN hostels h ON r.hostel_id = h.hostel_id WHERE r.room_id = $room_id");
                         $h_row = $hid_res->fetch_assoc();
