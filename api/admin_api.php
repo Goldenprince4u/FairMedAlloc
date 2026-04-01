@@ -42,6 +42,10 @@ switch ($action) {
         handleAnalytics($conn);
         break;
 
+    case 'hostel_stats':
+        handleHostelStats($conn);
+        break;
+
     default:
         // Reject unknown or missing actions
         http_response_code(400);
@@ -78,29 +82,47 @@ function handleManualAssign($conn) {
     }
 
     $student_id = (int) $_POST['student_id'];
-    $room_id = (int) $_POST['room_id'];
+    $room_id    = (int) $_POST['room_id'];
 
     if ($room_id > 0 && $student_id > 0) {
         // Step 1: Clear old allocation if exists to prevent duplicate assignments
-        $check = $conn->query("SELECT room_id FROM allocations WHERE student_id = $student_id");
+        $check_stmt = $conn->prepare("SELECT room_id FROM allocations WHERE student_id = ?");
+        $check_stmt->bind_param("i", $student_id);
+        $check_stmt->execute();
+        $check = $check_stmt->get_result();
+
         if ($check->num_rows > 0) {
             $old_room_id = $check->fetch_assoc()['room_id'];
             // Reduce the occupied count of the old room
-            $conn->query("UPDATE rooms SET occupied_count = GREATEST(0, occupied_count - 1) WHERE room_id = $old_room_id");
+            $dec_stmt = $conn->prepare("UPDATE rooms SET occupied_count = GREATEST(0, occupied_count - 1) WHERE room_id = ?");
+            $dec_stmt->bind_param("i", $old_room_id);
+            $dec_stmt->execute();
             // Remove the old allocation record
-            $conn->query("DELETE FROM allocations WHERE student_id = $student_id");
+            $del_stmt = $conn->prepare("DELETE FROM allocations WHERE student_id = ?");
+            $del_stmt->bind_param("i", $student_id);
+            $del_stmt->execute();
         }
 
-        // Step 2: Assign new room
-        $stmt = $conn->prepare("INSERT INTO allocations (student_id, room_id, allocation_method) VALUES (?, ?, 'manual')");
-        $stmt->bind_param("ii", $student_id, $room_id);
+        // Fetch current academic session
+        $sess_res = $conn->query("SELECT setting_value FROM settings WHERE setting_key = 'current_session'");
+        $current_session = $sess_res ? ($sess_res->fetch_assoc()['setting_value'] ?? '2025/2026') : '2025/2026';
 
-        if ($stmt->execute()) {
+        // Step 2: Assign new room with session
+        $ins_stmt = $conn->prepare("INSERT INTO allocations (student_id, room_id, academic_session, allocation_method) VALUES (?, ?, ?, 'manual')");
+        $ins_stmt->bind_param("iis", $student_id, $room_id, $current_session);
+
+        if ($ins_stmt->execute()) {
             // Step 3: Increase occupied count of the newly assigned room
-            $conn->query("UPDATE rooms SET occupied_count = occupied_count + 1 WHERE room_id = $room_id");
+            $inc_stmt = $conn->prepare("UPDATE rooms SET occupied_count = occupied_count + 1 WHERE room_id = ?");
+            $inc_stmt->bind_param("i", $room_id);
+            $inc_stmt->execute();
+            // Update student profile status
+            $upd_stmt = $conn->prepare("UPDATE student_profiles SET allocation_status = 'Allocated' WHERE user_id = ?");
+            $upd_stmt->bind_param("i", $student_id);
+            $upd_stmt->execute();
             echo json_encode(['status' => 'success']);
         } else {
-            echo json_encode(['status' => 'error', 'message' => 'Database Error']);
+            echo json_encode(['status' => 'error', 'message' => 'Database Error: ' . $conn->error]);
         }
     } else {
         echo json_encode(['status' => 'error', 'message' => 'Invalid Data']);
@@ -113,19 +135,21 @@ function handleManualAssign($conn) {
  */
 function handleGetRooms($conn) {
     $hostel_id = (int) ($_GET['hostel_id'] ?? 0);
-    if (!$hostel_id) { 
-        echo json_encode([]); 
-        return; 
+    if (!$hostel_id) {
+        echo json_encode([]);
+        return;
     }
 
     // Only select rooms that haven't reached maximum capacity yet
-    $sql = "SELECT room_id, room_number, floor_level FROM rooms 
-            WHERE hostel_id = $hostel_id AND occupied_count < capacity 
-            ORDER BY floor_level ASC, room_number ASC";
-
-    $res = $conn->query($sql);
+    $stmt = $conn->prepare("SELECT room_id, room_number, floor_level, capacity, occupied_count FROM rooms
+            WHERE hostel_id = ? AND occupied_count < capacity
+            ORDER BY floor_level ASC, CAST(room_number AS UNSIGNED) ASC");
+    $stmt->bind_param("i", $hostel_id);
+    $stmt->execute();
+    $res = $stmt->get_result();
     $rooms = [];
     while ($row = $res->fetch_assoc()) {
+        $row['available'] = (int)$row['capacity'] - (int)$row['occupied_count'];
         $rooms[] = $row;
     }
     echo json_encode($rooms);
@@ -160,10 +184,39 @@ function handleAnalytics($conn) {
 
     // Return the aggregated metrics back to the Admin JS frontend
     echo json_encode([
-        'status' => 'success',
+        'status'   => 'success',
         'allocation' => $stats_alloc,
-        'medical' => $stats_medical,
-        'payments' => $stats_payment
+        'medical'    => $stats_medical,
+        'payments'   => $stats_payment
     ]);
+}
+
+/**
+ * Returns per-hostel occupancy totals (capacity, occupied, gender, name).
+ * Used by the hostel occupancy table on the reports page.
+ */
+function handleHostelStats($conn) {
+    $res = $conn->query("
+        SELECT
+            h.hostel_id,
+            h.name,
+            h.block_name,
+            h.gender_allowed   AS gender,
+            SUM(r.capacity)          AS capacity,
+            SUM(r.occupied_count)    AS occupied
+        FROM hostels h
+        JOIN rooms r ON r.hostel_id = h.hostel_id
+        GROUP BY h.hostel_id
+        ORDER BY h.name ASC, h.block_name ASC
+    ");
+    $rows = [];
+    if ($res) {
+        while ($row = $res->fetch_assoc()) {
+            $row['capacity'] = (int)$row['capacity'];
+            $row['occupied'] = (int)$row['occupied'];
+            $rows[] = $row;
+        }
+    }
+    echo json_encode($rows);
 }
 ?>

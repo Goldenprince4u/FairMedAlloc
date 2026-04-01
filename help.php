@@ -5,10 +5,14 @@
  */
 session_start();
 require_once 'db_config.php';
+
+// Auth guard — must be logged in to view help
+if (!isset($_SESSION['logged_in'])) { header('Location: login.php'); exit(); }
+
 $page_title = "Help Center | FairMedAlloc";
 require_once 'includes/header.php';
 
-$role = $_SESSION['role'] ?? 'guest';
+$role = $_SESSION['role'] ?? 'student';
 ?>
 
 <div class="app-shell">
@@ -19,75 +23,74 @@ $role = $_SESSION['role'] ?? 'guest';
         <p class="text-muted mb-8">Guides and FAQs for <?php echo ucfirst($role); ?>s.</p>
 
         <div class="grid-help">
-            
             <!-- FAQ Section -->
-            <div class="card">
+            <div class="glass-card p-8">
                 <h3 class="serif mb-6 text-primary">Frequently Asked Questions</h3>
                 
                 <?php if ($role === 'admin'): ?>
                     <!-- Admin FAQs -->
-                    <details class="mb-4 group">
-                        <summary class="fw-700 cursor-pointer flex justify-between items-center mb-2 list-none">
+                    <details class="mb-4">
+                        <summary class="fw-700" style="cursor:pointer; padding:0.5rem 0; list-style:none; display:flex; justify-content:space-between; align-items:center;">
                             How do I run the allocation algorithm?
                             <i class="fa-solid fa-chevron-down text-muted"></i>
                         </summary>
-                        <p class="text-muted text-sm pl-4 border-l-2 border-primary">
+                        <p class="text-muted text-sm mt-2" style="padding-left:1rem; border-left:2px solid var(--c-primary);">
                             Navigate to <strong>Run Allocation</strong>. Ensure current data is uploaded. Click "Start Allocation Engine". The system will clear previous records and re-assign rooms based on urgency scores.
                         </p>
                     </details>
-                    <div class="w-full h-px bg-gray-100 mb-4"></div>
+                    <div style="height:1px; background:var(--c-border); margin-bottom:1rem;"></div>
 
-                    <details class="mb-4 group">
-                        <summary class="fw-700 cursor-pointer flex justify-between items-center mb-2 list-none">
+                    <details class="mb-4">
+                        <summary class="fw-700" style="cursor:pointer; padding:0.5rem 0; list-style:none; display:flex; justify-content:space-between; align-items:center;">
                             How are urgency scores calculated?
                             <i class="fa-solid fa-chevron-down text-muted"></i>
                         </summary>
-                        <p class="text-muted text-sm pl-4 border-l-2 border-primary">
+                        <p class="text-muted text-sm mt-2" style="padding-left:1rem; border-left:2px solid var(--c-primary);">
                             The system uses a weighted formula: Base Score (10) + Condition Severity (Asthma: +40, Orthopedic: +60) + Mobility (Wheelchair: +30) + Gender Requirements.
                         </p>
                     </details>
-                     <div class="w-full h-px bg-gray-100 mb-4"></div>
+                    <div style="height:1px; background:var(--c-border); margin-bottom:1rem;"></div>
 
-                    <details class="mb-4 group">
-                         <summary class="fw-700 cursor-pointer flex justify-between items-center mb-2 list-none">
+                    <details class="mb-4">
+                         <summary class="fw-700" style="cursor:pointer; padding:0.5rem 0; list-style:none; display:flex; justify-content:space-between; align-items:center;">
                              Can I manually override an allocation?
                              <i class="fa-solid fa-chevron-down text-muted"></i>
                          </summary>
-                         <p class="text-muted text-sm pl-4 border-l-2 border-primary">
+                         <p class="text-muted text-sm mt-2" style="padding-left:1rem; border-left:2px solid var(--c-primary);">
                              Yes. Go to the <strong>Allocation Matrix</strong>, search for the student, and click "Edit". You can manually assign a Hostel and Room ID.
                          </p>
                      </details>
 
                 <?php else: ?>
                     <!-- Student FAQs -->
-                    <details class="mb-4 group">
-                        <summary class="fw-700 cursor-pointer flex justify-between items-center mb-2 list-none">
+                    <details class="mb-4">
+                        <summary class="fw-700" style="cursor:pointer; padding:0.5rem 0; list-style:none; display:flex; justify-content:space-between; align-items:center;">
                             My allocation is 'Pending'. Why?
                             <i class="fa-solid fa-chevron-down text-muted"></i>
                         </summary>
-                        <p class="text-muted text-sm pl-4 border-l-2 border-primary">
+                        <p class="text-muted text-sm mt-2" style="padding-left:1rem; border-left:2px solid var(--c-primary);">
                             The allocation process runs in batches. If you recently registered or updated your profile, please wait for the next administrative cycle.
                         </p>
                     </details>
-                    <div class="w-full h-px bg-gray-100 mb-4"></div>
+                    <div style="height:1px; background:var(--c-border); margin-bottom:1rem;"></div>
 
-                    <details class="mb-4 group">
-                        <summary class="fw-700 cursor-pointer flex justify-between items-center mb-2 list-none">
+                    <details class="mb-4">
+                        <summary class="fw-700" style="cursor:pointer; padding:0.5rem 0; list-style:none; display:flex; justify-content:space-between; align-items:center;">
                             How do I declare a medical condition?
                             <i class="fa-solid fa-chevron-down text-muted"></i>
                         </summary>
-                        <p class="text-muted text-sm pl-4 border-l-2 border-primary">
+                        <p class="text-muted text-sm mt-2" style="padding-left:1rem; border-left:2px solid var(--c-primary);">
                             Go to <strong>Update Profile</strong>. Under the medical section, select your condition category and provide details. This will update your Urgency Score.
                         </p>
                     </details>
-                    <div class="w-full h-px bg-gray-100 mb-4"></div>
+                    <div style="height:1px; background:var(--c-border); margin-bottom:1rem;"></div>
 
-                    <details class="mb-4 group">
-                        <summary class="fw-700 cursor-pointer flex justify-between items-center mb-2 list-none">
+                    <details class="mb-4">
+                        <summary class="fw-700" style="cursor:pointer; padding:0.5rem 0; list-style:none; display:flex; justify-content:space-between; align-items:center;">
                             Can I change my assigned room?
                             <i class="fa-solid fa-chevron-down text-muted"></i>
                         </summary>
-                        <p class="text-muted text-sm pl-4 border-l-2 border-primary">
+                        <p class="text-muted text-sm mt-2" style="padding-left:1rem; border-left:2px solid var(--c-primary);">
                             Room swaps are strict. You must visit the Student Affairs Division with valid medical proof if your current room exacerbates a health condition.
                         </p>
                     </details>
@@ -97,16 +100,20 @@ $role = $_SESSION['role'] ?? 'guest';
 
             <!-- Contact / Resources -->
             <div class="flex flex-col gap-4">
-                <div class="card bg-slate-50 border border-slate-100">
+                <div class="glass-card" style="background:#f8fafc; border:1px solid #e2e8f0;">
                     <h3 class="mb-2 serif">Support Contacts</h3>
-                    <p class="text-sm text-muted mb-4">Available Mon-Fri, 9am-4pm</p>
+                    <p class="text-sm text-muted mb-4">Available Mon–Fri, 9am–4pm</p>
                     
                     <div class="flex items-center gap-3 mb-3">
-                        <div class="h-8 w-8 rounded bg-blue-50 flex items-center justify-center"><i class="fa-solid fa-phone text-primary"></i></div>
+                        <div style="width:32px;height:32px;border-radius:8px;background:rgba(59,130,246,0.08);display:flex;align-items:center;justify-content:center;">
+                            <i class="fa-solid fa-phone text-primary"></i>
+                        </div>
                         <div class="text-sm fw-700 text-primary">+234 800 FAIR MED</div>
                     </div>
                     <div class="flex items-center gap-3">
-                        <div class="h-8 w-8 rounded bg-blue-50 flex items-center justify-center"><i class="fa-solid fa-envelope text-primary"></i></div>
+                        <div style="width:32px;height:32px;border-radius:8px;background:rgba(59,130,246,0.08);display:flex;align-items:center;justify-content:center;">
+                            <i class="fa-solid fa-envelope text-primary"></i>
+                        </div>
                         <div class="text-sm">support@fairmed.edu.ng</div>
                     </div>
                 </div>

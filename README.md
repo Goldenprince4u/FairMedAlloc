@@ -1,111 +1,178 @@
-# FairMedAlloc: Machine Learning-Driven Hostel Allocation System
+# FairMedAlloc — ML-Driven Medical Hostel Allocation System
 
-## Project Overview
-FairMedAlloc is a machine learning-driven hostel allocation system designed for Redeemer's University. It prioritizes students with medical conditions and disabilities for hostels closest to the University Health Center ("Clinic-Proximal").
+[![PHP](https://img.shields.io/badge/PHP-8.x-blue)](https://php.net) [![MySQL](https://img.shields.io/badge/MySQL-8.x-orange)](https://mysql.com) [![License](https://img.shields.io/badge/License-Academic-green)](#)
 
-### Core Features
-*   **Medical Urgency Scoring**: assigns a score (0-100) based on health conditions (e.g., Sickle Cell = High Priority).
-*   **Hierarchical Allocation**: Prioritizes Emergency Health -> Mobility Needs -> General Students.
-*   **Proximal vs. Distant Hostels**: Automatically fills Prophet Moses Engineering (Male) and Queen Esther Extension (Female) with high-risk students first.
+> A fairness-aware hostel allocation system for Redeemer's University that prioritises students with medical conditions and disabilities, placing them in clinic-proximal residences using an XGBoost-backed ML urgency scoring engine.
 
-## System Requirements
-*   **Server**: XAMPP or WAMP (Apache + MySQL)
-*   **Language**: PHP 8.x
-*   **Database**: MySQL
+---
 
-## Setup Instructions
-1.  **Database Setup**:
-    *   Open your browser to: `http://localhost/FairMedAlloc/install.php`
-    *   This script will automatically create the database and tables.
-    *   *Alternative*: Import `setup.sql` via phpMyAdmin.
+## ✨ Features
 
-2.  **Login Credentials**:
-    *   **Administrator**: Username: `admin`, Password: `fairmed2026`
-    *   **Student**: Register a new account or import via CSV.
+| Feature | Description |
+|---|---|
+| 🏥 **Medical Urgency Scoring** | Assigns scores 0–100 based on condition severity (Asthma, Sickle Cell, Orthopedic, Visual Impairment, etc.) |
+| 🤖 **ML Allocation Engine** | XGBoost model via Python; falls back to rule-based scoring if model is unavailable |
+| 🏠 **Proximal Hostel Logic** | High-risk students automatically placed nearest the health centre |
+| 💳 **Fee-Gated Allocation** | Students only receive a room after school fee payment is confirmed |
+| 📋 **CSV Bulk Import** | Admin can import hundreds of students at once via structured CSV |
+| 🔐 **Role-Based Access** | Separate admin and student portals with auth guards on every route |
+| 🛡️ **CSRF Protection** | All state-mutating POST forms are CSRF-token validated |
+| 🔒 **Account Lockout** | 5 failed login attempts triggers a 15-minute lockout |
+| 🖨️ **Printable Slip** | Students can print an official allocation slip once assigned |
+| 📊 **Analytics Dashboard** | Real-time charts (Chart.js) for allocation progress, medical distribution, hostel occupancy |
 
-## File Structure Explained
-*   `db_config.php`: Connects the website to the database. Edit this if your MySQL password changes.
-*   `run_allocation.php`: **The Brain**. Contains the algorithm that calculates scores and assigns rooms.
-*   `upload_data.php`: Allows mass upload of student data from CSV.
-*   `admin_dashboard.php`: The control center for the University Admin.
-*   `student_dashboard.php`: The student's view of their allocation status.
+---
 
-## Feature: Fee-Gated Allocation
-*   **Workflow**:
-    1.  Admin uploads CSV containing student data **AND** Fee Status (Col 9).
-    2.  System runs allocation for specific High-Risk students (protected reserved spots) and others.
-    3.  Student logs in.
-    4.  **If Fee Paid**: Sees "Bed Allocated: Room 12".
-    5.  **If Unpaid**: Sees "Status: Locked (Payment Required)".
+## 🚀 Quick Setup
 
-## CSV Format (Important)
-For the mass uploader (`upload_data.php`), use this **strict** column order:
-1. Matric Number
-2. Full Name
-3. Email
-4. Gender
-5. Level
-6. Faculty
-7. Medical Condition (e.g., 'Sickle Cell', 'None')
-8. Mobility Status (e.g., 'Wheelchair', 'None')
-9. **Fee Paid** (e.g., 'Yes', 'No')
+### Prerequisites
+- XAMPP / WAMP with **Apache + MySQL** running
+- PHP **8.0+**
+- Python **3.8+** *(optional — only for live ML scoring)*
 
-## Research Implementation Notes
-*   **XGBoost Emulation**: Since running Python XGBoost is complex on standard XAMPP installations, the scoring logic in `run_allocation.php` mathematically mimics the trained model's decision tree (e.g., IF condition='Sickle Cell' THEN score+=85).
-*   **Optimization**: The system uses a strict sorting algorithm (`ORDER BY urgency_score DESC`) to achieve the research goal of "Hierarchical Distribution".
-
-## Troubleshooting
-*   **Database Error**: Ensure XAMPP "MySQL" module is Green/Running.
-*   **Login Failed**: Use `reset_admin.php` if you lose the admin access.
-# FairMedAlloc ML Models
-
-Machine learning components for calculating student urgency scores.
-
-## Quick Start
-
-```bash
-# Install dependencies
-pip install pandas xgboost scikit-learn
-
-# Train with sample data
-python train_model.py
-
-# Or use your own labeled data
-python train_model.py your_training_data.csv
+### 1. Clone / Copy Files
+```
+Place the FairMedAlloc folder inside: C:\xampp\htdocs\
 ```
 
-## Files
+### 2. Configure Environment
+Create a `.env` file in the project root:
+```ini
+DB_HOST=127.0.0.1
+DB_USER=root
+DB_PASS=
+DB_NAME=fairmedalloc
+```
 
-| File | Description |
-|------|-------------|
-| `predict.py` | Prediction script (called by PHP) |
-| `train_model.py` | Training script with stratified sampling |
-| `training_data_template.csv` | Sample CSV format |
-| `urgency_model.json` | Trained model (auto-generated) |
-| `label_encoders.json` | Feature encoders (auto-generated) |
+### 3. Create the Database
+Open **phpMyAdmin** → create a database named `fairmedalloc` → import `setup.sql`.
 
-## Training Data Format
+Or visit `http://localhost/FairMedAlloc/install.php` if available.
 
-CSV columns required:
-- `student_id` — Unique identifier
-- `condition` — Asthma, Sickle Cell, Visual Impairment, Orthopaedic, None
-- `mobility` — Normal, Wheelchair User, Crutches/Walker
-- `severity` — 0-5 scale
-- `academic_level` — 100, 200, 300, 400, 500
-- `distance_from_campus` — Distance in km
-- `has_special_needs` — 0 or 1
-- `urgency_score` — **Target** (0-100)
+### 4. First Login (Admin)
 
-## Stratification
+| Field | Value |
+|---|---|
+| **URL** | `http://localhost/FairMedAlloc/admin_login.php` |
+| **Username** | `admin` |
+| **Password** | `Admin@2026` |
 
-The training script analyzes strata distribution to ensure balanced representation across:
-- Medical conditions
-- Mobility levels
-- Severity levels
+> ⚠️ **Change your password immediately** after first login via Admin Profile → Security Settings.
 
-This prevents the model from being biased toward over-represented categories.
+---
 
-## Usage Flow
+## 📁 Project Structure
 
-1. **No trained model** → Uses rule-based fallback scoring
-2. **After training** → Automatically uses XGBoost predictions
+```
+FairMedAlloc/
+├── admin_login.php          # Admin authentication
+├── admin_dashboard.php      # Admin command centre (stats + modules)
+├── admin_reports.php        # Analytics: charts, hostel occupancy
+├── admin_profile.php        # Admin credential management
+├── admin_signup.php         # Create additional admin accounts
+├── view_table.php           # Allocation matrix (search, CSV export, manual assign)
+├── run_allocation.php       # Trigger the ML allocation engine
+├── settings.php             # Configure session, thresholds, lock status
+├── upload_data.php          # Bulk CSV student import
+│
+├── login.php                # Student login
+├── signup.php               # Student registration
+├── student_dashboard.php    # Student: allocation status + pay fees
+├── profile.php              # Student: update medical profile
+├── print_slip.php           # Printable allocation document
+├── help.php                 # Role-aware FAQ and support contacts
+├── forgot_password.php      # Password recovery request
+├── reset_password.php       # Token-based password reset
+│
+├── api/
+│   ├── admin_api.php        # Admin AJAX endpoints (rooms, manual assign, analytics, hostel stats)
+│   ├── pay_simulation.php   # Fee payment simulation + instant allocation trigger
+│   ├── update_score.php     # Internal webhook for Python ML score updates (loopback-only)
+│   └── get_departments.php  # AJAX: cascading faculty → department dropdown
+│
+├── includes/
+│   ├── AllocationEngine.php    # Core allocation logic (PHP-side)
+│   ├── Student.php             # Student model (profile, allocation, payment)
+│   ├── NotificationManager.php # Unread notifications
+│   ├── security_helper.php     # CSRF, audit log, session helpers
+│   ├── header.php              # HTML <head>, fonts, CSS links
+│   └── nav.php                 # Sidebar navigation (role-aware)
+│
+├── css/
+│   └── main.css             # Design system (glassmorphism, navy/gold, responsive)
+│
+├── js/
+│   ├── allocation_matrix.js # View table: modal, room fetch, CSV export, toasts
+│   └── student_dashboard.js # Pay fees AJAX flow
+│
+├── ml_models/
+│   ├── predict.py           # XGBoost inference (called by PHP via shell_exec)
+│   ├── train_model.py       # Model training script
+│   └── training_data_template.csv
+│
+├── setup.sql                # Full DB schema + seed data (hostels, departments, admin user)
+├── db_config.php            # DB connection (reads from .env)
+└── README.md
+```
+
+---
+
+## 📤 CSV Import Format
+
+Column order for `upload_data.php`:
+
+| # | Column | Example |
+|---|---|---|
+| 1 | Matric Number | `RUN/CMP/22/001` |
+| 2 | Full Name | `Jane Doe` |
+| 3 | Level | `200` |
+| 4 | Faculty | `Natural Sciences` |
+| 5 | Department | `Biochemistry` |
+| 6 | Gender | `Female` |
+| 7 | Medical Condition | `Asthma` (or `None`) |
+| 8 | Severity (1–10) | `6` *(optional)* |
+| 9 | Mobility Status | `Normal Mobility` *(optional)* |
+
+> Default student password = lowercase matric number (e.g. `run/cmp/22/001`). Students should change this on first login.
+
+---
+
+## 🤖 ML Model Setup *(Optional)*
+
+```bash
+cd ml_models
+pip install pandas xgboost scikit-learn
+python train_model.py                        # Train with template data
+python train_model.py your_data.csv         # Train with real data
+```
+
+After training, `urgency_model.json` is auto-generated. The PHP engine calls `predict.py` per-student via `shell_exec()`. If the model file is missing, a deterministic rule-based fallback is used instead.
+
+---
+
+## 🔐 Security Notes
+
+- All DB interactions use **prepared statements** (zero raw interpolation)
+- **CSRF tokens** on all POST forms
+- **IP whitelist** on the ML score webhook (`api/update_score.php` — loopback only)
+- **Account lockout** after 5 failed login attempts (15-minute lock)
+- **Role + session checks** on every protected page and API endpoint
+- **File type + MIME validation** on profile picture uploads
+
+---
+
+## 🛠️ Troubleshooting
+
+| Issue | Fix |
+|---|---|
+| `Database Connection Failed` | Ensure XAMPP MySQL module is running (green) |
+| `Table 'X' doesn't exist` | Re-import `setup.sql` via phpMyAdmin |
+| Login fails after import | Visit `http://localhost/FairMedAlloc/create_admin.php` to reset admin password |
+| `shell_exec` disabled | ML scoring falls back to rule-based; enable in `php.ini` if needed |
+| Allocation not running | Check `settings.php` — ensure "Allocation Status" is set to **Open** |
+
+---
+
+## 📜 License
+
+Academic project — Redeemer's University, Ede, Osun State, Nigeria. All rights reserved.

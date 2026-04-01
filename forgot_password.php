@@ -32,10 +32,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $token_hash = hash('sha256', $token);
         $expires = date('Y-m-d H:i:s', strtotime('+1 hour'));
 
-        // 3. Store in DB
-        // Delete old tokens first
-        $conn->query("DELETE FROM password_resets WHERE user_id = $user_id");
-        
+        // 3. Store in DB — Delete old tokens first (prepared statement)
+        $stmt_del = $conn->prepare("DELETE FROM password_resets WHERE user_id = ?");
+        $stmt_del->bind_param("i", $user_id);
+        $stmt_del->execute();
+
         $stmt_ins = $conn->prepare("INSERT INTO password_resets (user_id, token_hash, expires_at) VALUES (?, ?, ?)");
         $stmt_ins->bind_param("iss", $user_id, $token_hash, $expires);
         $stmt_ins->execute();

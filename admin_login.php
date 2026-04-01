@@ -39,15 +39,18 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
                 if ($user['role'] !== 'admin') {
                     $error = "Access Denied: Admin privileges required.";
                 } else {
-                    $_SESSION['logged_in'] = true;
-                    $_SESSION['user_id'] = $user['user_id'];
-                    $_SESSION['role'] = $user['role'];
-                    $_SESSION['username'] = $user['username'];
-                    
-                    // Profile Pic
-                    $pid = $user['user_id'];
-                    $pic = $conn->query("SELECT profile_pic FROM users WHERE user_id=$pid")->fetch_assoc();
-                    $_SESSION['profile_pic'] = $pic['profile_pic'] ?? 'default.png';
+                    $_SESSION['logged_in']  = true;
+                    $_SESSION['user_id']    = $user['user_id'];
+                    $_SESSION['role']       = $user['role'];
+                    $_SESSION['username']   = $user['username'];
+
+                    // Fetch profile pic and full_name with prepared statement
+                    $stmt_info = $conn->prepare("SELECT profile_pic, full_name FROM users WHERE user_id = ?");
+                    $stmt_info->bind_param("i", $user['user_id']);
+                    $stmt_info->execute();
+                    $info = $stmt_info->get_result()->fetch_assoc();
+                    $_SESSION['profile_pic'] = $info['profile_pic'] ?? 'default.png';
+                    $_SESSION['full_name']   = $info['full_name']  ?? $user['username'];
 
                     log_admin_action($conn, $user['user_id'], 'Successful Admin Login');
 

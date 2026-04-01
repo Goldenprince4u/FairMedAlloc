@@ -10,6 +10,17 @@
 header("Content-Type: application/json");
 require_once '../db_config.php';
 
+// --- Security: Restrict to loopback only ---
+// This endpoint is an INTERNAL webhook called by the Python ML process.
+// It should never be reachable from the public internet.
+$caller_ip = $_SERVER['REMOTE_ADDR'] ?? '';
+$allowed   = ['127.0.0.1', '::1'];
+if (!in_array($caller_ip, $allowed)) {
+    http_response_code(403);
+    echo json_encode(["status" => "error", "message" => "Forbidden"]);
+    exit();
+}
+
 // Only accept POST requests for state mutations
 if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
     http_response_code(405);

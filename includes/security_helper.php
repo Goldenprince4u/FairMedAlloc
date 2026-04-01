@@ -113,11 +113,15 @@ function sanitize_input($data) {
  */
 function log_admin_action($conn, int $admin_id, string $action_description): void {
     $ip_address = $_SERVER['REMOTE_ADDR'] ?? 'UNKNOWN';
-    $stmt = $conn->prepare("INSERT INTO admin_audit_logs (admin_id, action_description, ip_address) VALUES (?, ?, ?)");
-    if ($stmt) {
-        $stmt->bind_param("iss", $admin_id, $action_description, $ip_address);
-        $stmt->execute();
-        $stmt->close();
+    try {
+        $stmt = $conn->prepare("INSERT INTO admin_audit_logs (admin_id, action_description, ip_address) VALUES (?, ?, ?)");
+        if ($stmt) {
+            $stmt->bind_param("iss", $admin_id, $action_description, $ip_address);
+            $stmt->execute();
+            $stmt->close();
+        }
+    } catch (\Throwable $e) {
+        // Silently fail — audit logging must never block authentication
     }
 }
 ?>

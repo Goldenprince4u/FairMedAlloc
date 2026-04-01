@@ -7,7 +7,7 @@ session_start();
 require_once 'db_config.php';
 require_once 'includes/security_helper.php';
 
-if (($_SESSION['role'] ?? '') !== 'admin') { header("Location: login.php"); exit(); }
+if (!isset($_SESSION['logged_in']) || ($_SESSION['role'] ?? '') !== 'admin') { header("Location: admin_login.php"); exit(); }
 $user_id = $_SESSION['user_id'];
 
 $msg = '';
@@ -38,7 +38,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $dest = $upload_dir . $new_name;
                 
                 if (move_uploaded_file($_FILES['profile_pic']['tmp_name'], $dest)) {
-                    $conn->query("UPDATE users SET profile_pic='$new_name' WHERE user_id=$user_id");
+                    $pic_stmt = $conn->prepare("UPDATE users SET profile_pic = ? WHERE user_id = ?");
+                    $pic_stmt->bind_param("si", $new_name, $user_id);
+                    $pic_stmt->execute();
                     $_SESSION['profile_pic'] = $new_name;
                     $msg = "Profile photo updated successfully.";
                     $msg_type = "success";

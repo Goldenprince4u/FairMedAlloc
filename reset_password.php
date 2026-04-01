@@ -46,10 +46,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $valid_token) {
         $stmt_upd->bind_param("si", $pass_hash, $user_id);
         
         if ($stmt_upd->execute()) {
-            // Delete Token
-            $conn->query("DELETE FROM password_resets WHERE user_id = $user_id");
-            
-            $message = "Password reset successfully! <a href='login.php' class='underline font-bold'>Login Now</a>";
+            // Delete used token via prepared statement
+            $stmt_del = $conn->prepare("DELETE FROM password_resets WHERE user_id = ?");
+            $stmt_del->bind_param("i", $user_id);
+            $stmt_del->execute();
+
+            $message  = "Password reset successfully! <a href='login.php' style='font-weight:700; text-decoration:underline;'>Login Now</a>";
             $msg_type = "success";
             $valid_token = false; // Hide form
         } else {

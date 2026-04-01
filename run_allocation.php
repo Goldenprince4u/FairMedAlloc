@@ -5,9 +5,14 @@
  */
 session_start();
 require_once 'db_config.php';
+require_once 'includes/security_helper.php';
+
+// Auth Guard
+if (!isset($_SESSION['logged_in']) || ($_SESSION['role'] ?? '') !== 'admin') {
+    header("Location: admin_login.php"); exit();
+}
 
 // Fetch Allocation Status (Open vs Locked)
-// This strictly controls whether the run algorithm button is even clickable, preventing accidental re-runs
 $stmt = $conn->query("SELECT setting_value FROM settings WHERE setting_key = 'allocation_status'");
 $status_row = $stmt->fetch_assoc();
 $is_locked = ($status_row['setting_value'] ?? 'open') === 'locked';
@@ -37,10 +42,10 @@ require_once 'includes/header.php';
                 </ul>
 
                 <?php if ($is_locked): ?>
-                    <div class="px-4 py-3 bg-red-100 text-red-700 rounded-lg mb-4 text-center text-sm font-bold">
+                    <div class="alert alert-danger mb-4 text-center">
                         <i class="fa-solid fa-lock mr-2"></i> Allocation Session is Locked for this Academic Year
                     </div>
-                    <button class="btn btn-secondary w-full py-3 rounded-lg opacity-50 cursor-not-allowed" disabled>
+                    <button class="btn btn-secondary w-full" disabled style="opacity:0.5; cursor:not-allowed;">
                         <i class="fa-solid fa-lock mr-2"></i> Session Locked
                     </button>
                 <?php else: ?>

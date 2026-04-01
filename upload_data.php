@@ -6,7 +6,7 @@
 session_start();
 require_once 'db_config.php';
 require_once 'includes/security_helper.php';
-if (($_SESSION['role'] ?? '') !== 'admin') { header("Location: login.php"); exit(); }
+if (!isset($_SESSION['logged_in']) || ($_SESSION['role'] ?? '') !== 'admin') { header("Location: admin_login.php"); exit(); }
 
 $msg = '';
 

@@ -39,7 +39,9 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
             // Compare plaintext password string against the hashed database value
             if (password_verify($password, $user['password_hash'])) {
                 // Success: Reset the failed login attempts counter to 0
-                $conn->query("UPDATE users SET login_attempts = 0, lock_until = NULL WHERE user_id = " . $user['user_id']);
+                $reset_stmt = $conn->prepare("UPDATE users SET login_attempts = 0, lock_until = NULL, last_login = NOW() WHERE user_id = ?");
+                $reset_stmt->bind_param("i", $user['user_id']);
+                $reset_stmt->execute();
 
                 if ($user['role'] !== 'student') {
                     $error = "Invalid portal for your role. Please use the Administrator Login.";
@@ -48,11 +50,14 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
                     $_SESSION['user_id'] = $user['user_id'];
                     $_SESSION['role'] = $user['role'];
                     $_SESSION['username'] = $user['username'];
-                    
-                    // Profile Pic
-                    $pid = $user['user_id'];
-                    $pic = $conn->query("SELECT profile_pic FROM users WHERE user_id=$pid")->fetch_assoc();
-                    $_SESSION['profile_pic'] = $pic['profile_pic'] ?? 'default.png';
+
+                    // Profile Pic — read from already-fetched result, no extra query needed
+                    $stmt_pic = $conn->prepare("SELECT profile_pic, full_name FROM users WHERE user_id = ?");
+                    $stmt_pic->bind_param("i", $user['user_id']);
+                    $stmt_pic->execute();
+                    $pic_row = $stmt_pic->get_result()->fetch_assoc();
+                    $_SESSION['profile_pic'] = $pic_row['profile_pic'] ?? 'default.png';
+                    $_SESSION['full_name']   = $pic_row['full_name']  ?? $user['username'];
 
                     header("Location: student_dashboard.php");
                     exit();
@@ -60,12 +65,16 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
             } else {
                 // Failure: Increment Attempts
                 $attempts = $user['login_attempts'] + 1;
-                
+
                 if ($attempts >= 5) {
-                    $conn->query("UPDATE users SET login_attempts = $attempts, lock_until = DATE_ADD(NOW(), INTERVAL 15 MINUTE) WHERE user_id = " . $user['user_id']);
+                    $lock_stmt = $conn->prepare("UPDATE users SET login_attempts = ?, lock_until = DATE_ADD(NOW(), INTERVAL 15 MINUTE) WHERE user_id = ?");
+                    $lock_stmt->bind_param("ii", $attempts, $user['user_id']);
+                    $lock_stmt->execute();
                     $error = "Too many failed attempts. Account locked for 15 minutes.";
                 } else {
-                    $conn->query("UPDATE users SET login_attempts = $attempts WHERE user_id = " . $user['user_id']);
+                    $inc_stmt = $conn->prepare("UPDATE users SET login_attempts = ? WHERE user_id = ?");
+                    $inc_stmt->bind_param("ii", $attempts, $user['user_id']);
+                    $inc_stmt->execute();
                     $error = "Invalid credentials provided. ($attempts/5 attempts)";
                 }
             }

@@ -237,17 +237,17 @@ class AllocationEngine {
     private function syncRoomOccupancy() {
         // 1. Reset all to 0
         $this->conn->query("UPDATE rooms SET occupied_count = 0");
-        
+
         // 2. Count actual allocations per room
         $sql = "SELECT room_id, COUNT(*) as count FROM allocations GROUP BY room_id";
         $result = $this->conn->query($sql);
-        
+
         // 3. Update rooms with actual counts
         if ($result) {
             $updateStmt = $this->conn->prepare("UPDATE rooms SET occupied_count = ? WHERE room_id = ?");
             while ($row = $result->fetch_assoc()) {
-                $count = $row['count'];
-                $rid = $row['room_id'];
+                $count = (int)$row['count'];
+                $rid   = (int)$row['room_id'];
                 $updateStmt->bind_param("ii", $count, $rid);
                 $updateStmt->execute();
             }
@@ -309,7 +309,9 @@ class AllocationEngine {
         $stmt_ins->bind_param("iisss", $student_id, $room_id, $bed_space, $bed_label, $academic_session);
         
         if ($stmt_ins->execute()) {
-            $this->conn->query("UPDATE rooms SET occupied_count = occupied_count + 1 WHERE room_id = $room_id");
+            $upd_occ = $this->conn->prepare("UPDATE rooms SET occupied_count = occupied_count + 1 WHERE room_id = ?");
+            $upd_occ->bind_param("i", $room_id);
+            $upd_occ->execute();
             return true;
         }
         

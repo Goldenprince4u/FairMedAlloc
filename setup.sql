@@ -89,7 +89,7 @@ CREATE TABLE student_profiles (
 CREATE TABLE medical_records (
     record_id INT AUTO_INCREMENT PRIMARY KEY,
     student_id INT NOT NULL,
-    condition_category ENUM('None', 'Mobility', 'Respiratory', 'Visual', 'Other') DEFAULT 'None',
+    condition_category ENUM('None','Mobility','Respiratory','Visual','Neurological','Cardiovascular','Asthma','Ulcer','Epilepsy','Sickle Cell','Visual Impairment','Physical Disability','Other') DEFAULT 'None',
     mobility_status ENUM('Normal Mobility', 'Wheelchair User', 'Crutches/Walker', 'Artificial Limb') DEFAULT 'Normal Mobility',
     condition_details TEXT,
     severity_level INT DEFAULT 0,
@@ -99,7 +99,9 @@ CREATE TABLE medical_records (
     is_requested_mobility BOOLEAN DEFAULT FALSE,
     verified_by INT,
     verified_at TIMESTAMP NULL,
-    FOREIGN KEY (student_id) REFERENCES users(user_id) ON DELETE CASCADE
+    FOREIGN KEY (student_id) REFERENCES users(user_id) ON DELETE CASCADE,
+    INDEX idx_student_id (student_id),
+    INDEX idx_condition (condition_category)
 );
 
 -- 6. Hostels
@@ -141,7 +143,9 @@ CREATE TABLE allocations (
     allocated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     allocation_method ENUM('algorithm', 'manual') DEFAULT 'algorithm',
     FOREIGN KEY (student_id) REFERENCES users(user_id) ON DELETE CASCADE,
-    FOREIGN KEY (room_id) REFERENCES rooms(room_id)
+    FOREIGN KEY (room_id) REFERENCES rooms(room_id),
+    INDEX idx_room_id (room_id),
+    INDEX idx_session (academic_session)
 );
 
 -- 9. Audit Logs
@@ -206,7 +210,9 @@ CREATE TABLE password_resets (
     token_hash VARCHAR(64) NOT NULL,
     expires_at TIMESTAMP NOT NULL,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (user_id) REFERENCES users(user_id) ON DELETE CASCADE
+    FOREIGN KEY (user_id) REFERENCES users(user_id) ON DELETE CASCADE,
+    UNIQUE KEY uniq_user_token (user_id, token_hash),
+    INDEX idx_token (token_hash)
 );
 
 -- ========================================================
@@ -1164,3 +1170,17 @@ INSERT INTO rooms (hostel_id, room_number, floor_level, capacity, is_corner, bed
 (33, '23', 1, 3, 0, 'SB, LB, UB'),
 (33, '24', 1, 4, 1, 'LB, UB, LB, UB');
 
+-- ========================================================
+-- SEED DATA (DEFAULT ADMIN ACCOUNT)
+-- Username: admin | Password: Admin@2026
+-- IMPORTANT: Change this password immediately after first login.
+-- ========================================================
+INSERT INTO users (username, full_name, password_hash, role, login_attempts)
+VALUES ('admin', 'System Administrator', '$2y$10$vraEsXmryy.Mkj2xxoGlLOhjYI7rpdXUciQbDUprC82sIk2lXR5Om', 'admin', 0);
+
+-- Default system settings
+INSERT IGNORE INTO settings (setting_key, setting_value) VALUES
+('current_session',   '2025/2026'),
+('allocation_status', 'open'),
+('medical_threshold', '50'),
+('max_students',      '500');

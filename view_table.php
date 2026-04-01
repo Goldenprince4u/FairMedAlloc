@@ -64,15 +64,13 @@ require_once 'includes/header.php';
             </div>
             
             <div class="flex gap-3">
-            <div class="flex gap-3">
                 <div class="relative">
-                    <i class="fa-solid fa-search absolute left-3 top-3 text-muted"></i>
-                    <input type="text" id="searchInput" placeholder="Search Matrix..." class="input pl-10 w-[250px]">
+                    <i class="fa-solid fa-search absolute" style="left: 0.75rem; top: 50%; transform: translateY(-50%); color: var(--c-text-light);"></i>
+                    <input type="text" id="searchInput" placeholder="Search by name, matric, hostel..." class="input" style="padding-left: 2.5rem; width: 280px;">
                 </div>
                 <button id="exportBtn" class="btn btn-primary">
                     <i class="fa-solid fa-download"></i> Export CSV
                 </button>
-            </div>
             </div>
         </div>
 
@@ -122,7 +120,7 @@ require_once 'includes/header.php';
                                             </div>
                                             <div class="text-xs text-muted">Room <?php echo htmlspecialchars($row['room_number']); ?></div>
                                         <?php else: ?>
-                                            <span class="text-xs text-muted" style="font-style: italic;">Pending Allocation</span>
+                                            <span class="badge badge-warning">Pending</span>
                                         <?php endif; ?>
                                     </td>
                                     <td class="text-right">
@@ -192,6 +190,7 @@ require_once 'includes/header.php';
                 <select id="assignRoom" class="input w-full" disabled required>
                     <option value="">-- Select Hostel First --</option>
                 </select>
+                <div id="roomAvailInfo" class="text-xs text-muted mt-1" style="display:none;"></div>
             </div>
             
             <div class="flex justify-end gap-3">

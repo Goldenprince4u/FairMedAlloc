@@ -26,11 +26,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         if (in_array($ext, $allowed)) {
             $upload_dir = __DIR__ . "/uploads/profile_pics/";
             if (!file_exists($upload_dir)) mkdir($upload_dir, 0777, true);
-            
+
             $new_name = "u{$user_id}_" . time() . ".$ext";
-            
+
             if (move_uploaded_file($_FILES['profile_pic']['tmp_name'], $upload_dir . $new_name)) {
-                $conn->query("UPDATE users SET profile_pic='$new_name' WHERE user_id=$user_id");
+                $pic_stmt = $conn->prepare("UPDATE users SET profile_pic = ? WHERE user_id = ?");
+                $pic_stmt->bind_param("si", $new_name, $user_id);
+                $pic_stmt->execute();
+                $_SESSION['profile_pic'] = $new_name;
             }
         }
     }
@@ -59,13 +62,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         if ($cond !== 'None') $score += 50;
         if ($mob !== 'Normal Mobility') $score += 30;
 
-            $check = $conn->query("SELECT record_id FROM medical_records WHERE student_id=$user_id");
+            $check_stmt = $conn->prepare("SELECT record_id FROM medical_records WHERE student_id = ?");
+            $check_stmt->bind_param("i", $user_id);
+            $check_stmt->execute();
+            $check = $check_stmt->get_result();
             if ($check->num_rows > 0) {
                 $m_stmt = $conn->prepare("UPDATE medical_records SET condition_category=?, mobility_status=?, severity_level=?, urgency_score=? WHERE student_id=?");
-                $m_stmt->bind_param("ssiii", $cond, $mob, $sev, $score, $user_id);
+                $m_stmt->bind_param("ssidi", $cond, $mob, $sev, $score, $user_id);
             } else {
                 $m_stmt = $conn->prepare("INSERT INTO medical_records (student_id, condition_category, mobility_status, severity_level, urgency_score) VALUES (?, ?, ?, ?, ?)");
-                $m_stmt->bind_param("issii", $user_id, $cond, $mob, $sev, $score);
+                $m_stmt->bind_param("issid", $user_id, $cond, $mob, $sev, $score);
             }
             $m_stmt->execute();
         

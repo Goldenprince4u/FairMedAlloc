@@ -10,10 +10,11 @@ require_once '../db_config.php';
 
 header('Content-Type: application/json');
 
-// --- 1. Authenticaton Check ---
-// Require that the user making the payment is logged in
-if (!isset($_SESSION['user_id'])) {
-    echo json_encode(['status' => 'error', 'message' => 'Not logged in']);
+// --- 1. Authentication Check ---
+// Require that the user making the payment is a logged-in student
+if (!isset($_SESSION['logged_in']) || !isset($_SESSION['user_id']) || ($_SESSION['role'] ?? '') !== 'student') {
+    http_response_code(403);
+    echo json_encode(['status' => 'error', 'message' => 'Unauthorized']);
     exit;
 }
 

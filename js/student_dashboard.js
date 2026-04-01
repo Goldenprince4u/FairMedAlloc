@@ -18,44 +18,53 @@ document.addEventListener('DOMContentLoaded', () => {
  * Upon successful payment, it alerts the backend to instantly attempt to allocate a room.
  */
 function payFees() {
-    const btn = document.getElementById('payBtn');
-    const msg = document.getElementById('payMsg');
+    const btn  = document.getElementById('payBtn');
+    const msg  = document.getElementById('payMsg');
+    const csrf = document.querySelector('input[name="csrf_token"]');
 
-    // Swap button into "Processing/Spinning" state
+    if (!csrf) {
+        showPayMsg('Security token missing. Please reload the page.', false, msg);
+        return;
+    }
+
+    // Swap button into "Processing" state
     btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin mr-2"></i> Processing...';
-    btn.disabled = true;
+    btn.disabled  = true;
 
     // Dispatch payment request to backend simulation API
     fetch('api/pay_simulation.php', {
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-            csrf_token: document.querySelector('input[name="csrf_token"]').value
-        })
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body:    JSON.stringify({ csrf_token: csrf.value })
     })
-        .then(res => res.json())
+        .then(res => {
+            if (!res.ok) throw new Error(`HTTP ${res.status}`);
+            return res.json();
+        })
         .then(data => {
             if (data.status === 'success') {
-                // UI Feedback on Success
-                btn.innerHTML = '<i class="fa-solid fa-check mr-2"></i> Paid Successfully';
-                btn.classList.remove('btn-primary');
-                // Make the button green to signify success
-                btn.classList.add('bg-green-600', 'text-white');
-
-                // Display detailed allocation message from the server backend
-                msg.innerHTML = `<span class="text-success">${data.message}</span>`;
-                msg.classList.remove('hidden');
-
-                // Reload page after 2 seconds so the new allocation status renders in PHP
-                setTimeout(() => window.location.reload(), 2000);
+                btn.innerHTML = '<i class="fa-solid fa-check mr-2"></i> Payment Confirmed!';
+                btn.style.background = 'var(--c-success)';
+                btn.style.color      = 'white';
+                showPayMsg(data.message || 'Payment successful! Refreshing...', true, msg);
+                setTimeout(() => window.location.reload(), 2200);
             } else {
-                // Reset button on failure and display error to user
-                btn.innerHTML = 'Try Again';
-                btn.disabled = false;
-                msg.innerHTML = `<span class="text-danger">${data.message}</span>`;
-                msg.classList.remove('hidden');
+                btn.innerHTML = '<i class="fa-solid fa-credit-card mr-2"></i> Pay School Fees (&#x20A6;50,000)';
+                btn.disabled  = false;
+                showPayMsg(data.message || 'Payment failed. Please try again.', false, msg);
             }
+        })
+        .catch(() => {
+            btn.innerHTML = '<i class="fa-solid fa-credit-card mr-2"></i> Pay School Fees (&#x20A6;50,000)';
+            btn.disabled  = false;
+            showPayMsg('Network error. Check your connection and try again.', false, msg);
         });
+}
+
+function showPayMsg(text, success, el) {
+    if (!el) return;
+    el.innerHTML   = `<span style="color: ${success ? 'var(--c-success)' : 'var(--c-danger)'};">
+                        <i class="fa-solid ${success ? 'fa-check-circle' : 'fa-circle-exclamation'} mr-1"></i>${text}
+                      </span>`;
+    el.classList.remove('hidden');
 }

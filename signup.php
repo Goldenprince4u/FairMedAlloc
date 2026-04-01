@@ -64,10 +64,11 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
                 }
 
             // Auto Login
-            $_SESSION['logged_in'] = true;
-            $_SESSION['user_id'] = $new_id;
-            $_SESSION['role'] = $role;
-            $_SESSION['username'] = $matric;
+            $_SESSION['logged_in']  = true;
+            $_SESSION['user_id']    = $new_id;
+            $_SESSION['role']       = $role;
+            $_SESSION['username']   = $matric;
+            $_SESSION['full_name']  = $name;
             $_SESSION['profile_pic'] = 'default.png';
 
             header("Location: student_dashboard.php");

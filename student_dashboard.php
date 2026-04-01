@@ -57,29 +57,29 @@ require_once 'includes/header.php';
                         </div>
 
                         <div class="grid grid-cols-3 gap-4 mb-6">
-                            <div class="p-3 bg-slate-50 rounded border border-dashed border-gray-300">
+                            <div class="p-3 rounded" style="background:#f8fafc; border:1px dashed #cbd5e1;">
                                 <div class="text-xs text-muted uppercase tracking-wider mb-1">Block</div>
                                 <div class="text-xl fw-700 text-primary">
                                     <?php 
                                         $b_name = $alloc['block_name'] ?? '1';
-                                        $b_name = str_ireplace('Block ', '', $b_name); // Remove "Block "
-                                        if (stripos($b_name, 'Main') !== false) $b_name = '1'; // Main -> 1
+                                        $b_name = str_ireplace('Block ', '', $b_name);
+                                        if (stripos($b_name, 'Main') !== false) $b_name = '1';
                                         echo htmlspecialchars($b_name); 
                                     ?>
                                 </div>
                             </div>
-                            <div class="p-3 bg-slate-50 rounded border border-dashed border-gray-300">
+                            <div class="p-3 rounded" style="background:#f8fafc; border:1px dashed #cbd5e1;">
                                 <div class="text-xs text-muted uppercase tracking-wider mb-1">Room</div>
                                 <div class="text-xl fw-700 text-primary"><?php echo htmlspecialchars($alloc['room_number']); ?></div>
                             </div>
-                            <div class="p-3 bg-slate-50 rounded border border-dashed border-gray-300">
+                            <div class="p-3 rounded" style="background:#f8fafc; border:1px dashed #cbd5e1;">
                                 <div class="text-xs text-muted uppercase tracking-wider mb-1">Bed</div>
                                 <div class="text-xl fw-700 text-primary"><?php echo htmlspecialchars($alloc['bed_label'] ?? 'N/A'); ?></div>
                             </div>
                         </div>
 
                         <div>
-                            <a href="print_slip.php" target="_blank" class="btn btn-secondary text-primary hover:bg-blue-50">
+                            <a href="print_slip.php" target="_blank" class="btn btn-secondary">
                                 <i class="fa-solid fa-print mr-2"></i> Print Official Slip
                             </a>
                         </div>
@@ -101,7 +101,7 @@ require_once 'includes/header.php';
                             <span class="badge badge-success px-4 py-2"><i class="fa-solid fa-check mr-2"></i>School Fees Paid</span>
                         </div>
                         
-                         <div class="border border-dashed border-gray-300 rounded p-4 bg-slate-50 inline-block min-w-[200px] mb-6">
+                         <div class="p-4 rounded mb-6" style="background:#f8fafc; border:1px dashed #cbd5e1; display:inline-block; min-width:200px;">
                             <div class="text-xs text-muted uppercase tracking-wider mb-1">STATUS</div>
                             <div class="text-3xl fw-700 text-warning">Waiting...</div>
                         </div>
@@ -144,12 +144,12 @@ require_once 'includes/header.php';
             <div class="glass-card">
                 <div class="flex justify-between items-center mb-6">
                     <h3 class="serif text-xl mb-0">My Profile</h3>
-                    <a href="profile.php" class="text-sm text-primary fw-700 hover:underline"><i class="fa-solid fa-pen"></i> Edit</a>
+                    <a href="profile.php" class="text-sm text-primary fw-700"><i class="fa-solid fa-pen"></i> Edit</a>
                 </div>
 
                 <div class="flex items-start gap-6">
                     <!-- Profile Pic -->
-                     <img src="uploads/profile_pics/<?php echo $student['profile_pic'] ?: 'default.png'; ?>" class="rounded-full object-cover border-4 border-slate-50" style="width: 80px; height: 80px; border-radius: 50%;">
+                     <img src="uploads/profile_pics/<?php echo htmlspecialchars($student['profile_pic'] ?: 'default.png'); ?>" class="avatar" style="width:80px; height:80px; border-radius:50%; object-fit:cover; border:3px solid #e2e8f0;">
 
                      <!-- Details List -->
                      <div class="flex-1">
@@ -187,14 +187,14 @@ require_once 'includes/header.php';
 
                 if (count($notices) > 0) {
                     foreach ($notices as $notice) {
-                        echo '<div class="mb-4 p-3 bg-blue-50 border-l-4 border-primary rounded text-sm">';
+                        echo '<div class="mb-4 p-3 rounded text-sm" style="background:rgba(59,130,246,0.06); border-left:4px solid var(--c-primary);">';
                         echo '<div class="fw-700 text-primary mb-1"><i class="fa-solid fa-bell mr-2"></i>New Alert</div>';
-                        echo '<p class="text-slate-700">' . htmlspecialchars($notice['message']) . '</p>';
+                        echo '<p style="color:#334155;">' . htmlspecialchars($notice['message']) . '</p>';
                         echo '<div class="text-xs text-muted mt-1">' . date('M d, H:i', strtotime($notice['created_at'])) . '</div>';
                         echo '</div>';
                     }
                 } else {
-                    echo '<p class="text-muted text-sm italic">No new notifications.</p>';
+                    echo '<p class="text-muted text-sm" style="font-style:italic;">No new notifications.</p>';
                 }
                 ?>
 
