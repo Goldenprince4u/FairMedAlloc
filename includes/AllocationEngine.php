@@ -171,11 +171,15 @@ class AllocationEngine {
                         $allocated_count++;
                     
                         // UPDATE QUEUE STATUS
-                        $this->conn->query("UPDATE student_profiles SET allocation_status = 'Allocated' WHERE user_id = $student_id");
+                        $upd_status = $this->conn->prepare("UPDATE student_profiles SET allocation_status = 'Allocated' WHERE user_id = ?");
+                        $upd_status->bind_param("i", $student_id);
+                        $upd_status->execute();
 
                         // AUDIT LOGGING
-                        $hid_res = $this->conn->query("SELECT h.hostel_id, h.name FROM rooms r JOIN hostels h ON r.hostel_id = h.hostel_id WHERE r.room_id = $room_id");
-                        $h_row = $hid_res->fetch_assoc();
+                        $hid_stmt = $this->conn->prepare("SELECT h.hostel_id, h.name FROM rooms r JOIN hostels h ON r.hostel_id = h.hostel_id WHERE r.room_id = ?");
+                        $hid_stmt->bind_param("i", $room_id);
+                        $hid_stmt->execute();
+                        $h_row = $hid_stmt->get_result()->fetch_assoc();
                         $hid = $h_row['hostel_id'] ?? null;
                         $h_name = $h_row['name'] ?? 'Hostel';
 

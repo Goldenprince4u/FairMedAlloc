@@ -18,6 +18,7 @@ $msg_type = '';
 
 // Handle Update
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    check_csrf();
     // 1. Profile Pic
     if (isset($_FILES['profile_pic']) && $_FILES['profile_pic']['error'] === 0) {
         $allowed = ['jpg', 'jpeg', 'png', 'gif'];
@@ -145,6 +146,7 @@ require_once 'includes/header.php';
              </div>
 
             <form method="post" enctype="multipart/form-data" id="profileForm" class="p-8">
+                <?php csrf_field(); ?>
                 
                 <!-- Academic Section -->
                 <div class="mb-10">

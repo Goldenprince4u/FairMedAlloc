@@ -9,7 +9,7 @@ require_once 'includes/security_helper.php';
 
 // Auth Guard
 if (!isset($_SESSION['logged_in']) || ($_SESSION['role'] ?? '') !== 'admin') {
-    header("Location: login.php");
+    header("Location: admin_login.php");
     exit();
 }
 
@@ -32,30 +32,28 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $msg = "Academic session cannot be empty.";
         $msg_type = "error";
     } else {
-        // Persist to DB using prepared statements
+        // Persist to DB — reuse a single prepared statement for all four updates
         $upd = $conn->prepare("UPDATE settings SET setting_value = ? WHERE setting_key = ?");
 
-        $upd->bind_param("ss", $session, $dummy);
-        $dummy = 'current_session';
-        $upd->bind_param("ss", $session, $dummy);
+        $key = 'current_session';
+        $upd->bind_param("ss", $session, $key);
         $upd->execute();
 
-        $upd2 = $conn->prepare("UPDATE settings SET setting_value = ? WHERE setting_key = ?");
         $t_str = (string)$threshold;
-        $key2  = 'urgency_threshold_proximal';
-        $upd2->bind_param("ss", $t_str, $key2);
-        $upd2->execute();
+        $key   = 'urgency_threshold_proximal';
+        $upd->bind_param("ss", $t_str, $key);
+        $upd->execute();
 
-        $upd3 = $conn->prepare("UPDATE settings SET setting_value = ? WHERE setting_key = ?");
         $gf_str = (string)$gf_threshold;
-        $key3   = 'urgency_threshold_ground_floor';
-        $upd3->bind_param("ss", $gf_str, $key3);
-        $upd3->execute();
+        $key    = 'urgency_threshold_ground_floor';
+        $upd->bind_param("ss", $gf_str, $key);
+        $upd->execute();
 
-        $upd4 = $conn->prepare("UPDATE settings SET setting_value = ? WHERE setting_key = ?");
-        $key4 = 'allocation_status';
-        $upd4->bind_param("ss", $alloc_status, $key4);
-        $upd4->execute();
+        $key = 'allocation_status';
+        $upd->bind_param("ss", $alloc_status, $key);
+        $upd->execute();
+
+        $upd->close();
 
         log_admin_action($conn, $_SESSION['user_id'], "Updated system settings: session=$session, threshold=$threshold");
 

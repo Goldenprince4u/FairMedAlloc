@@ -5,11 +5,13 @@
  */
 session_start();
 require_once 'db_config.php';
+require_once 'includes/security_helper.php';
 
 $message = '';
 $msg_type = '';
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    check_csrf();
     $username = trim($_POST['username']);
     
     // 1. Verify User (Check users table AND student_profiles)
@@ -42,7 +44,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $stmt_ins->execute();
 
         // 4. "Send" Email (Simulation)
-        $reset_link = "http://" . $_SERVER['HTTP_HOST'] . dirname($_SERVER['PHP_SELF']) . "/reset_password.php?token=$token";
+        $reset_link = "http://" . $_SERVER['HTTP_HOST'] . dirname($_SERVER['PHP_SELF']) . "/reset_password.php?token=" . urlencode($token);
         
         // Log for dev
         $log_entry = "[" . date('Y-m-d H:i:s') . "] Reset for {$username}: $reset_link" . PHP_EOL;
@@ -84,6 +86,7 @@ require_once 'includes/header.php';
             <?php endif; ?>
 
             <form method="post">
+                <?php csrf_field(); ?>
                 <div class="form-group">
                     <label>Matric No / Username</label>
                     <input type="text" name="username" placeholder="RUN/..." required class="input w-full">

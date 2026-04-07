@@ -23,7 +23,10 @@ if ($role === 'student' && isset($_SESSION['user_id'])) {
     $notif_stmt = $conn->prepare("SELECT COUNT(*) as cnt FROM notifications WHERE user_id = ? AND is_read = 0");
     $notif_stmt->bind_param("i", $uid_nav);
     $notif_stmt->execute();
-    $unread_count = (int)$notif_stmt->get_result()->fetch_assoc()['cnt'];
+    $notif_res = $notif_stmt->get_result();
+    $unread_count = (int)$notif_res->fetch_assoc()['cnt'];
+    $notif_res->free();
+    $notif_stmt->close();
 }
 ?>
 

@@ -28,6 +28,9 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
     if ($check->get_result()->num_rows > 0) {
         $msg = "Matric number already exists.";
         $msg_type = "error";
+    } elseif (strlen($_POST['password']) < 8) {
+        $msg = "Password must be at least 8 characters long.";
+        $msg_type = "error";
     } else {
         $hash = password_hash($pass, PASSWORD_DEFAULT);
         
@@ -182,8 +185,14 @@ require_once 'includes/header.php';
                             <option value="None">None (Healthy)</option>
                             <option value="Asthma">Asthma</option>
                             <option value="Ulcer">Ulcer</option>
+                            <option value="Epilepsy">Epilepsy</option>
+                            <option value="Sickle Cell">Sickle Cell</option>
                             <option value="Visual Impairment">Visual Impairment</option>
                             <option value="Physical Disability">Physical Disability</option>
+                            <option value="Cardiovascular">Cardiovascular</option>
+                            <option value="Neurological">Neurological</option>
+                            <option value="Respiratory">Respiratory</option>
+                            <option value="Mobility">Mobility</option>
                             <option value="Other">Other</option>
                         </select>
                     </div>
@@ -198,7 +207,6 @@ require_once 'includes/header.php';
                     const cond = document.getElementById('medCondition').value;
                     const sevGroup = document.getElementById('severityGroup');
                     const sevInput = document.getElementById('severityInput');
-                    
                     if (cond && cond !== 'None') {
                         sevGroup.style.display = 'block';
                         sevInput.required = true;
@@ -209,8 +217,6 @@ require_once 'includes/header.php';
                     }
                 }
                 </script>
-
-<script src="js/departments.js"></script>
 
                 <div class="form-group mb-4">
                     <label class="text-sm font-bold text-slate-700 mb-2">Email Address</label>
@@ -238,5 +244,7 @@ require_once 'includes/header.php';
         </div>
     </div>
 </div>
+
+<script src="js/departments.js"></script>
 </body>
 </html>

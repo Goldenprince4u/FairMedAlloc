@@ -34,6 +34,9 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
     if ($check->get_result()->num_rows > 0) {
         $msg = "Username already exists.";
         $msg_type = "error";
+    } elseif (strlen($pass) < 8) {
+        $msg = "Password must be at least 8 characters long.";
+        $msg_type = "error";
     } else {
         $hash = password_hash($pass, PASSWORD_DEFAULT);
         

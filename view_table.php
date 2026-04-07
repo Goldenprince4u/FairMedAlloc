@@ -8,7 +8,10 @@ require_once 'db_config.php';
 require_once 'includes/security_helper.php';
 
 // Auth Guard
-if (($_SESSION['role'] ?? '') !== 'admin') { header("Location: login.php"); exit(); }
+if (!isset($_SESSION['logged_in']) || ($_SESSION['role'] ?? '') !== 'admin') {
+    header("Location: admin_login.php");
+    exit();
+}
 
 // Pagination Setup
 $page = isset($_GET['page']) ? (int)$_GET['page'] : 1;
@@ -22,7 +25,7 @@ $total_rows = $total_result->fetch_assoc()['total'];
 $total_pages = ceil($total_rows / $limit);
 
 // Fetch Data with Limit
-$query = "
+$query_tpl = "
     SELECT 
         p.user_id, u.full_name, p.matric_no, p.level,
         d.name as department, f.name as faculty,
@@ -38,8 +41,9 @@ $query = "
     LEFT JOIN rooms r ON a.room_id = r.room_id 
     LEFT JOIN hostels h ON r.hostel_id = h.hostel_id
     ORDER BY m.urgency_score DESC, p.matric_no ASC 
-    LIMIT $limit OFFSET $offset
+    LIMIT %d OFFSET %d
 ";
+$query  = sprintf($query_tpl, $limit, $offset);
 $result = $conn->query($query);
 
 // Fetch Hostels for Manual Allocation
@@ -174,6 +178,7 @@ require_once 'includes/header.php';
         
         <form id="assignForm">
             <input type="hidden" id="assignStudentId" name="student_id">
+            <?php csrf_field(); ?>
             
             <div class="mb-4">
                 <label class="block text-sm font-bold mb-2">Select Hostel</label>

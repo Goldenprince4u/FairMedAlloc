@@ -37,11 +37,4 @@ class Csrf {
         return hash_equals($_SESSION['csrf_token'], $_POST['csrf_token']);
     }
 }
-
-/**
- * Helper function for views
- */
-function csrf_field() {
-    Csrf::field();
-}
 ?>

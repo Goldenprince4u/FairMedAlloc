@@ -99,7 +99,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_FILES['csv_file'])) {
                     file_put_contents($temp_file, json_encode($student_data));
                     
                     $script_path = __DIR__ . '/ml_models/predict.py';
-                    $command = "python \"$script_path\" \"$temp_file\"";
+                    $command = escapeshellcmd("python " . escapeshellarg($script_path) . " " . escapeshellarg($temp_file));
                     
                     // Trigger sub-shell execution
                     $output = shell_exec($command);

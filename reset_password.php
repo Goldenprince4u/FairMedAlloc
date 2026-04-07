@@ -5,6 +5,7 @@
  */
 session_start();
 require_once 'db_config.php';
+require_once 'includes/security_helper.php';
 
 $message = '';
 $msg_type = '';
@@ -28,6 +29,12 @@ if ($res->num_rows > 0) {
 
 // 2. Handle Password Update
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && $valid_token) {
+    // Verify CSRF token to prevent cross-site request forgery
+    $csrf = $_POST['csrf_token'] ?? '';
+    if (!verify_csrf_token($csrf)) {
+        $message  = "Security token invalid. Please reload the page and try again.";
+        $msg_type = "error";
+    } else {
     $new_pass = $_POST['password'];
     $confirm_pass = $_POST['confirm_password'];
     
@@ -59,6 +66,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $valid_token) {
             $msg_type = "error";
         }
     }
+    } // end CSRF check
 }
 
 $page_title = "Set New Password | FairMedAlloc";
@@ -88,6 +96,7 @@ require_once 'includes/header.php';
             <?php if ($valid_token): ?>
                 <p class="text-muted mb-6">Create a new password for your account.</p>
                 <form method="post">
+                    <?php csrf_field(); ?>
                     <div class="form-group">
                         <label>New Password</label>
                         <input type="password" name="password" placeholder="******" required class="input w-full">

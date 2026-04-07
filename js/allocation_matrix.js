@@ -140,6 +140,10 @@ function submitAssignment() {
     btn.disabled     = true;
     btn.textContent  = 'Assigning…';
 
+    // Append CSRF token from the hidden input in the page
+    const csrfInput = document.querySelector('input[name="csrf_token"]');
+    if (csrfInput) formData.append('csrf_token', csrfInput.value);
+
     fetch('api/admin_api.php?action=manual_assign', {
         method:  'POST',
         headers: { 'Content-Type': 'application/x-www-form-urlencoded' },

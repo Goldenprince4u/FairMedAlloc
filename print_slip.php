@@ -32,14 +32,18 @@ $stmt->execute();
 $data = $stmt->get_result()->fetch_assoc();
 
 if (!$data) {
-    die("No allocation found. Please contact admin.");
+    http_response_code(404);
+    echo "<!DOCTYPE html><html><head><title>No Allocation</title></head><body style='font-family:sans-serif;text-align:center;padding:4rem;'>
+          <h2>No Allocation Found</h2><p>Your hostel allocation has not been processed yet. Please contact the admin.</p>
+          <a href='student_dashboard.php' style='color:#002147;'>Return to Dashboard</a></body></html>";
+    exit();
 }
 ?>
 <!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>Allocation Slip - <?php echo htmlspecialchars($matric); ?></title>
+    <title>Allocation Slip - <?php echo htmlspecialchars($data['matric_no']); ?></title>
     <link href="https://fonts.googleapis.com/css2?family=Merriweather:wght@700&family=Inter:wght@400;600&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="css/print.css">
 </head>

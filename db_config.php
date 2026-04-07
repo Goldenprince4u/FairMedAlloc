@@ -11,13 +11,14 @@
 $env = parse_ini_file(__DIR__ . '/.env');
 
 define('DB_HOST', $env['DB_HOST'] ?? '127.0.0.1');
+define('DB_PORT', (int)($env['DB_PORT'] ?? 3307));
 define('DB_USER', $env['DB_USER'] ?? 'root');
 define('DB_PASS', $env['DB_PASS'] ?? '');
 define('DB_NAME', $env['DB_NAME'] ?? 'fairmedalloc');
 
 // 2. Establish Connection
 // We use the 'mysqli' library (standard for PHP)
-$conn = new mysqli(DB_HOST, DB_USER, DB_PASS, DB_NAME);
+$conn = new mysqli(DB_HOST, DB_USER, DB_PASS, DB_NAME, DB_PORT);
 
 // 3. Check for Errors
 if ($conn->connect_error) {

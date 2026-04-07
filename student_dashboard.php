@@ -193,6 +193,8 @@ require_once 'includes/header.php';
                         echo '<div class="text-xs text-muted mt-1">' . date('M d, H:i', strtotime($notice['created_at'])) . '</div>';
                         echo '</div>';
                     }
+                    // Mark as read now that they've been displayed
+                    $notifier->markAllRead($user_id);
                 } else {
                     echo '<p class="text-muted text-sm" style="font-style:italic;">No new notifications.</p>';
                 }

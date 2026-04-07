@@ -16,7 +16,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
     $password = trim($_POST['password']);
     
     // Auth Logic
-    $stmt = $conn->prepare("SELECT user_id, username, password_hash, role, login_attempts, lock_until FROM users WHERE username = ?");
+    $stmt = $conn->prepare("SELECT user_id, username, password_hash, role, login_attempts, lock_until, profile_pic, full_name FROM users WHERE username = ?");
     $stmt->bind_param("s", $username);
     $stmt->execute();
     $res = $stmt->get_result();
@@ -43,14 +43,8 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
                     $_SESSION['user_id']    = $user['user_id'];
                     $_SESSION['role']       = $user['role'];
                     $_SESSION['username']   = $user['username'];
-
-                    // Fetch profile pic and full_name with prepared statement
-                    $stmt_info = $conn->prepare("SELECT profile_pic, full_name FROM users WHERE user_id = ?");
-                    $stmt_info->bind_param("i", $user['user_id']);
-                    $stmt_info->execute();
-                    $info = $stmt_info->get_result()->fetch_assoc();
-                    $_SESSION['profile_pic'] = $info['profile_pic'] ?? 'default.png';
-                    $_SESSION['full_name']   = $info['full_name']  ?? $user['username'];
+                    $_SESSION['profile_pic'] = $user['profile_pic'] ?? 'default.png';
+                    $_SESSION['full_name']   = $user['full_name']  ?? $user['username'];
 
                     log_admin_action($conn, $user['user_id'], 'Successful Admin Login');
 

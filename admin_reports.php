@@ -6,7 +6,10 @@ session_start();
 require_once 'db_config.php';
 require_once 'includes/security_helper.php';
 
-if (!isset($_SESSION['logged_in']) || ($_SESSION['role'] ?? '') !== 'admin') { header("Location: login.php"); exit(); }
+if (!isset($_SESSION['logged_in']) || ($_SESSION['role'] ?? '') !== 'admin') {
+    header("Location: admin_login.php");
+    exit();
+}
 
 $page_title = "Reports | FairMedAlloc";
 require_once 'includes/header.php';

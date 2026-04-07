@@ -2,11 +2,12 @@
 /**
  * API Endpoint: Get Departments
  * Returns JSON list of departments based on a faculty_id.
+ * Note: No auth required — this data is used on the public signup page.
  */
-session_start();
 require_once '../db_config.php';
 
 header('Content-Type: application/json');
+header('Cache-Control: public, max-age=300'); // Cache 5 min - faculty/dept data rarely changes
 
 if (!isset($_GET['faculty_id'])) {
     echo json_encode(['error' => 'Missing faculty_id']);
