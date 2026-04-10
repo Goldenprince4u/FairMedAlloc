@@ -27,7 +27,7 @@ $total_pages = ceil($total_rows / $limit);
 // Fetch Data with Limit
 $query_tpl = "
     SELECT 
-        p.user_id, u.full_name, p.matric_no, p.level,
+        p.user_id, u.full_name, u.username AS matric_no, p.level,
         d.name as department, f.name as faculty,
         m.urgency_score, m.condition_category, m.mobility_status,
         h.name as hostel_name, r.room_number,
@@ -40,7 +40,7 @@ $query_tpl = "
     LEFT JOIN allocations a ON p.user_id = a.student_id 
     LEFT JOIN rooms r ON a.room_id = r.room_id 
     LEFT JOIN hostels h ON r.hostel_id = h.hostel_id
-    ORDER BY m.urgency_score DESC, p.matric_no ASC 
+    ORDER BY m.urgency_score DESC, u.username ASC 
     LIMIT %d OFFSET %d
 ";
 $query  = sprintf($query_tpl, $limit, $offset);

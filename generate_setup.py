@@ -7,7 +7,7 @@ Compatible with: mysql CLI pipe, phpMyAdmin, any MySQL client.
 
 def std_block_rooms(hostel_id):
     """
-    Standard flat block: 24 rooms, ALL on floor 0 (single ground floor).
+    Standard hostel block: 24 rooms.
     Layout: two side-by-side corridors of 12 rooms each.
       Corner rooms (capacity=4, LB,UB,LB,UB): 1, 12, 13, 24
       Normal rooms (capacity=3, SB,LB,UB)   : 2-11, 14-23
@@ -19,37 +19,36 @@ def std_block_rooms(hostel_id):
             cap, corner, cfg = 4, 1, 'LB,UB,LB,UB'
         else:
             cap, corner, cfg = 3, 0, 'SB,UB,LB'
-        rows.append(f"({hostel_id}, '{i}', 0, {cap}, {corner}, '{cfg}')")
+        rows.append(f"({hostel_id}, '{i}', {cap}, {corner}, '{cfg}')")
     return (
-        "INSERT INTO rooms (hostel_id, room_number, floor_level, capacity, is_corner, bed_config) VALUES\n"
+        "INSERT INTO rooms (hostel_id, room_number, capacity, is_corner, bed_config) VALUES\n"
         + ",\n".join(rows) + ";"
     )
 
 
 def eng_block_rooms(hostel_id):
     """
-    Engineering duplex block: 60 rooms, 2 floors.
-      Floor 0 (Ground): rooms  1-30
-      Floor 1 (First) : rooms 31-60
+    Engineering hostel block: 60 rooms, 2 levels.
+      Rooms 1-30  (ground level)
+      Rooms 31-60 (upper level)
     All rooms: capacity=4, LB,UB,LB,UB (2 bunks)
     Total: 60×4 = 240 students
     """
     rows = []
     for i in range(1, 61):
-        flr = 0 if i <= 30 else 1
-        rows.append(f"({hostel_id}, '{i}', {flr}, 4, 0, 'LB,UB,LB,UB')")
+        rows.append(f"({hostel_id}, '{i}', 4, 0, 'LB,UB,LB,UB')")
     return (
-        "INSERT INTO rooms (hostel_id, room_number, floor_level, capacity, is_corner, bed_config) VALUES\n"
+        "INSERT INTO rooms (hostel_id, room_number, capacity, is_corner, bed_config) VALUES\n"
         + ",\n".join(rows) + ";"
     )
 
 
 # ── Hostel header generators ───────────────────────────────────────────────────
 
-def hostel_row(hid, name, block_num, gender, htype, prox_fac, is_prox, desc, cap):
+def hostel_row(hid, name, block_num, gender, prox_fac, is_prox, cap):
     prox = 'NULL' if prox_fac is None else str(prox_fac)
     isp  = 'TRUE' if is_prox else 'FALSE'
-    return f"({hid}, '{name}', 'Block {block_num}', '{gender}', '{htype}', {prox}, {isp}, '{desc}', {cap})"
+    return f"({hid}, '{name}', 'Block {block_num}', '{gender}', {prox}, {isp}, {cap})"
 
 
 # ── Main SQL builder ───────────────────────────────────────────────────────────
@@ -146,12 +145,10 @@ lines += [
     "CREATE TABLE student_profiles (",
     "    profile_id INT AUTO_INCREMENT PRIMARY KEY,",
     "    user_id INT UNIQUE NOT NULL,",
-    "    matric_no VARCHAR(20) UNIQUE NOT NULL,",
     "    gender ENUM('Male','Female') NOT NULL,",
     "    level INT NOT NULL,",
     "    department_id INT NOT NULL,",
     "    allocation_status ENUM('Unallocated','Queued','Allocated') DEFAULT 'Unallocated',",
-    "    distance_from_campus FLOAT DEFAULT 0.0,",
     "    has_special_needs BOOLEAN DEFAULT FALSE,",
     "    FOREIGN KEY (user_id) REFERENCES users(user_id) ON DELETE CASCADE,",
     "    FOREIGN KEY (department_id) REFERENCES departments(department_id) ON DELETE RESTRICT",
@@ -166,7 +163,7 @@ lines += [
     "        'Visual Impairment','Physical Disability','Other') DEFAULT 'None',",
     "    mobility_status ENUM('Normal Mobility','Wheelchair User','Crutches/Walker','Artificial Limb') DEFAULT 'Normal Mobility',",
     "    condition_details TEXT,",
-    "    severity_level INT DEFAULT 0,",
+    "    severity_level ENUM('Low', 'Medium', 'High') DEFAULT 'Low',",
     "    urgency_score FLOAT DEFAULT 0,",
     "    supporting_document_path VARCHAR(255),",
     "    verification_status ENUM('Pending','Verified','Rejected') DEFAULT 'Pending',",
@@ -179,28 +176,23 @@ lines += [
     ");",
     "",
     "-- 6. Hostels",
-    "-- hostel_type: 'flat'=single ground floor | 'duplex'=2 floors",
     "CREATE TABLE hostels (",
     "    hostel_id INT AUTO_INCREMENT PRIMARY KEY,",
     "    name VARCHAR(100) NOT NULL,",
     "    block_name VARCHAR(50) DEFAULT 'Main Block',",
     "    gender_allowed ENUM('Male','Female') NOT NULL,",
-    "    hostel_type ENUM('flat','duplex') DEFAULT 'flat',",
     "    proximal_faculty_id INT,",
     "    is_proximal BOOLEAN DEFAULT FALSE,",
     "    has_elevator BOOLEAN DEFAULT FALSE,",
     "    total_capacity INT NOT NULL,",
-    "    description VARCHAR(255),",
     "    FOREIGN KEY (proximal_faculty_id) REFERENCES faculties(faculty_id) ON DELETE SET NULL",
     ");",
     "",
     "-- 7. Rooms",
-    "-- floor_level: 0=Ground, 1=First (Duplex only has 0 and 1)",
     "CREATE TABLE rooms (",
     "    room_id INT AUTO_INCREMENT PRIMARY KEY,",
     "    hostel_id INT NOT NULL,",
     "    room_number VARCHAR(10) NOT NULL,",
-    "    floor_level INT NOT NULL,",
     "    capacity INT DEFAULT 4,",
     "    occupied_count INT DEFAULT 0,",
     "    is_corner BOOLEAN DEFAULT FALSE,",
@@ -255,7 +247,6 @@ lines += [
     "INSERT INTO settings (setting_key, setting_value) VALUES",
     "('current_session','2025/2026'),",
     "('urgency_threshold_proximal','75'),",
-    "('urgency_threshold_ground_floor','85'),",
     "('allocation_status','open');",
     "",
     "-- 11. FAQs",
@@ -300,22 +291,26 @@ lines += [
     "-- SEED: FACULTIES & DEPARTMENTS",
     "-- ============================================================",
     "INSERT INTO faculties (faculty_id, name) VALUES",
-    "(1,'Faculty of Computing and Digital Technologies'),",
-    "(2,'Natural Sciences'),",
-    "(3,'Basic Medical Sciences'),",
-    "(4,'Management Sciences'),",
-    "(5,'Engineering'),",
-    "(6,'Humanities'),",
-    "(7,'Law');",
+    "(1,'Faculty of Basic Medical Sciences'),",
+    "(2,'Faculty of Engineering'),",
+    "(3,'Faculty of Built Environment Studies'),",
+    "(4,'Faculty of Humanities'),",
+    "(5,'Faculty of Law'),",
+    "(6,'Faculty of Management Sciences'),",
+    "(7,'Faculty of Natural Sciences'),",
+    "(8,'Faculty of Social Sciences'),",
+    "(9,'Faculty of Computing and Digital Technology');",
     "",
     "INSERT INTO departments (faculty_id, name) VALUES",
-    "(1,'Computer Science'),(1,'Information Technology'),(1,'Cybersecurity'),",
-    "(2,'Biochemistry'),(2,'Industrial Mathematics'),(2,'Microbiology'),(2,'Physics'),(2,'Chemistry'),",
-    "(3,'Nursing Science'),(3,'Physiology'),(3,'Anatomy'),(3,'Medical Laboratory Science'),(3,'Basic Medical Biochemistry'),",
-    "(4,'Accounting'),(4,'Business Administration'),(4,'Economics'),(4,'Transport Management'),",
-    "(5,'Civil Engineering'),(5,'Mechanical Engineering'),(5,'Electrical Engineering'),",
-    "(6,'English'),(6,'History'),(6,'Theatre Arts'),",
-    "(7,'Law');",
+    "(1,'Biochemistry'),(1,'Human Anatomy'),(1,'Human Physiology'),(1,'Public Health'),(1,'Nursing Science'),(1,'Physiotherapy'),(1,'Medical Laboratory Science'),",
+    "(2,'Civil Engineering'),(2,'Computer Engineering'),(2,'Electrical & Electronic Engineering'),(2,'Mechanical Engineering'),",
+    "(3,'Architecture'),(3,'Building Technology'),(3,'Estate Management'),(3,'Quantity Surveying'),(3,'Urban & Regional Planning'),",
+    "(4,'Christian Religious Studies'),(4,'English'),(4,'French'),(4,'History & International Studies'),(4,'Philosophy'),(4,'Theatre Arts'),",
+    "(5,'Law'),",
+    "(6,'Accounting'),(6,'Banking & Finance'),(6,'Business Administration'),(6,'Public Administration'),(6,'Hospitality & Tourism Management'),(6,'Insurance'),(6,'Marketing'),(6,'Transport Management'),(6,'Actuarial Science'),",
+    "(7,'Environmental Management & Toxicology'),(7,'Geology'),(7,'Industrial Chemistry'),(7,'Industrial Mathematics'),(7,'Industrial Mathematics and Computer Science'),(7,'Microbiology'),(7,'Petroleum Chemistry'),(7,'Physics with Electronics'),(7,'Statistics'),(7,'Statistics & Data Science'),",
+    "(8,'Economics'),(8,'Mass Communication'),(8,'Political Science'),(8,'Psychology'),(8,'Sociology'),(8,'Social Work'),",
+    "(9,'Computer Science'),(9,'Cyber Security'),(9,'Information Technology');",
     "",
 ]
 
@@ -324,43 +319,45 @@ lines += [
     "-- ============================================================",
     "-- SEED: HOSTELS",
     "-- Hostel ID plan:",
-    "--   1-18  : Prophet Moses Hall (Male, Flat, 18 blocks)",
-    "--  19-29  : Prophet Moses Extension Hall (Male, Flat, 11 blocks)",
-    "--  30-37  : Prophet Moses Engineering Hall (Male, Duplex, 8 blocks)",
-    "--  38-55  : Queen Esther Hall (Female, Flat, 18 blocks)",
-    "--  56-66  : Queen Esther Extension Hall (Female, Flat, 11 blocks)",
-    "--  67-74  : Queen Esther Engineering Hall (Female, Duplex, 8 blocks)",
+    "--   1-18  : Prophet Moses Hall (Male, blocks 1-18)",
+    "--  19-26  : Prophet Moses Extension Hall (Male, blocks 19-26)",
+    "--  27-32  : Prophet Moses Engineering Hall (Male, blocks 27-32)",
+    "--  33-50  : Queen Esther Hall (Female, blocks 1-18)",
+    "--  51-67  : Queen Esther Extension Hall (Female, blocks 19-35)",
+    "--  68-72  : Queen Esther Engineering Hall (Female, blocks 36-40)",
+    "-- Male total capacity : 3,416 beds",
+    "-- Female total capacity: 3,860 beds",
     "-- ============================================================",
     "",
 ]
 
 hostel_rows = []
 
-# 1. Prophet Moses Hall: IDs 1-18
-for b in range(1,19):
-    hostel_rows.append(hostel_row(b,'Prophet Moses Hall',b,'Male','flat',None,False,'Male Hostel - Standard Flat',76))
+# 1. Prophet Moses Hall: IDs 1-18, blocks 1-18 (continuous male sequence)
+for b in range(1, 19):
+    hostel_rows.append(hostel_row(b, 'Prophet Moses Hall', b, 'Male', None, False, 76))
 
-# 2. Prophet Moses Extension Hall: IDs 19-29
-for b,hid in enumerate(range(19,30),1):
-    hostel_rows.append(hostel_row(hid,'Prophet Moses Extension Hall',b,'Male','flat',None,False,'Male Hostel - Extension Flat',76))
+# 2. Prophet Moses Extension Hall: IDs 19-26, blocks 19-26
+for hid in range(19, 27):
+    hostel_rows.append(hostel_row(hid, 'Prophet Moses Extension Hall', hid, 'Male', None, False, 76))
 
-# 3. Prophet Moses Engineering Hall: IDs 30-37
-for b,hid in enumerate(range(30,38),1):
-    hostel_rows.append(hostel_row(hid,'Prophet Moses Engineering Hall',b,'Male','duplex',5,True,'Male Hostel - Engineering Duplex',240))
+# 3. Prophet Moses Engineering Hall: IDs 27-32, blocks 27-32
+for hid in range(27, 33):
+    hostel_rows.append(hostel_row(hid, 'Prophet Moses Engineering Hall', hid, 'Male', 2, True, 240))
 
-# 4. Queen Esther Hall: IDs 38-55
-for b,hid in enumerate(range(38,56),1):
-    hostel_rows.append(hostel_row(hid,'Queen Esther Hall',b,'Female','flat',None,False,'Female Hostel - Standard Flat',76))
+# 4. Queen Esther Hall: IDs 33-50, blocks 1-18 (continuous female sequence)
+for b, hid in enumerate(range(33, 51), 1):
+    hostel_rows.append(hostel_row(hid, 'Queen Esther Hall', b, 'Female', None, False, 76))
 
-# 5. Queen Esther Extension Hall: IDs 56-66
-for b,hid in enumerate(range(56,67),1):
-    hostel_rows.append(hostel_row(hid,'Queen Esther Extension Hall',b,'Female','flat',None,False,'Female Hostel - Extension Flat',76))
+# 5. Queen Esther Extension Hall: IDs 51-67, blocks 19-35
+for b, hid in enumerate(range(51, 68), 19):
+    hostel_rows.append(hostel_row(hid, 'Queen Esther Extension Hall', b, 'Female', None, False, 76))
 
-# 6. Queen Esther Engineering Hall: IDs 67-74
-for b,hid in enumerate(range(67,75),1):
-    hostel_rows.append(hostel_row(hid,'Queen Esther Engineering Hall',b,'Female','duplex',5,True,'Female Hostel - Engineering Duplex',240))
+# 6. Queen Esther Engineering Hall: IDs 68-72, blocks 36-40
+for b, hid in enumerate(range(68, 73), 36):
+    hostel_rows.append(hostel_row(hid, 'Queen Esther Engineering Hall', b, 'Female', 2, True, 240))
 
-lines.append("INSERT INTO hostels (hostel_id, name, block_name, gender_allowed, hostel_type, proximal_faculty_id, is_proximal, description, total_capacity) VALUES")
+lines.append("INSERT INTO hostels (hostel_id, name, block_name, gender_allowed, proximal_faculty_id, is_proximal, total_capacity) VALUES")
 lines.append(",\n".join(hostel_rows) + ";")
 lines.append("")
 
@@ -368,41 +365,41 @@ lines.append("")
 lines += ["", "-- ============================================================",
           "-- SEED: ROOMS", "-- ============================================================", ""]
 
-# 1. Prophet Moses Hall: IDs 1-18 (flat)
-lines.append("-- 1. Prophet Moses Hall (Male, Flat, 18 blocks)")
-lines.append("-- Room layout: 24 rooms, all floor 0 | corners: 1,12,13,24 (cap=4) | normal: 2-11,14-23 (cap=3)")
-for hid in range(1,19):
+# 1. Prophet Moses Hall: IDs 1-18, blocks 1-18
+lines.append("-- 1. Prophet Moses Hall (Male, blocks 1-18)")
+lines.append("-- Room layout: 24 rooms per block | corners: 1,12,13,24 (cap=4) | normal: 2-11,14-23 (cap=3)")
+for hid in range(1, 19):
     lines.append(std_block_rooms(hid))
     lines.append("")
 
-# 2. Prophet Moses Extension Hall: IDs 19-29 (flat)
-lines.append("-- 2. Prophet Moses Extension Hall (Male, Flat, 11 blocks)")
-for hid in range(19,30):
+# 2. Prophet Moses Extension Hall: IDs 19-26, blocks 19-26
+lines.append("-- 2. Prophet Moses Extension Hall (Male, blocks 19-26)")
+for hid in range(19, 27):
     lines.append(std_block_rooms(hid))
     lines.append("")
 
-# 3. Prophet Moses Engineering Hall: IDs 30-37 (duplex)
-lines.append("-- 3. Prophet Moses Engineering Hall (Male, Duplex, 8 blocks)")
-lines.append("-- Room layout: 60 rooms | floor 0: rooms 1-30 | floor 1: rooms 31-60 | all cap=4")
-for hid in range(30,38):
+# 3. Prophet Moses Engineering Hall: IDs 27-32, blocks 27-32
+lines.append("-- 3. Prophet Moses Engineering Hall (Male, blocks 27-32)")
+lines.append("-- Room layout: 60 rooms per block | rooms 1-30 ground level | rooms 31-60 upper level | all cap=4")
+for hid in range(27, 33):
     lines.append(eng_block_rooms(hid))
     lines.append("")
 
-# 4. Queen Esther Hall: IDs 38-55 (flat)
-lines.append("-- 4. Queen Esther Hall (Female, Flat, 18 blocks)")
-for hid in range(38,56):
+# 4. Queen Esther Hall: IDs 33-50, blocks 1-18
+lines.append("-- 4. Queen Esther Hall (Female, blocks 1-18)")
+for hid in range(33, 51):
     lines.append(std_block_rooms(hid))
     lines.append("")
 
-# 5. Queen Esther Extension Hall: IDs 56-66 (flat)
-lines.append("-- 5. Queen Esther Extension Hall (Female, Flat, 11 blocks)")
-for hid in range(56,67):
+# 5. Queen Esther Extension Hall: IDs 51-67, blocks 19-35
+lines.append("-- 5. Queen Esther Extension Hall (Female, blocks 19-35)")
+for hid in range(51, 68):
     lines.append(std_block_rooms(hid))
     lines.append("")
 
-# 6. Queen Esther Engineering Hall: IDs 67-74 (duplex)
-lines.append("-- 6. Queen Esther Engineering Hall (Female, Duplex, 8 blocks)")
-for hid in range(67,75):
+# 6. Queen Esther Engineering Hall: IDs 68-72, blocks 36-40
+lines.append("-- 6. Queen Esther Engineering Hall (Female, blocks 36-40)")
+for hid in range(68, 73):
     lines.append(eng_block_rooms(hid))
     lines.append("")
 
@@ -431,8 +428,12 @@ with open("setup.sql", "w", encoding="utf-8") as f:
 print(f"setup.sql generated: {len(lines)} lines, {len(output):,} bytes")
 
 # Quick stats
-total_rooms = 18*24 + 11*24 + 8*60 + 18*24 + 11*24 + 8*60
-total_students = 18*76 + 11*76 + 8*240 + 18*76 + 11*76 + 8*240
-print(f"Total hostel rows : 74")
-print(f"Total room rows   : {total_rooms:,}")
-print(f"Total bed capacity: {total_students:,}")
+total_rooms = 18*24 + 8*24 + 6*60 + 18*24 + 17*24 + 5*60
+male_beds   = 18*76 + 8*76 + 6*240
+female_beds = 18*76 + 17*76 + 5*240
+total_students = male_beds + female_beds
+print(f"Total hostel rows   : 72")
+print(f"Total room rows     : {total_rooms:,}")
+print(f"Male bed capacity   : {male_beds:,}  (Prophet Moses Hall 1-18, Ext 19-26, Eng 27-32)")
+print(f"Female bed capacity : {female_beds:,}  (Queen Esther Hall 1-18, Ext 19-35, Eng 36-40)")
+print(f"Total bed capacity  : {total_students:,}")

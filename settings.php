@@ -1,13 +1,26 @@
 <?php
 /**
- * Settings Page
- * System Configuration for Allocation Logic
+ * settings.php — System Configuration
+ * ======================================
+ * Admin-only page for managing global allocation parameters:
+ *   - Current academic session label (displayed on allocation letters).
+ *   - Allocation status: 'open' allows the algorithm to run; 'locked' freezes it.
+ *   - Urgency threshold for proximal hostel placement (default: 75).
+ *   - Urgency threshold for ground-floor room assignment (default: 85).
+ *
+ * Security measures applied:
+ *   - Session-based admin auth guard.
+ *   - CSRF validation on every POST.
+ *   - All user inputs are sanitized and range-validated before DB writes.
+ *   - All output is escaped with htmlspecialchars().
+ *   - All DB updates use prepared statements.
  */
 session_start();
 require_once 'db_config.php';
 require_once 'includes/security_helper.php';
 
-// Auth Guard
+// --- Auth Guard: Admin Only ---
+// Redirect non-admin visitors immediately before loading any configuration data.
 if (!isset($_SESSION['logged_in']) || ($_SESSION['role'] ?? '') !== 'admin') {
     header("Location: admin_login.php");
     exit();
@@ -16,15 +29,19 @@ if (!isset($_SESSION['logged_in']) || ($_SESSION['role'] ?? '') !== 'admin') {
 $msg = '';
 $msg_type = '';
 
-// Handle Settings Update
+// --- Settings Update Handler ---
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    // Validate CSRF token before processing any form input
     check_csrf();
 
-    $session   = sanitize_input($_POST['academic_session'] ?? '');
-    $threshold = (int)($_POST['threshold'] ?? 0);
+    // Sanitize and cast all incoming values
+    $session      = sanitize_input($_POST['academic_session'] ?? '');
+    $threshold    = (int)($_POST['threshold'] ?? 0);
     $gf_threshold = (int)($_POST['gf_threshold'] ?? 85);
     $alloc_status = sanitize_input($_POST['alloc_status'] ?? 'open');
 
+    // --- Server-side Validation ---
+    // Threshold values must be percentages (0–100).
     if ($threshold < 0 || $threshold > 100 || $gf_threshold < 0 || $gf_threshold > 100) {
         $msg = "Threshold values must be between 0 and 100.";
         $msg_type = "error";
@@ -32,30 +49,36 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $msg = "Academic session cannot be empty.";
         $msg_type = "error";
     } else {
-        // Persist to DB — reuse a single prepared statement for all four updates
+        // Persist to DB using a single prepared statement reused for all four keys.
+        // This avoids 4 separate prepare() calls for a simple key=value pattern.
         $upd = $conn->prepare("UPDATE settings SET setting_value = ? WHERE setting_key = ?");
 
+        // Update: current academic session
         $key = 'current_session';
         $upd->bind_param("ss", $session, $key);
         $upd->execute();
 
+        // Update: proximal hostel urgency threshold
         $t_str = (string)$threshold;
         $key   = 'urgency_threshold_proximal';
         $upd->bind_param("ss", $t_str, $key);
         $upd->execute();
 
+        // Update: ground floor urgency threshold
         $gf_str = (string)$gf_threshold;
         $key    = 'urgency_threshold_ground_floor';
         $upd->bind_param("ss", $gf_str, $key);
         $upd->execute();
 
+        // Update: allocation status (open | locked)
         $key = 'allocation_status';
         $upd->bind_param("ss", $alloc_status, $key);
         $upd->execute();
 
         $upd->close();
 
-        log_admin_action($conn, $_SESSION['user_id'], "Updated system settings: session=$session, threshold=$threshold");
+        // Audit log the settings change for accountability
+        log_admin_action($conn, $_SESSION['user_id'], "Updated system settings: session={$session}, threshold={$threshold}");
 
         $msg = "System configuration updated successfully.";
         $msg_type = "success";

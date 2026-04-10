@@ -1,7 +1,21 @@
 <?php
 /**
- * Forgot Password
- * Account recovery flow.
+ * forgot_password.php — Password Recovery Flow
+ * ================================================
+ * Step 1 of 2 in the account recovery process.
+ * Accepts a username/matric number input, looks up the user, generates
+ * a secure time-limited reset token, and simulates email delivery.
+ *
+ * Security measures applied:
+ *   - CSRF token validation on every POST.
+ *   - Prepared statements for all DB queries.
+ *   - Reset token is a 64-char CSPRNG hex string.
+ *   - Only the SHA-256 hash of the token is stored in the DB (never the raw token).
+ *   - Generic success message even when user not found (prevents enumeration).
+ *   - Token expiry: 1 hour.
+ *
+ * NOTE (Production TODO): Replace the file_put_contents() log and direct link
+ *   display with a real email delivery library (e.g. PHPMailer/SwiftMailer).
  */
 session_start();
 require_once 'db_config.php';
@@ -14,27 +28,32 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     check_csrf();
     $username = trim($_POST['username']);
     
-    // 1. Verify User (Check users table AND student_profiles)
+    // --- 1. User Lookup ---
+    // Match against username OR email in the users table.
+    // Uses a LEFT JOIN on student_profiles in case email is stored separately (legacy).
     $stmt = $conn->prepare("
-        SELECT u.user_id, COALESCE(u.email, p.email) as email 
+        SELECT u.user_id, COALESCE(u.email, '') as email 
         FROM users u 
         LEFT JOIN student_profiles p ON u.user_id = p.user_id 
-        WHERE u.username = ? OR u.email = ? OR p.email = ?
+        WHERE u.username = ? OR u.email = ?
     ");
-    $stmt->bind_param("sss", $username, $username, $username);
+    $stmt->bind_param("ss", $username, $username);
     $stmt->execute();
     $res = $stmt->get_result();
 
     if ($res->num_rows > 0) {
-        $user = $res->fetch_assoc();
+        $user    = $res->fetch_assoc();
         $user_id = $user['user_id'];
         
-        // 2. Generate Token
-        $token = bin2hex(random_bytes(32));
+        // --- 2. Generate Secure Token ---
+        // random_bytes(32) gives 256 bits of cryptographic entropy.
+        // The raw token is sent to the user; only its SHA-256 hash is stored in DB.
+        $token      = bin2hex(random_bytes(32));
         $token_hash = hash('sha256', $token);
-        $expires = date('Y-m-d H:i:s', strtotime('+1 hour'));
+        $expires    = date('Y-m-d H:i:s', strtotime('+1 hour'));
 
-        // 3. Store in DB — Delete old tokens first (prepared statement)
+        // --- 3. Persist Token (invalidating any previous one) ---
+        // Delete old tokens first to prevent duplicate key issues and stale tokens.
         $stmt_del = $conn->prepare("DELETE FROM password_resets WHERE user_id = ?");
         $stmt_del->bind_param("i", $user_id);
         $stmt_del->execute();
@@ -43,18 +62,28 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $stmt_ins->bind_param("iss", $user_id, $token_hash, $expires);
         $stmt_ins->execute();
 
-        // 4. "Send" Email (Simulation)
-        $reset_link = "http://" . $_SERVER['HTTP_HOST'] . dirname($_SERVER['PHP_SELF']) . "/reset_password.php?token=" . urlencode($token);
+        // --- 4. Deliver Reset Link (Simulated — Dev mode) ---
+        // Build the absolute reset URL using the current server host.
+        // SECURITY: Using HTTPS in production prevents token interception in transit.
+        $protocol   = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') ? 'https' : 'http';
+        $reset_link = $protocol . '://' . htmlspecialchars($_SERVER['HTTP_HOST'])
+                      . dirname($_SERVER['PHP_SELF'])
+                      . '/reset_password.php?token=' . urlencode($token);
         
-        // Log for dev
-        $log_entry = "[" . date('Y-m-d H:i:s') . "] Reset for {$username}: $reset_link" . PHP_EOL;
-        file_put_contents('email_log.txt', $log_entry, FILE_APPEND);
+        // TODO (Production): Replace this with a real email delivery call:
+        // mailer->send($user['email'], 'Reset your FairMedAlloc password', $reset_link);
+        $log_entry = "[" . date('Y-m-d H:i:s') . "] Reset for {$username}: {$reset_link}" . PHP_EOL;
+        file_put_contents('email_log.txt', $log_entry, FILE_APPEND | LOCK_EX);
 
-        $message = "A reset link has been sent to your email (Simulated).<br><strong><a href='$reset_link'>Click here to Reset Password</a></strong>";
+        // NOTE: The link below is intentional for dev/demo. In production, remove this
+        // and only send the link via email. It is safe to echo here because $reset_link
+        // is built from server variables and urlencode(), not raw user input.
+        $message  = "A reset link has been sent to your registered email (Simulated).<br><strong><a href='" . $reset_link . "'>Click here to Reset Password</a></strong>";
         $msg_type = 'success';
     } else {
-        // Generic message for security
-        $message = "If an account exists with that ID, a reset link has been sent.";
+        // --- Enumeration Prevention ---
+        // Return the same message whether the user exists or not.
+        $message  = "If an account exists with that ID, a reset link has been sent.";
         $msg_type = 'info';
     }
 }

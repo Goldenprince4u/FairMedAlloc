@@ -1,7 +1,19 @@
 <?php
 /**
- * Signup Page
- * New student registration.
+ * signup.php — Student Registration
+ * ==================================
+ * Handles new student account creation:
+ *   1. Validates & sanitizes all form inputs.
+ *   2. Checks for duplicate matric numbers.
+ *   3. Inserts into: users, student_profiles, medical_records (if applicable).
+ *   4. Auto-logs the student in on success and redirects to dashboard.
+ *
+ * Security measures applied:
+ *   - CSRF token validation on every POST.
+ *   - Prepared statements for all DB queries (prevents SQL injection).
+ *   - Password hashing with PASSWORD_DEFAULT (bcrypt).
+ *   - Server-side email format validation.
+ *   - Minimum password length enforced server-side.
  */
 session_start();
 require_once 'db_config.php';
@@ -11,72 +23,93 @@ $msg = "";
 $msg_type = "";
 
 if ($_SERVER["REQUEST_METHOD"] == "POST") {
-    check_csrf(); // Security Gate
+    // --- Security Gate: Validate CSRF Token ---
+    // Prevents Cross-Site Request Forgery attacks.
+    check_csrf();
 
+    // --- Sanitize All Inputs Before Processing ---
+    // sanitize_input() trims, strips slashes, and encodes HTML special chars.
     $matric = sanitize_input($_POST['matric_no']);
     $email  = sanitize_input($_POST['email']);
     $name   = sanitize_input($_POST['full_name']);
-    $pass   = $_POST['password'];
+    $pass   = $_POST['password'];           // Not sanitized — password_hash() handles raw value.
     $level  = (int)($_POST['level'] ?? 100);
-    $role   = 'student'; 
-    
-    // Check Existence
-    $check = $conn->prepare("SELECT user_id FROM users WHERE username = ?");
-    $check->bind_param("s", $matric);
-    $check->execute();
-    
-    if ($check->get_result()->num_rows > 0) {
+    $role   = 'student';                    // Role is always 'student' on this page; never trust user input for role.
+
+    // --- Server-side Email Format Validation ---
+    // The HTML `type="email"` is client-only and can be bypassed. Always re-check on the server.
+    if (!filter_var($_POST['email'], FILTER_VALIDATE_EMAIL)) {
+        $msg = "Please provide a valid email address.";
+        $msg_type = "error";
+    }
+    // --- Duplicate Matric Number Check ---
+    // Matric is the unique student identifier; reject if already registered.
+    elseif (($check = $conn->prepare("SELECT user_id FROM users WHERE username = ?")) &&
+            $check->bind_param("s", $matric) &&
+            $check->execute() &&
+            $check->get_result()->num_rows > 0) {
         $msg = "Matric number already exists.";
         $msg_type = "error";
     } elseif (strlen($_POST['password']) < 8) {
+        // --- Password Length Check (Server-side Enforcement) ---
+        // The client-side minlength attribute is cosmetic only; enforce again here.
         $msg = "Password must be at least 8 characters long.";
         $msg_type = "error";
     } else {
+        // --- Hash the Password (bcrypt via PASSWORD_DEFAULT) ---
+        // Never store plain-text passwords. password_hash generates a secure salted hash.
         $hash = password_hash($pass, PASSWORD_DEFAULT);
         
         // --- 1. Create Core User Account ---
-        // Insert standard authentication credentials into the main users table
+        // Insert standard authentication credentials into the main users table.
         $stmt = $conn->prepare("INSERT INTO users (username, full_name, email, password_hash, role) VALUES (?, ?, ?, ?, ?)");
         $stmt->bind_param("sssss", $matric, $name, $email, $hash, $role);
         
         if ($stmt->execute()) {
-            $new_id = $conn->insert_id; // Capture new user_id for relational linkage
+            // Capture the new user_id for use in related profile/medical tables.
+            $new_id = $conn->insert_id;
             
             // --- 2. Create Student Academic Profile ---
-            // Link the new user to their specific university department and level metadata
+            // Links the new user to their faculty, department, and level of study.
             $dept_id = (int)$_POST['department'];
             $gen = sanitize_input($_POST['gender']);
             
-            $stmt2 = $conn->prepare("INSERT INTO student_profiles (user_id, matric_no, level, department_id, gender) VALUES (?, ?, ?, ?, ?)");
-            $stmt2->bind_param("isiis", $new_id, $matric, $level, $dept_id, $gen);
+            $stmt2 = $conn->prepare("INSERT INTO student_profiles (user_id, level, department_id, gender) VALUES (?, ?, ?, ?)");
+            $stmt2->bind_param("iiis", $new_id, $level, $dept_id, $gen);
             $stmt2->execute();
 
-            // --- 3. Process Medical Record (Mandatory step for ML logic) ---
-            // Stores initial self-reported health statuses. Later used by the XGBoost ML model to calculate urgency.
+            // --- 3. Process Medical Record (conditional) ---
+            // If the student reports a medical condition, store it as a pending record.
+            // This data is later used by the XGBoost ML model to calculate urgency scores.
             $condition = sanitize_input($_POST['medical_condition']);
             if ($condition && $condition !== 'None') {
-                $severity = (int)($_POST['severity'] ?? 1);
+                $severity = sanitize_input($_POST['severity'] ?? 'Low');
                 $details = "$condition (Self-Reported)";
                 
-                // Assign a temporary heuristic baseline score immediately upon registration before ML batch processing
-                $score = $severity * 10;
+                // Assign a temporary heuristic baseline score immediately
+                $sev_map = ['Low' => 1, 'Medium' => 2, 'High' => 3];
+                $sev_val = $sev_map[$severity] ?? 1;
+                $score = $sev_val * 10;
 
-                    $stmt_med = $conn->prepare("INSERT INTO medical_records (student_id, condition_category, condition_details, severity_level, urgency_score) VALUES (?, ?, ?, ?, ?)");
-                    $stmt_med->bind_param("issid", $new_id, $condition, $details, $severity, $score);
-                    $stmt_med->execute();
-                }
+                $stmt_med = $conn->prepare("INSERT INTO medical_records (student_id, condition_category, condition_details, severity_level, urgency_score) VALUES (?, ?, ?, ?, ?)");
+                $stmt_med->bind_param("isssd", $new_id, $condition, $details, $severity, $score);
+                $stmt_med->execute();
+            }
 
-            // Auto Login
-            $_SESSION['logged_in']  = true;
-            $_SESSION['user_id']    = $new_id;
-            $_SESSION['role']       = $role;
-            $_SESSION['username']   = $matric;
-            $_SESSION['full_name']  = $name;
+            // --- 4. Auto-Login After Registration ---
+            // Immediately populate the session so the student lands on their dashboard.
+            $_SESSION['logged_in']   = true;
+            $_SESSION['user_id']     = $new_id;
+            $_SESSION['role']        = $role;
+            $_SESSION['username']    = $matric;
+            $_SESSION['full_name']   = $name;
             $_SESSION['profile_pic'] = 'default.png';
 
+            // Redirect to the student dashboard after successful registration.
             header("Location: student_dashboard.php");
             exit();
         } else {
+            // Database insertion failure — surface a generic error (do not expose DB details).
             $msg = "Error creating account. Please try again.";
             $msg_type = "error";
         }
@@ -88,21 +121,18 @@ require_once 'includes/header.php';
 ?>
 
 <div class="auth-container">
-    <!-- Left: Brand (Blue Gradient) -->
-    <div class="auth-left text-center">
-        <!-- Blobs for animation -->
-        <div class="hero-blob opacity-20 w-[400px] h-[400px] -top-24 -left-24 absolute rounded-full bg-white blur-3xl"></div>
-        
-        <div class="brand-content relative z-10 animate-fade-in text-left pl-12">
-            <h1 class="serif mb-2 text-white font-bold leading-none text-6xl">Student<br>Registration</h1>
-            <p class="mb-12 text-sm text-gray-300 tracking-widest uppercase font-semibold">Redeemer's University</p>
-            
+    <!-- Left: Brand Panel -->
+    <div class="auth-left">
+        <div class="brand-content">
+            <h1 class="auth-headline">Student<br>Registration</h1>
+            <p class="auth-subtitle">Redeemer's University</p>
+
             <div class="brand-border">
-                <p class="text-white text-lg font-light leading-relaxed mb-6">Join the unified portal for fair and transparent hostel allocation.</p>
-                <ul class="text-white text-sm font-light space-y-4 list-none">
-                    <li class="flex items-center gap-3"><i class="fa-solid fa-check text-accent"></i> Secure Data Handling</li>
-                    <li class="flex items-center gap-3"><i class="fa-solid fa-check text-accent"></i> Automated Medical Scoring</li>
-                    <li class="flex items-center gap-3"><i class="fa-solid fa-check text-accent"></i> Fair Hostel Placement</li>
+                <p>Join the unified portal for fair and transparent hostel allocation.</p>
+                <ul class="auth-feature-list">
+                    <li><i class="fa-solid fa-check"></i> Secure Data Handling</li>
+                    <li><i class="fa-solid fa-check"></i> Automated Medical Scoring</li>
+                    <li><i class="fa-solid fa-check"></i> Fair Hostel Placement</li>
                 </ul>
             </div>
         </div>
@@ -110,10 +140,10 @@ require_once 'includes/header.php';
 
     <!-- Right: Form -->
     <div class="auth-right">
-        <div class="auth-box animate-fade-in max-w-[600px]">
+        <div class="auth-box animate-fade-in">
             <div class="mb-8">
                 <span class="badge badge-info mb-4">NEW ACCOUNT</span>
-                <h2 class="mb-2 text-primary serif text-4xl">Create Profile</h2>
+                <h2 class="mb-2 text-primary serif">Create Profile</h2>
                 <p class="text-muted text-lg">Fill in your academic details to get started.</p>
             </div>
 
@@ -196,10 +226,14 @@ require_once 'includes/header.php';
                             <option value="Other">Other</option>
                         </select>
                     </div>
-                    <div class="form-group" id="severityGroup" style="display:none;">
-                        <label class="text-sm font-bold text-slate-700 mb-2">Severity (1-10)</label>
-                        <input type="number" name="severity" id="severityInput" min="1" max="10" placeholder="e.g. 5" class="input-auth">
-                    </div>
+                        <div class="form-group" id="severityGroup" style="display:none;">
+                            <label class="text-sm font-bold text-slate-700 mb-2">Condition Severity</label>
+                            <select name="severity" id="severityInput" class="input-auth">
+                                <option value="High">High</option>
+                                <option value="Medium">Medium</option>
+                                <option value="Low">Low</option>
+                            </select>
+                        </div>
                 </div>
 
                 <script>

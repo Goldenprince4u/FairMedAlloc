@@ -1,100 +1,120 @@
 <?php
 /**
- * Admin Profile
- * Manage administrator credentials.
+ * admin_profile.php — Administrator Profile & Security Settings
+ * ===============================================================
+ * Allows the currently logged-in admin to:
+ *   1. Update their profile picture (validated for type and MIME, not just extension).
+ *   2. Change their password (requires current password verification + complexity check).
+ *
+ * Security measures applied:
+ *   - Session-based admin auth guard.
+ *   - CSRF token validation on every POST.
+ *   - File type validated by extension AND MIME (prevents disguised executable uploads).
+ *   - Password change requires proof of current password.
+ *   - New password enforces complexity: 8+ chars, upper, lower, digit.
+ *   - All output escaped with htmlspecialchars().
  */
 session_start();
 require_once 'db_config.php';
 require_once 'includes/security_helper.php';
 
+// --- Auth Guard: Admin Only ---
 if (!isset($_SESSION['logged_in']) || ($_SESSION['role'] ?? '') !== 'admin') { header("Location: admin_login.php"); exit(); }
 $user_id = $_SESSION['user_id'];
 
 $msg = '';
 $msg_type = '';
 
-// Handle Form Submission
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    check_csrf(); // ADD THIS LINE    
+    check_csrf();
 
-    // 1. Profile Picture Upload
+    // === SECTION 1: Profile Picture Upload ===
     if (isset($_FILES['profile_pic']) && $_FILES['profile_pic']['error'] === 0) {
-        $allowed = ['jpg', 'jpeg', 'png', 'gif'];
-        $ext = strtolower(pathinfo($_FILES['profile_pic']['name'], PATHINFO_EXTENSION));
-        
-        if (in_array($ext, $allowed)) {
-            $finfo = finfo_open(FILEINFO_MIME_TYPE);
-            $mime = finfo_file($finfo, $_FILES['profile_pic']['tmp_name']);
-            finfo_close($finfo);
+        $allowed_ext   = ['jpg', 'jpeg', 'png', 'gif'];
+        $allowed_mimes = ['image/jpeg', 'image/png', 'image/gif'];
+        $ext  = strtolower(pathinfo($_FILES['profile_pic']['name'], PATHINFO_EXTENSION));
 
-            $allowed_mimes = ['image/jpeg', 'image/png', 'image/gif'];
-            if (in_array($mime, $allowed_mimes)) {
-                $upload_dir = __DIR__ . "/uploads/profile_pics/";
-                if (!file_exists($upload_dir)) {
+        if (!in_array($ext, $allowed_ext)) {
+            $msg      = "Invalid file type. Only JPG, PNG, GIF allowed.";
+            $msg_type = "error";
+        } elseif ($_FILES['profile_pic']['size'] > 2 * 1024 * 1024) {
+            // Cap at 2MB — prevents storing oversized images in the uploads directory
+            $msg      = "Image too large. Maximum file size is 2MB.";
+            $msg_type = "error";
+        } else {
+            // Validate actual MIME type, not just the extension.
+            // Uses OOP finfo class (PHP 8.5+): auto-closes on scope exit — no finfo_close() needed.
+            $finfo = new finfo(FILEINFO_MIME_TYPE);
+            $mime  = $finfo->file($_FILES['profile_pic']['tmp_name']);
+
+            if (!in_array($mime, $allowed_mimes)) {
+                $msg      = "Invalid image content. Allowed: JPEG, PNG, GIF.";
+                $msg_type = "error";
+            } else {
+                // Create upload directory if it doesn't exist
+                $upload_dir = __DIR__ . '/uploads/profile_pics/';
+                if (!is_dir($upload_dir)) {
                     mkdir($upload_dir, 0755, true);
                 }
-                
+
+                // Unique filename prevents overwriting and path collisions
                 $new_name = "admin_{$user_id}_" . time() . ".$ext";
-                $dest = $upload_dir . $new_name;
-                
+                $dest     = $upload_dir . $new_name;
+
                 if (move_uploaded_file($_FILES['profile_pic']['tmp_name'], $dest)) {
                     $pic_stmt = $conn->prepare("UPDATE users SET profile_pic = ? WHERE user_id = ?");
                     $pic_stmt->bind_param("si", $new_name, $user_id);
                     $pic_stmt->execute();
+                    // Update session immediately so the navbar avatar reflects the change
                     $_SESSION['profile_pic'] = $new_name;
-                    $msg = "Profile photo updated successfully.";
+                    $msg      = "Profile photo updated successfully.";
                     $msg_type = "success";
                 } else {
-                    $msg = "Failed to move uploaded file.";
+                    $msg      = "Upload failed: could not move the file to the destination.";
                     $msg_type = "error";
                 }
-            } else {
-                $msg = "Invalid image content. Allowed MIME types are image/jpeg, image/png, image/gif.";
-                $msg_type = "error";
             }
-        } else {
-            $msg = "Invalid file type. Only JPG, PNG, GIF allowed.";
-            $msg_type = "error";
         }
     }
 
-    // 2. Password Update
+    // === SECTION 2: Password Update ===
     if (!empty($_POST['new_pass'])) {
         $current = $_POST['current_pass'];
-        $new = $_POST['new_pass'];
+        $new     = $_POST['new_pass'];
         $confirm = $_POST['confirm_pass'];
 
-        // Verify current password
+        // Fetch the current hash to verify the old password
         $stmt = $conn->prepare("SELECT password_hash FROM users WHERE user_id = ?");
         $stmt->bind_param("i", $user_id);
         $stmt->execute();
         $res = $stmt->get_result()->fetch_assoc();
 
-        if (password_verify($current, $res['password_hash'])) {
-            if ($new === $confirm) {
-                // complex: at least 8 chars, 1 num, 1 upper, 1 lower
-                if (strlen($new) >= 8 && preg_match('/[A-Z]/', $new) && preg_match('/[a-z]/', $new) && preg_match('/[0-9]/', $new)) {
-                    $new_hash = password_hash($new, PASSWORD_DEFAULT);
-                    $update = $conn->prepare("UPDATE users SET password_hash = ? WHERE user_id = ?");
-                    $update->bind_param("si", $new_hash, $user_id);
-                    if ($update->execute()) {
-                        $msg = "Password updated successfully.";
-                        $msg_type = "success";
-                    } else {
-                        $msg = "Database error updating password.";
-                        $msg_type = "error";
-                    }
-                } else {
-                    $msg = "New password must be at least 8 characters and include uppercase, lowercase, and numbers.";
-                    $msg_type = "error";
-                }
-            } else {
-                $msg = "New passwords do not match.";
-                $msg_type = "error";
-            }
-        } else {
+        if (!password_verify($current, $res['password_hash'])) {
             $msg = "Current password is incorrect.";
             $msg_type = "error";
+        } elseif ($new !== $confirm) {
+            $msg = "New passwords do not match.";
+            $msg_type = "error";
+        } elseif (
+            strlen($new) < 8 ||
+            !preg_match('/[A-Z]/', $new) ||
+            !preg_match('/[a-z]/', $new) ||
+            !preg_match('/[0-9]/', $new)
+        ) {
+            // Enforce complexity: 8+ chars, at least one uppercase, lowercase, and digit
+            $msg = "New password must be at least 8 characters and include uppercase, lowercase, and numbers.";
+            $msg_type = "error";
+        } else {
+            $new_hash = password_hash($new, PASSWORD_DEFAULT);
+            $update   = $conn->prepare("UPDATE users SET password_hash = ? WHERE user_id = ?");
+            $update->bind_param("si", $new_hash, $user_id);
+            if ($update->execute()) {
+                $msg = "Password updated successfully.";
+                $msg_type = "success";
+            } else {
+                $msg = "Database error updating password.";
+                $msg_type = "error";
+            }
         }
     }
 }
@@ -115,8 +135,9 @@ require_once 'includes/header.php';
         </div>
 
         <?php if($msg): ?>
+            <!-- SECURITY: htmlspecialchars() prevents XSS in $msg -->
             <div class="mb-6 p-4 rounded <?php echo $msg_type == 'success' ? 'bg-green-50 text-green-700 border border-green-200' : 'bg-red-50 text-red-700 border border-red-200'; ?>">
-                <?php echo $msg; ?>
+                <?php echo htmlspecialchars($msg); ?>
             </div>
         <?php endif; ?>
 

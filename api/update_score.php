@@ -49,7 +49,8 @@ if ($score < 0 || $score > 100) {
 
 // --- Sync Mechanism ---
 // 1. Get corresponding User ID assigned to that Matric Number
-$stmtp = $conn->prepare("SELECT user_id FROM student_profiles WHERE matric_no = ?");
+// matric_no is now stored as users.username (single source of truth)
+$stmtp = $conn->prepare("SELECT user_id FROM users WHERE username = ? AND role = 'student'");
 $stmtp->bind_param("s", $matric);
 $stmtp->execute();
 $res = $stmtp->get_result();

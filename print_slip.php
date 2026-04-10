@@ -17,7 +17,7 @@ $user_id = $_SESSION['user_id'];
 
 // Fetch Allocation
 $stmt = $conn->prepare("SELECT a.*, h.name as hostel_name, h.block_name, r.room_number,
-                               u.full_name, p.matric_no, p.level, u.profile_pic,
+                               u.full_name, u.username AS matric_no, p.level, u.profile_pic,
                                d.name as department, f.name as faculty
                         FROM allocations a 
                         JOIN rooms r ON a.room_id = r.room_id

@@ -47,12 +47,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $cond = sanitize_input($_POST['medical_condition'] ?? 'None');
     $mob  = sanitize_input($_POST['mobility_status'] ?? 'Normal Mobility');
 
-    $dist = (float)($_POST['distance_from_campus'] ?? 0.0);
     $needs = isset($_POST['has_special_needs']) ? 1 : 0;
-    $sev = (int)($_POST['severity_level'] ?? 0);
+    $sev = sanitize_input($_POST['severity_level'] ?? 'Low');
 
-    $stmt = $conn->prepare("UPDATE student_profiles SET level=?, department_id=?, distance_from_campus=?, has_special_needs=? WHERE user_id=?");
-    $stmt->bind_param("iidii", $lvl, $dept_id, $dist, $needs, $user_id);
+    $stmt = $conn->prepare("UPDATE student_profiles SET level=?, department_id=?, has_special_needs=? WHERE user_id=?");
+    $stmt->bind_param("iiii", $lvl, $dept_id, $needs, $user_id);
     
     if ($stmt->execute()) {
         $stmt_u = $conn->prepare("UPDATE users SET full_name=? WHERE user_id=?");
@@ -69,10 +68,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $check = $check_stmt->get_result();
             if ($check->num_rows > 0) {
                 $m_stmt = $conn->prepare("UPDATE medical_records SET condition_category=?, mobility_status=?, severity_level=?, urgency_score=? WHERE student_id=?");
-                $m_stmt->bind_param("ssidi", $cond, $mob, $sev, $score, $user_id);
+                $m_stmt->bind_param("sssdi", $cond, $mob, $sev, $score, $user_id);
             } else {
                 $m_stmt = $conn->prepare("INSERT INTO medical_records (student_id, condition_category, mobility_status, severity_level, urgency_score) VALUES (?, ?, ?, ?, ?)");
-                $m_stmt->bind_param("issid", $user_id, $cond, $mob, $sev, $score);
+                $m_stmt->bind_param("isssd", $user_id, $cond, $mob, $sev, $score);
             }
             $m_stmt->execute();
         
@@ -86,6 +85,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
 // Fetch Data
 $stmt = $conn->prepare("SELECT p.*, m.condition_category, m.mobility_status, m.severity_level, u.profile_pic, u.full_name, u.email,
+                                     u.username AS matric_no,
                                      d.name as department_name, d.faculty_id
                               FROM student_profiles p 
                               JOIN users u ON p.user_id = u.user_id 
@@ -230,6 +230,12 @@ require_once 'includes/header.php';
                                 <option value="Ulcer" <?php if(($student['condition_category']??'')=='Ulcer') echo 'selected'; ?>>Ulcer</option>
                                 <option value="Sickle Cell" <?php if(($student['condition_category']??'')=='Sickle Cell') echo 'selected'; ?>>Sickle Cell Disease</option>
                                 <option value="Visual Impairment" <?php if(($student['condition_category']??'')=='Visual Impairment') echo 'selected'; ?>>Visual Impairment</option>
+                                <option value="Physical Disability" <?php if(($student['condition_category']??'')=='Physical Disability') echo 'selected'; ?>>Physical Disability</option>
+                                <option value="Cardiovascular" <?php if(($student['condition_category']??'')=='Cardiovascular') echo 'selected'; ?>>Cardiovascular</option>
+                                <option value="Neurological" <?php if(($student['condition_category']??'')=='Neurological') echo 'selected'; ?>>Neurological</option>
+                                <option value="Respiratory" <?php if(($student['condition_category']??'')=='Respiratory') echo 'selected'; ?>>Respiratory</option>
+                                <option value="Mobility" <?php if(($student['condition_category']??'')=='Mobility') echo 'selected'; ?>>Mobility</option>
+                                <option value="Other" <?php if(($student['condition_category']??'')=='Other') echo 'selected'; ?>>Other</option>
                             </select>
                         </div>
 
@@ -246,16 +252,10 @@ require_once 'includes/header.php';
                         <div class="form-group mt-4">
                             <label>Condition Severity Level</label>
                             <select name="severity_level">
-                                <option value="1" <?php if(($student['severity_level']??0)==1) echo 'selected'; ?>>Mild (1)</option>
-                                <option value="2" <?php if(($student['severity_level']??0)==2) echo 'selected'; ?>>Moderate (2)</option>
-                                <option value="3" <?php if(($student['severity_level']??0)==3) echo 'selected'; ?>>Severe (3)</option>
-                                <option value="4" <?php if(($student['severity_level']??0)==4) echo 'selected'; ?>>Critical (4)</option>
+                                <option value="High" <?php if(($student['severity_level']??'')=='High') echo 'selected'; ?>>High</option>
+                                <option value="Medium" <?php if(($student['severity_level']??'')=='Medium') echo 'selected'; ?>>Medium</option>
+                                <option value="Low" <?php if(($student['severity_level']??'')=='Low') echo 'selected'; ?>>Low</option>
                             </select>
-                        </div>
-
-                        <div class="form-group mt-4">
-                            <label>Distance from Campus (km) <small class="text-muted block mt-1 leading-tight">Rough estimate of your home address distance</small></label>
-                            <input type="number" step="0.1" name="distance_from_campus" value="<?php echo htmlspecialchars($student['distance_from_campus'] ?? '0.0'); ?>">
                         </div>
                     </div>
                 </div>

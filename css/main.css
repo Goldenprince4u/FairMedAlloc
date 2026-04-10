@@ -775,14 +775,20 @@ tr:hover td { background: #f8fafc; }
 
 /* ============================================================
    AUTH PAGES (Login / Signup)
+   Two-column split layout:
+   - Left panel: fixed/sticky branding — never scrolls.
+   - Right panel: independent scrollable form area.
+   This pattern ensures the brand content stays visible
+   on long forms (e.g. signup) while the form scrolls.
    ============================================================ */
 .auth-container {
     display: flex;
     width: 100%;
-    min-height: 100vh;
-    overflow: hidden;
+    height: 100vh;          /* Constrain to viewport height */
+    overflow: hidden;       /* Prevent the container itself from scrolling */
 }
 
+/* --- Left: Fixed Brand Panel --- */
 .auth-left {
     width: 45%;
     background: linear-gradient(145deg, var(--c-primary-light) 0%, var(--c-primary-dark) 100%);
@@ -791,10 +797,14 @@ tr:hover td { background: #f8fafc; }
     flex-direction: column;
     justify-content: center;
     padding: 4rem;
-    position: relative;
-    overflow: hidden;
+    position: sticky;       /* Stays in place relative to the viewport */
+    top: 0;
+    height: 100vh;          /* Pin to full viewport height — never scrolls */
+    overflow: hidden;       /* Clip decorative pseudo-elements to this panel */
+    flex-shrink: 0;         /* Prevent width compression when right side is tall */
 }
 
+/* Decorative circle — top-right of left panel */
 .auth-left::before {
     content: '';
     position: absolute;
@@ -806,6 +816,7 @@ tr:hover td { background: #f8fafc; }
     border-radius: 50%;
 }
 
+/* Decorative circle — bottom-left of left panel */
 .auth-left::after {
     content: '';
     position: absolute;
@@ -817,26 +828,98 @@ tr:hover td { background: #f8fafc; }
     border-radius: 50%;
 }
 
+/* --- Right: Scrollable Form Panel --- */
 .auth-right {
     width: 55%;
     display: flex;
-    align-items: center;
+    align-items: flex-start; /* Align to top so form doesn't jump while scrolling */
     justify-content: center;
     padding: 2.5rem;
     background: white;
-    min-height: 100vh;
-    overflow-y: auto;
+    height: 100vh;           /* Match viewport height */
+    overflow-y: auto;        /* ← ONLY this side scrolls */
 }
 
+/* Inner auth form wrapper — centred with a readable max-width */
 .auth-box {
     width: 100%;
     max-width: 440px;
+    padding-top: 2rem;       /* Top breathing room when user scrolls up */
+    padding-bottom: 2rem;    /* Bottom breathing room */
 }
 
 .brand-border {
     border-left: 3px solid rgba(255, 215, 0, 0.6);
     padding-left: 1.25rem;
     margin-top: 2rem;
+}
+
+/* Left panel brand content block */
+.brand-content {
+    position: relative;
+    z-index: 2;
+    animation: fadeInUp 0.7s var(--ease-out-back) forwards;
+}
+
+/* Large auth headline on the left panel */
+.auth-headline {
+    font-family: var(--font-heading);
+    font-size: clamp(2.5rem, 4vw, 3.75rem);
+    font-weight: 700;
+    line-height: 1.1;
+    color: #ffffff;
+    margin-bottom: 0.75rem;
+    letter-spacing: -0.03em;
+}
+
+/* Subtitle / university name line */
+.auth-subtitle {
+    font-size: 0.78rem;
+    font-weight: 700;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: rgba(255, 255, 255, 0.55);
+    margin-bottom: 2.5rem;
+    font-family: var(--font-body);
+}
+
+/* Feature checklist inside .brand-border */
+.auth-feature-list {
+    list-style: none;
+    padding: 0;
+    margin: 1.25rem 0 0;
+    display: flex;
+    flex-direction: column;
+    gap: 0.9rem;
+}
+
+.auth-feature-list li {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    font-size: 0.9rem;
+    font-weight: 400;
+    color: rgba(255, 255, 255, 0.88);
+    font-family: var(--font-body);
+    line-height: 1.5;
+}
+
+.auth-feature-list li i {
+    color: var(--c-accent);
+    font-size: 0.85rem;
+    flex-shrink: 0;
+    width: 16px;
+    text-align: center;
+}
+
+/* Description paragraph inside .brand-border */
+.brand-border p {
+    font-family: var(--font-body);
+    font-size: 1rem;
+    font-weight: 300;
+    color: rgba(255, 255, 255, 0.85);
+    line-height: 1.75;
+    margin-bottom: 0;
 }
 
 /* ============================================================

@@ -25,7 +25,6 @@ OPTIONAL COLUMNS (will use defaults if missing):
   - mobility / mobility_status
   - severity / severity_level / level
   - academic_level / year_level / level
-  - distance_from_campus / distance
   - has_special_needs / special_needs
 """
 
@@ -66,10 +65,6 @@ COLUMN_ALIASES = {
         'academic_level', 'year_level', 'academic_year',
         'year', 'study_level', 'student_level', 'entry_score'
     ],
-    'distance_from_campus': [
-        'distance_from_campus', 'distance', 'campus_distance',
-        'home_distance', 'dist', 'commute_distance'
-    ],
     'has_special_needs': [
         'has_special_needs', 'special_needs', 'disability',
         'is_disabled', 'needs_accommodation', 'special_accommodation'
@@ -85,9 +80,8 @@ COLUMN_ALIASES = {
 DEFAULTS = {
     'condition'          : 'None',
     'mobility'           : 'Normal Mobility',
-    'severity'           : 0,
+    'severity'           : 'Low',
     'academic_level'     : 100,
-    'distance_from_campus': 0.0,
     'has_special_needs'  : 0,
 }
 
@@ -177,9 +171,9 @@ def load_and_remap(csv_path, mapping):
     # Clean up types
     out['condition']           = out['condition'].fillna('None').astype(str)
     out['mobility']            = out['mobility'].fillna('Normal Mobility').astype(str)
-    out['severity']            = pd.to_numeric(out['severity'], errors='coerce').fillna(0).astype(int)
+    sev_map = {'Low': 1, 'Medium': 2, 'High': 3}
+    out['severity']            = out['severity'].apply(lambda x: sev_map.get(str(x).capitalize(), 1) if isinstance(x, str) else (int(x) if pd.notnull(x) else 1))
     out['academic_level']      = pd.to_numeric(out['academic_level'], errors='coerce').fillna(100).astype(int)
-    out['distance_from_campus']= pd.to_numeric(out['distance_from_campus'], errors='coerce').fillna(0.0).astype(float)
     out['has_special_needs']   = pd.to_numeric(out['has_special_needs'], errors='coerce').fillna(0).astype(int)
 
     return out
@@ -205,7 +199,7 @@ def train_xgboost(df):
     feature_cols = [
         'condition_encoded', 'mobility_encoded',
         'severity', 'academic_level',
-        'distance_from_campus', 'has_special_needs'
+        'has_special_needs'
     ]
     X = df[feature_cols].values
     y = df['urgency_score'].values
@@ -332,7 +326,7 @@ def main():
     print("\n" + "=" * 58)
     print("  Import Complete!")
     print("  The system will now use your model automatically.")
-    print("  Test it: python predict.py '{\"condition\":\"Asthma\",\"severity\":3}'")
+    print("  Test it: python predict.py '{\"condition\":\"Asthma\",\"severity\":\"High\"}'")
     print("=" * 58)
 
 

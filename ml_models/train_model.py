@@ -28,7 +28,7 @@ ENCODERS_OUTPUT_PATH = os.path.join(SCRIPT_DIR, 'label_encoders.json')
 
 # Define feature columns expected in the dataset
 CATEGORICAL_FEATURES = ['condition', 'mobility']
-NUMERICAL_FEATURES = ['severity', 'academic_level', 'distance_from_campus', 'has_special_needs']
+NUMERICAL_FEATURES = ['severity', 'academic_level', 'has_special_needs']
 TARGET_COLUMN = 'urgency_score'
 
 
@@ -41,9 +41,9 @@ def load_and_preprocess_data(csv_path):
     # Fill missing values with sensible defaults
     df['condition'] = df['condition'].fillna('None')
     df['mobility'] = df['mobility'].fillna('Normal')
-    df['severity'] = df['severity'].fillna(0)
+    sev_map = {'Low': 1, 'Medium': 2, 'High': 3}
+    df['severity'] = df['severity'].apply(lambda x: sev_map.get(str(x).capitalize(), 1) if isinstance(x, str) else (int(x) if pd.notnull(x) else 1))
     df['academic_level'] = df['academic_level'].fillna(100)
-    df['distance_from_campus'] = df['distance_from_campus'].fillna(0)
     df['has_special_needs'] = df['has_special_needs'].fillna(0)
     
     return df
@@ -106,7 +106,6 @@ def prepare_features(df):
         'mobility_encoded',
         'severity',
         'academic_level',
-        'distance_from_campus',
         'has_special_needs'
     ]
     

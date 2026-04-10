@@ -67,13 +67,19 @@ def encode_value(column, value):
 def calculate_score_ml(student):
     """Predict urgency score strictly utilizing the ML Regression Model."""
     try:
+        sev_map = {'Low': 1, 'Medium': 2, 'High': 3}
+        sev_str = student.get('severity', 'Low')
+        try:
+            sev_val = sev_map.get(str(sev_str).capitalize(), 1) if isinstance(sev_str, str) else int(sev_str)
+        except ValueError:
+            sev_val = 1
+
         # Create the feature list in the exact order the model expects
         features = [
             encode_value('condition', student.get('condition', 'None')),
             encode_value('mobility', student.get('mobility', 'Normal')),
-            int(student.get('severity', 0)),
+            sev_val,
             int(student.get('academic_level', 100)),
-            float(student.get('distance_from_campus', 0)),
             int(student.get('has_special_needs', 0))
         ]
         
@@ -103,7 +109,12 @@ def calculate_score_fallback(student):
         if condition in mobility_types:
             mobility = condition
 
-        severity = int(student.get('severity', 0))
+        sev_map = {'Low': 1, 'Medium': 2, 'High': 3}
+        sev_str = student.get('severity', 'Low')
+        try:
+            severity = sev_map.get(str(sev_str).capitalize(), 1) if isinstance(sev_str, str) else int(sev_str)
+        except ValueError:
+            severity = 1
         
         # Start everyone with at least a low baseline score
         score = 10.0

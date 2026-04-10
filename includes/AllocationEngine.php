@@ -23,7 +23,7 @@ class AllocationEngine {
             $this->syncRoomOccupancy();
 
             // 2. Fetch ONLY NEW students (Not yet allocated) AND who have PAID
-            $sql = "SELECT p.user_id as id, p.gender, f.name as faculty, p.distance_from_campus, p.has_special_needs, p.allocation_status, 
+            $sql = "SELECT p.user_id as id, p.gender, f.name as faculty, p.has_special_needs, p.allocation_status, 
                            COALESCE(m.urgency_score, 0) as score, 
                            COALESCE(m.severity_level, 0) as severity, 
                            COALESCE(m.mobility_status, 'Normal Mobility') as mobility 
@@ -53,8 +53,7 @@ class AllocationEngine {
                 $batch_payload[] = [
                     'id' => $student['id'],
                     'mobility' => $student['mobility'],
-                    'severity' => (int)$student['severity'],
-                    'distance_from_campus' => (float)$student['distance_from_campus'],
+                    'severity' => $student['severity'],
                     'has_special_needs' => (int)$student['has_special_needs']
                 ];
             }
@@ -88,8 +87,8 @@ class AllocationEngine {
 
             // 4. Fetch Available Rooms for OR-Tools
             $roomQuery = "SELECT r.room_id as id, r.hostel_id, h.gender_allowed as gender, 
-                                 f.name as faculty_target, h.is_proximal, 
-                                 r.floor_level, h.has_elevator, 
+                                 f.name as faculty_target, h.is_proximal, h.name as hostel_name,
+                                 h.has_elevator, 
                                  (r.capacity - r.occupied_count) as available_capacity
                           FROM rooms r
                           JOIN hostels h ON r.hostel_id = h.hostel_id
@@ -103,7 +102,6 @@ class AllocationEngine {
                 $r['is_proximal'] = (bool)$r['is_proximal'];
                 $r['has_elevator'] = (bool)$r['has_elevator'];
                 $r['available_capacity'] = (int)$r['available_capacity'];
-                $r['floor_level'] = (int)$r['floor_level'];
                 $r['faculty_target'] = $r['faculty_target'] ?: 'General';
             }
             unset($r);
@@ -114,16 +112,16 @@ class AllocationEngine {
             $output_csv_file = sys_get_temp_dir() . DIRECTORY_SEPARATOR . 'fairmed_output_' . uniqid() . '.csv';
 
             $fp_students = fopen($students_csv_file, 'w');
-            fputcsv($fp_students, ['id', 'gender', 'faculty', 'score', 'mobility']);
+            fputcsv($fp_students, ['id', 'gender', 'faculty', 'score', 'mobility', 'severity']);
             foreach ($students as $s) {
-                fputcsv($fp_students, [$s['id'], $s['gender'], $s['faculty'], $s['score'], $s['mobility']]);
+                fputcsv($fp_students, [$s['id'], $s['gender'], $s['faculty'], $s['score'], $s['mobility'], $s['severity']]);
             }
             fclose($fp_students);
 
             $fp_rooms = fopen($rooms_csv_file, 'w');
-            fputcsv($fp_rooms, ['id', 'hostel_id', 'gender', 'faculty_target', 'is_proximal', 'floor_level', 'has_elevator', 'available_capacity']);
+            fputcsv($fp_rooms, ['id', 'hostel_id', 'gender', 'faculty_target', 'is_proximal', 'has_elevator', 'available_capacity', 'hostel_name']);
             foreach ($rooms as $r) {
-                fputcsv($fp_rooms, [$r['id'], $r['hostel_id'], $r['gender'], $r['faculty_target'], $r['is_proximal'] ? 1 : 0, $r['floor_level'], $r['has_elevator'] ? 1 : 0, $r['available_capacity']]);
+                fputcsv($fp_rooms, [$r['id'], $r['hostel_id'], $r['gender'], $r['faculty_target'], $r['is_proximal'] ? 1 : 0, $r['has_elevator'] ? 1 : 0, $r['available_capacity'], $r['hostel_name']]);
             }
             fclose($fp_rooms);
 

@@ -73,26 +73,26 @@ def allocate(students_csv, rooms_csv, output_csv):
 
         for r_idx, r in enumerate(rooms):
             r_gender = r.get('gender')
-            r_floor = int(float(r.get('floor_level', 1)))
-            r_elevator = bool(int(r.get('has_elevator', 0)))
             
             # Prevent assigning a student to a room meant for the opposite gender
             if s_gender != r_gender:
                 model.Add(x[(s_idx, r_idx)] == 0)
-                
-            # If the student needs a ground floor (due to mobility issues),
-            # prevent assigning them to non-ground floors unless there is an elevator.
-            if needs_ground:
-                if r_floor != 0 and not r_elevator:
-                    model.Add(x[(s_idx, r_idx)] == 0)
 
     # === 3. Objective Function ===
     # Formulate weights to maximize the value of the allocations (e.g., prioritize high urgency, match faculties).
     obj_terms = []
     
+    TARGET_FACULTIES = [
+        'Faculty of Law', 
+        'Faculty of Engineering', 
+        'Faculty of Basic Medical Sciences', 
+        'Faculty of Built Environment Studies'
+    ]
+    
     for s_idx, s in enumerate(students):
         score = float(s.get('score', 0)) # Predictive score out of 100
         s_faculty = s.get('faculty', '')
+        s_severity = str(s.get('severity', '')).strip().lower()
         
         # Determine if this student requires urgent accommodation
         is_high_urgency = score >= 75.0
@@ -100,6 +100,7 @@ def allocate(students_csv, rooms_csv, output_csv):
         for r_idx, r in enumerate(rooms):
             r_faculty_target = r.get('faculty_target', 'General')
             r_is_proximal = bool(int(r.get('is_proximal', 0)))
+            r_hostel_name = r.get('hostel_name', '')
             
             # Base weight for a successful allocation
             weight = 1000000 
@@ -113,6 +114,11 @@ def allocate(students_csv, rooms_csv, output_csv):
             # Bonus weight: Prefer assigning students to rooms designated for their faculty
             if s_faculty == r_faculty_target:
                 weight += 10000
+
+            # Massive Bonus weight: Low severity + Target Faculty + Engineering Hall
+            is_eng_hall = 'Engineering Hall' in r_hostel_name
+            if s_severity == 'low' and s_faculty in TARGET_FACULTIES and is_eng_hall:
+                weight += 500000
                 
             obj_terms.append(x[(s_idx, r_idx)] * weight)
 

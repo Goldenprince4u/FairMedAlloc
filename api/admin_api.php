@@ -141,9 +141,9 @@ function handleGetRooms($conn) {
     }
 
     // Only select rooms that haven't reached maximum capacity yet
-    $stmt = $conn->prepare("SELECT room_id, room_number, floor_level, capacity, occupied_count FROM rooms
+    $stmt = $conn->prepare("SELECT room_id, room_number, capacity, occupied_count FROM rooms
             WHERE hostel_id = ? AND occupied_count < capacity
-            ORDER BY floor_level ASC, CAST(room_number AS UNSIGNED) ASC");
+            ORDER BY CAST(room_number AS UNSIGNED) ASC");
     $stmt->bind_param("i", $hostel_id);
     $stmt->execute();
     $res = $stmt->get_result();
