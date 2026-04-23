@@ -4,7 +4,6 @@
  * Role-based support and documentation.
  */
 session_start();
-require_once 'db_config.php';
 
 // Auth guard — must be logged in to view help
 if (!isset($_SESSION['logged_in'])) { header('Location: login.php'); exit(); }
@@ -46,7 +45,11 @@ $role = $_SESSION['role'] ?? 'student';
                             <i class="fa-solid fa-chevron-down text-muted"></i>
                         </summary>
                         <p class="text-muted text-sm mt-2" style="padding-left:1rem; border-left:2px solid var(--c-primary);">
-                            The system uses a weighted formula: Base Score (10) + Condition Severity (Asthma: +40, Orthopedic: +60) + Mobility (Wheelchair: +30) + Gender Requirements.
+                            The system uses a weighted formula: <strong>Base (10)</strong> + <strong>Condition Weight</strong>
+                            (Sickle Cell/Epilepsy/Diabetes/Cardiovascular: +90, Neurological: +70, Physical Disability: +65,
+                            Visual Impairment: +60, Asthma/Respiratory: +50, Ulcer: +30, Other: +20)
+                            + <strong>Severity</strong> (Low: +5, Medium: +10, High: +15). Capped at 100.
+                            High-mobility-need students (wheelchair) receive an additional +10 boost.
                         </p>
                     </details>
                     <div style="height:1px; background:var(--c-border); margin-bottom:1rem;"></div>
@@ -100,7 +103,7 @@ $role = $_SESSION['role'] ?? 'student';
 
             <!-- Contact / Resources -->
             <div class="flex flex-col gap-4">
-                <div class="glass-card" style="background:#f8fafc; border:1px solid #e2e8f0;">
+                <div class="glass-card surface-inset">
                     <h3 class="mb-2 serif">Support Contacts</h3>
                     <p class="text-sm text-muted mb-4">Available Mon–Fri, 9am–4pm</p>
                     

@@ -1,0 +1,44 @@
+# FairMedAlloc — Apache Access Control
+# =====================================
+# Blocks direct web access to sensitive files that must never be publicly readable.
+
+# --- 0. Block password reset token log (contains live tokens — NEVER expose publicly) ---
+<Files "email_log.txt">
+    Order Allow,Deny
+    Deny from all
+</Files>
+
+# --- 1. Block the master document (contains full DB schema and architecture notes) ---
+<Files "master_document.txt">
+    Order Allow,Deny
+    Deny from all
+</Files>
+
+# --- 2. Block all Python scripts in the web root (dev/utility scripts) ---
+<FilesMatch "^(generate_setup|fix_female_blocks|rebuild_female_hostels)\.py$">
+    Order Allow,Deny
+    Deny from all
+</FilesMatch>
+
+# --- 3. Block the .env file (DB credentials) ---
+<Files ".env">
+    Order Allow,Deny
+    Deny from all
+</Files>
+
+# --- 4. Block raw SQL files ---
+<FilesMatch "\.(sql)$">
+    Order Allow,Deny
+    Deny from all
+</FilesMatch>
+
+# --- 5. Block all Python files under ml_models/ ---
+# (These are executed server-side via shell_exec, never via HTTP)
+<FilesMatch "\.py$">
+    Order Allow,Deny
+    Deny from all
+</FilesMatch>
+
+# --- 6. Force UTF-8 character encoding for all PHP files ---
+# This prevents the Naira sign and other Unicode chars from rendering garbled
+AddDefaultCharset UTF-8

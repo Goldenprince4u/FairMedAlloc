@@ -119,17 +119,32 @@ def calculate_score_fallback(student):
         # Start everyone with at least a low baseline score
         score = 10.0
         
-        # Weights matrix defining how much boost each condition gets
+        # Weights matrix defining how much boost each condition gets.
+        # IMPORTANT: Keys must exactly match the values in the signup/profile HTML forms.
         weights = {
-            'Sickle Cell': 90.0,      # Tier 1 - Chronic/Emergency
-            'Epilepsy': 90.0,         # Tier 1 - Chronic/Emergency
-            'Asthma': 50.0,           # Moderate
-            'Diabetes': 90.0,         # Tier 1 - Insulin Dependent
-            'Cardiac': 90.0,          # Tier 1
-            'Visual Impairment': 60.0,
-            'Orthopaedic': 65.0,
-            'Wheelchair User': 0.0,   # Handled via is_requested check below
-            'Crutches/Walker': 0.0    # Handled via is_requested check below
+            # Tier 1 — Chronic / Life-Threatening (90 pts)
+            'Sickle Cell':        90.0,
+            'Epilepsy':           90.0,
+            'Diabetes':           90.0,
+            'Cardiac':            90.0,   # Legacy label kept for backward compatibility
+            'Cardiovascular':     90.0,   # Form label — maps to same tier as Cardiac
+
+            # Tier 2 — Moderate Functional Impact (50–70 pts)
+            'Neurological':       70.0,
+            'Orthopaedic':        65.0,   # Legacy label
+            'Physical Disability':65.0,   # Form label — equivalent to Orthopaedic
+            'Visual Impairment':  60.0,
+            'Asthma':             50.0,
+            'Respiratory':        50.0,   # Form label — same tier as Asthma
+
+            # Tier 3 — Mild / Non-Emergency (20–30 pts)
+            'Ulcer':              30.0,
+            'Other':              20.0,
+
+            # Handled exclusively via mobility logic below (no double-counting)
+            'Mobility':           0.0,
+            'Wheelchair User':    0.0,
+            'Crutches/Walker':    0.0,
         }
         
         score += weights.get(condition, 0.0)

@@ -20,14 +20,17 @@ $stats_query = "
         (SELECT COUNT(*) FROM users WHERE role='student') as total_students,
         (SELECT COUNT(*) FROM allocations) as total_alloc,
         (SELECT COUNT(*) FROM medical_records WHERE condition_category != 'None') as medical_cases,
-        (SELECT COALESCE(SUM(capacity), 0) FROM rooms) as total_capacity
+        (SELECT COALESCE(SUM(r.capacity), 0)
+         FROM rooms r
+         JOIN hostels h ON r.hostel_id = h.hostel_id
+         WHERE h.is_postgrad = 0 AND h.is_foundation = 0) as total_capacity
 ";
 $stats = $conn->query($stats_query)->fetch_assoc();
 
-$total_students = $stats['total_students'];
-$total_alloc    = $stats['total_alloc'];
-$medical_cases  = $stats['medical_cases'];
-$available_beds = $stats['total_capacity'] - $total_alloc;
+$total_students = (int)$stats['total_students'];
+$total_alloc    = (int)$stats['total_alloc'];
+$medical_cases  = (int)$stats['medical_cases'];
+$available_beds = max(0, (int)$stats['total_capacity'] - $total_alloc);
 
 $page_title = "Command Center | FairMedAlloc";
 require_once 'includes/header.php';

@@ -30,6 +30,16 @@ class NotificationManager {
     }
 
     /**
+     * Get recent notifications (both read and unread)
+     */
+    public function getRecent($user_id, $limit = 5) {
+        $stmt = $this->conn->prepare("SELECT * FROM notifications WHERE user_id = ? ORDER BY created_at DESC LIMIT ?");
+        $stmt->bind_param("ii", $user_id, $limit);
+        $stmt->execute();
+        return $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
+    }
+
+    /**
      * Mark all as read
      */
     public function markAllRead($user_id) {

@@ -37,9 +37,19 @@ if ($role === 'student' && isset($_SESSION['user_id'])) {
 <div class="sidebar-overlay" id="sidebarOverlay"></div>
 
 <aside class="sidebar" id="sidebar">
+    <!-- Brand -->
     <div class="brand">
-        <h2 class="serif">FairMed<span style="color: var(--c-accent);">Alloc</span></h2>
-        <span>Redeemer's University</span>
+        <div class="flex items-center gap-3">
+            <img src="assets/logo.jpeg"
+                 alt="Redeemer's University Logo"
+                 style="width:42px;height:42px;border-radius:50%;object-fit:cover;flex-shrink:0;border:2px solid rgba(255,255,255,0.15);">
+            <div>
+                <h2 class="serif" style="margin:0;line-height:1.1;">
+                    FairMed<span style="color: var(--c-accent);">Alloc</span><span class="brand-dot"></span>
+                </h2>
+                <span style="font-size:0.7rem;">Redeemer's University</span>
+            </div>
+        </div>
     </div>
 
     <nav class="nav-links flex-1">
@@ -81,22 +91,29 @@ if ($role === 'student' && isset($_SESSION['user_id'])) {
                 <i class="fa-solid fa-print"></i> Allocation Slip
             </a>
             <a href="help.php" class="nav-item <?php echo active('help.php'); ?>">
-                <i class="fa-solid fa-circle-question"></i> Help & FAQs
+                <i class="fa-solid fa-circle-question"></i> Help &amp; FAQs
             </a>
         <?php endif; ?>
     </nav>
 
-    <div class="sidebar-footer flex items-center gap-3">
-        <div class="avatar-initials"><?php echo htmlspecialchars($initials); ?></div>
-        <div class="flex-1" style="overflow: hidden;">
-            <div class="fw-700 text-sm" style="color: var(--c-text-head); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">
-                <?php echo htmlspecialchars($_SESSION['full_name'] ?? $_SESSION['username']); ?>
+    <!-- Sidebar Footer -->
+    <div class="sidebar-footer">
+        <!-- User identity row -->
+        <div class="flex items-center gap-3 mt-3">
+            <div class="avatar-initials"><?php echo htmlspecialchars($initials); ?></div>
+            <div class="flex-1" style="overflow: hidden;">
+                <div class="fw-700 text-sm" style="color: var(--c-text-head); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">
+                    <?php echo htmlspecialchars($_SESSION['full_name'] ?? $_SESSION['username']); ?>
+                </div>
+                <div class="text-xs text-muted capitalize"><?php echo $role; ?></div>
             </div>
-            <div class="text-xs text-muted capitalize"><?php echo $role; ?></div>
+            <a href="logout.php" title="Logout" class="nav-logout-btn" aria-label="Logout"
+               style="display:flex; align-items:center; justify-content:center; width:32px; height:32px; border-radius:8px; color:var(--c-text-muted); transition: all 0.2s; flex-shrink:0;"
+               onmouseover="this.style.background='rgba(248,81,73,0.1)'; this.style.color='var(--c-danger)';"
+               onmouseout="this.style.background='transparent'; this.style.color='var(--c-text-muted)';">
+                <i class="fa-solid fa-arrow-right-from-bracket"></i>
+            </a>
         </div>
-        <a href="logout.php" title="Logout" style="color: var(--c-text-light); font-size: 1rem; transition: color 0.2s;">
-            <i class="fa-solid fa-arrow-right-from-bracket"></i>
-        </a>
     </div>
 </aside>
 
@@ -124,6 +141,6 @@ if ($role === 'student' && isset($_SESSION['user_id'])) {
         sidebar.classList.contains('open') ? closeSidebar() : openSidebar();
     });
 
-    overlay.addEventListener('click', closeSidebar);
+    // Navigation sidebar logic only
 })();
 </script>

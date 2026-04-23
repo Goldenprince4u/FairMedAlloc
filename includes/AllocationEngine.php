@@ -58,13 +58,13 @@ class AllocationEngine {
                 ];
             }
             
-            // Recalculate scores using bridge just to be safe
+            // Recalculate scores via Python bridge (graceful fallback if Python unavailable)
             $temp_file = sys_get_temp_dir() . DIRECTORY_SEPARATOR . 'fairmed_batch_' . uniqid() . '.json';
             file_put_contents($temp_file, json_encode($batch_payload));
             $script_path = __DIR__ . '/../ml_models/predict.py';
             $command = escapeshellcmd("python \"$script_path\" \"$temp_file\"");
-            $output = shell_exec($command);
-            $result_data = json_decode($output, true);
+            $output = @shell_exec($command);  // @ suppresses warnings; we handle null below
+            $result_data = $output ? json_decode($output, true) : null;
             if (file_exists($temp_file)) unlink($temp_file);
 
             $scores_map = [];
@@ -86,14 +86,18 @@ class AllocationEngine {
             $prox_threshold = (float)($threshold_row['setting_value'] ?? 75);
 
             // 4. Fetch Available Rooms for OR-Tools
+            // NOTE: Exclude postgrad (is_postgrad=1) and foundation (is_foundation=1) rooms
+            // from undergraduate allocation. These are blocks 19-20 and block 27.
             $roomQuery = "SELECT r.room_id as id, r.hostel_id, h.gender_allowed as gender, 
                                  f.name as faculty_target, h.is_proximal, h.name as hostel_name,
-                                 h.has_elevator, 
+                                 h.has_elevator, h.block_name,
                                  (r.capacity - r.occupied_count) as available_capacity
                           FROM rooms r
                           JOIN hostels h ON r.hostel_id = h.hostel_id
                           LEFT JOIN faculties f ON h.proximal_faculty_id = f.faculty_id
-                          WHERE r.occupied_count < r.capacity";
+                          WHERE r.occupied_count < r.capacity
+                            AND h.is_postgrad = 0
+                            AND h.is_foundation = 0";
             $roomResult = $this->conn->query($roomQuery);
             $rooms = $roomResult->fetch_all(MYSQLI_ASSOC);
             
@@ -119,22 +123,22 @@ class AllocationEngine {
             fclose($fp_students);
 
             $fp_rooms = fopen($rooms_csv_file, 'w');
-            fputcsv($fp_rooms, ['id', 'hostel_id', 'gender', 'faculty_target', 'is_proximal', 'has_elevator', 'available_capacity', 'hostel_name']);
+            fputcsv($fp_rooms, ['id', 'hostel_id', 'gender', 'faculty_target', 'is_proximal', 'has_elevator', 'available_capacity', 'hostel_name', 'block_name']);
             foreach ($rooms as $r) {
-                fputcsv($fp_rooms, [$r['id'], $r['hostel_id'], $r['gender'], $r['faculty_target'], $r['is_proximal'] ? 1 : 0, $r['has_elevator'] ? 1 : 0, $r['available_capacity'], $r['hostel_name']]);
+                fputcsv($fp_rooms, [$r['id'], $r['hostel_id'], $r['gender'], $r['faculty_target'], $r['is_proximal'] ? 1 : 0, $r['has_elevator'] ? 1 : 0, $r['available_capacity'], $r['hostel_name'], $r['block_name']]);
             }
             fclose($fp_rooms);
 
             // 6. Execute OR-Tools allocate.py
-            $alloc_script = __DIR__ . '/../ml_models/allocate.py';
+            $alloc_script  = __DIR__ . '/../ml_models/allocate.py';
             $alloc_command = escapeshellcmd("python \"$alloc_script\" \"$students_csv_file\" \"$rooms_csv_file\" \"$output_csv_file\"");
-            shell_exec($alloc_command);
+            @shell_exec($alloc_command);
 
             if (file_exists($students_csv_file)) unlink($students_csv_file);
-            if (file_exists($rooms_csv_file)) unlink($rooms_csv_file);
+            if (file_exists($rooms_csv_file))    unlink($rooms_csv_file);
 
             if (!file_exists($output_csv_file)) {
-                throw new Exception("OR-Tools allocation failed. No output CSV generated.");
+                throw new Exception("Allocation solver failed: OR-Tools output file not generated. Ensure Python and ortools are installed and accessible.");
             }
 
             $assignments = []; 
@@ -157,9 +161,14 @@ class AllocationEngine {
             require_once 'NotificationManager.php';
             $notifier = new NotificationManager($this->conn);
 
+            // Severity string → integer map (used in audit log)
+            $sev_map = ['Low' => 1, 'Medium' => 2, 'High' => 3];
+
             foreach ($students as $student) {
-                $student_id = $student['id'];
+                $student_id  = $student['id'];
                 $final_score = $student['score'];
+                // Map severity string to integer (1=Low, 2=Medium, 3=High)
+                $sev_int = $sev_map[$student['severity']] ?? (int)$student['severity'];
 
                 if (isset($assignments[$student_id])) {
                     $room_id = $assignments[$student_id];
@@ -178,19 +187,19 @@ class AllocationEngine {
                         $hid_stmt->bind_param("i", $room_id);
                         $hid_stmt->execute();
                         $h_row = $hid_stmt->get_result()->fetch_assoc();
-                        $hid = $h_row['hostel_id'] ?? null;
+                        $hid    = $h_row['hostel_id'] ?? null;
                         $h_name = $h_row['name'] ?? 'Hostel';
 
                         // NOTIFY STUDENT
                         $notifier->send($student_id, "Congratulations! You have been allocated a room in $h_name.");
-                        
+
+                        // FIX: Use actual student severity (was hardcoded 0)
                         $audit_sql = "INSERT INTO algorithm_audit_logs 
                                       (student_id, input_severity, input_proximity_need, calculated_urgency_score, allocation_decision, assigned_hostel_id) 
-                                      VALUES (?, 0, ?, ?, 'Allocated', ?)";
-                                      
-                        $prox_need = ($final_score >= $prox_threshold) ? 1 : 0;
+                                      VALUES (?, ?, ?, ?, 'Allocated', ?)";
+                        $prox_need  = ($final_score >= $prox_threshold) ? 1 : 0;
                         $stmt_audit = $this->conn->prepare($audit_sql);
-                        $stmt_audit->bind_param("idii", $student_id, $prox_need, $final_score, $hid);
+                        $stmt_audit->bind_param("iiddi", $student_id, $sev_int, $prox_need, $final_score, $hid);
                         $stmt_audit->execute();
                     } else {
                         // Room was technically full during exact bed assignment
@@ -200,18 +209,22 @@ class AllocationEngine {
                     // Log Missed Allocation
                     $notifier->send($student_id, "Update: You have been placed on the waiting list as no suitable rooms are currently available.");
 
+                    // FIX: Use actual student severity (was hardcoded 0)
                     $audit_sql = "INSERT INTO algorithm_audit_logs 
                                   (student_id, input_severity, input_proximity_need, calculated_urgency_score, allocation_decision, assigned_hostel_id) 
-                                  VALUES (?, 0, ?, ?, 'No Bed', NULL)";
-                    $prox_need = ($final_score >= $prox_threshold) ? 1 : 0;
+                                  VALUES (?, ?, ?, ?, 'No Bed', NULL)";
+                    $prox_need  = ($final_score >= $prox_threshold) ? 1 : 0;
                     $stmt_audit = $this->conn->prepare($audit_sql);
-                    $stmt_audit->bind_param("idi", $student_id, $prox_need, $final_score);
+                    $stmt_audit->bind_param("iidd", $student_id, $sev_int, $prox_need, $final_score);
                     $stmt_audit->execute();
                 }
             }
 
-            // Lock the session directly in DB
-            $this->conn->query("UPDATE settings SET setting_value = 'locked' WHERE setting_key = 'allocation_status'");
+            // Only lock the session if we actually allocated at least one student.
+            // Locking on 0 allocations would prevent re-running when students register later.
+            if ($allocated_count > 0) {
+                $this->conn->query("UPDATE settings SET setting_value = 'locked' WHERE setting_key = 'allocation_status'");
+            }
 
             // Commit the transaction
             $this->conn->commit();

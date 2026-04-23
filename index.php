@@ -13,13 +13,16 @@ session_start();
     <link href="https://fonts.googleapis.com/css2?family=Merriweather:wght@300;700;900&family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <link rel="stylesheet" href="css/main.css">
-
+    <script src="js/theme.js"></script>
 </head>
 <body>
 
     <!-- Navigation -->
     <nav class="nav-transparent animate-fade-in">
-        <div class="brand">FairMedAlloc</div>
+        <div class="brand" style="display:flex;align-items:center;gap:10px;">
+            <img src="assets/logo.jpeg" alt="Redeemer's University" style="width:36px;height:36px;border-radius:50%;object-fit:cover;border:2px solid rgba(255,255,255,0.4);">
+            FairMedAlloc
+        </div>
         <div class="flex gap-6 items-center">
             <a href="login.php" class="font-bold border-b-2 border-transparent hover:border-white transition-all pb-1">Portal Login</a>
             <a href="#features" class="hidden sm:block">How it Works</a>
@@ -35,6 +38,9 @@ session_start();
             <div class="badge badge-warning mb-6 badge-final-year">
                 <i class="fa-solid fa-star mr-2"></i> Final Year Project 2026
             </div>
+
+            <img src="assets/logo.jpeg" alt="Redeemer's University"
+                 style="width:100px;height:100px;border-radius:50%;object-fit:cover;margin-bottom:1.5rem;border:3px solid rgba(255,255,255,0.35);box-shadow:0 0 40px rgba(255,255,255,0.2);">
             
             <h1>Fair Allocation Based on <br> Medical Urgency.</h1>
             
@@ -64,7 +70,7 @@ session_start();
             <div class="grid grid-cols-3">
                 <!-- Feature 1 -->
                 <div class="glass-card">
-                    <div class="w-12 h-12 rounded-full bg-blue-50 flex items-center justify-center text-primary text-xl mb-4">
+                    <div class="w-12 h-12 rounded-full flex items-center justify-center text-primary text-xl mb-4" style="background: var(--c-info-bg);">
                         <i class="fa-solid fa-scale-balanced"></i>
                     </div>
                     <h3 class="h4">Equity Focused</h3>
@@ -73,7 +79,7 @@ session_start();
 
                 <!-- Feature 2 -->
                 <div class="glass-card">
-                    <div class="w-12 h-12 rounded-full bg-green-50 flex items-center justify-center text-success text-xl mb-4">
+                    <div class="w-12 h-12 rounded-full flex items-center justify-center text-success text-xl mb-4" style="background: var(--c-success-bg);">
                         <i class="fa-solid fa-robot"></i>
                     </div>
                     <h3 class="h4">ML Powered</h3>
@@ -82,7 +88,7 @@ session_start();
 
                 <!-- Feature 3 -->
                 <div class="glass-card">
-                    <div class="w-12 h-12 rounded-full bg-amber-50 flex items-center justify-center text-warning text-xl mb-4">
+                    <div class="w-12 h-12 rounded-full flex items-center justify-center text-warning text-xl mb-4" style="background: var(--c-warning-bg);">
                         <i class="fa-solid fa-shield-heart"></i>
                     </div>
                     <h3 class="h4">Privacy First</h3>

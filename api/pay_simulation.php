@@ -58,29 +58,19 @@ $stmt = $conn->prepare("INSERT INTO payments (student_id, amount, reference_no, 
 $stmt->bind_param("ids", $user_id, $amount, $ref);
 
 if ($stmt->execute()) {
-    
-    // --- 4. Post-Payment Triggers ---
-    // TRIGGER ALLOCATION INSTANTLY: Immediately check if there is an open bed for the student since they met the fee requirement
-    require_once '../includes/AllocationEngine.php';
-    
-    try {
-        $engine = new AllocationEngine($conn);
-        $alloc_result = $engine->run();
-        
-        $msg = 'Payment successful. ';
-        // Check if the engine was successfully able to find them a bed right away
-        if (($alloc_result['allocated'] ?? 0) > 0) {
-            $msg .= 'Room allocated successfully!';
-        } else {
-            $msg .= 'Payment received, but you occupy a waitlist position (No room currently available).';
-        }
-
-        echo json_encode(['status' => 'success', 'message' => $msg, 'debug' => $alloc_result]);
-    } catch (Exception $e) {
-        // Warning fallback: If allocation failed temporarily, acknowledge payment still succeeded
-        echo json_encode(['status' => 'success', 'message' => 'Payment successful, but allocation trigger failed: ' . $e->getMessage()]);
-    }
+    // FIX: Previously, this called AllocationEngine::run() synchronously here,
+    // which could block for up to 60 seconds (OR-Tools solver timeout) — exceeding
+    // PHP's default max_execution_time (30s) and silently killing the request.
+    //
+    // The payment is now confirmed immediately. The student's profile remains
+    // 'Unallocated' and will be processed during the next admin-triggered
+    // allocation cycle (via run_allocation.php). The notification system
+    // will inform the student when a room is assigned.
+    echo json_encode([
+        'status'  => 'success',
+        'message' => 'Payment of &#8358;50,000 confirmed! Your room will be allocated in the next allocation cycle. You will be notified when a room is assigned.'
+    ]);
 } else {
-    echo json_encode(['status' => 'error', 'message' => 'Database error']);
+    echo json_encode(['status' => 'error', 'message' => 'Database error. Please try again.']);
 }
 ?>

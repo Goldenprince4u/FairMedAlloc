@@ -1,6 +1,6 @@
 <?php
 /**
- * admin_login.php — Administrator Login Portal
+ * admin_login.php â€” Administrator Login Portal
  * ==============================================
  * Handles admin authentication with the following security features:
  *   - CSRF token validation on every POST request.
@@ -15,12 +15,18 @@ require_once 'db_config.php';
 require_once 'includes/security_helper.php';
 
 $error = '';
+$timeout_notice = '';
+
+// Session idle-timeout notice
+if (isset($_GET['timeout']) && $_GET['timeout'] === '1') {
+    $timeout_notice = "Your session expired after 30 minutes of inactivity. Please log in again.";
+}
 
 if ($_SERVER["REQUEST_METHOD"] == "POST") {
     // Validate CSRF token before any processing
     check_csrf();
 
-    // Use raw trimmed values — NOT htmlspecialchars — for DB comparison
+    // Use raw trimmed values â€” NOT htmlspecialchars â€” for DB comparison
     $username = trim($_POST['username']);
     $password = trim($_POST['password']);
 
@@ -102,6 +108,9 @@ require_once 'includes/header.php';
     <!-- Left: Brand Panel -->
     <div class="auth-left">
         <div class="brand-content">
+            <img src="assets/logo.jpeg"
+                 alt="Redeemer's University"
+                 style="width:80px;height:80px;border-radius:50%;object-fit:cover;margin-bottom:1.2rem;border:3px solid rgba(255,255,255,0.3);box-shadow:0 0 30px rgba(255,255,255,0.15);">
             <h1 class="auth-headline">System<br>Administration</h1>
             <p class="auth-subtitle">Redeemer's University</p>
 
@@ -119,6 +128,11 @@ require_once 'includes/header.php';
                 <p class="text-muted text-lg">Enter your administrative credentials.</p>
             </div>
 
+            <?php if ($timeout_notice): ?>
+                <div class="alert" style="background:rgba(245,158,11,0.12);border-left:3px solid var(--c-warning);color:var(--c-warning);padding:.9rem 1rem;border-radius:var(--radius);margin-bottom:1rem;font-size:.9rem;">
+                    <i class="fa-solid fa-clock mr-2"></i><?php echo htmlspecialchars($timeout_notice); ?>
+                </div>
+            <?php endif; ?>
             <?php if ($error): ?>
                 <!-- SECURITY: htmlspecialchars() prevents XSS from any user-controlled data in $error -->
                 <div class="alert alert-danger"><?php echo htmlspecialchars($error); ?></div>
@@ -128,23 +142,38 @@ require_once 'includes/header.php';
                 <?php csrf_field(); ?>
 
                 <div class="form-group">
-                    <label class="text-sm font-bold text-slate-700 mb-2">Username</label>
+                    <label class="text-sm fw-700 mb-2">Username</label>
                     <input type="text" name="username" placeholder="admin" required class="input-auth">
                 </div>
 
                 <div class="form-group">
-                    <label class="text-sm font-bold text-slate-700 mb-2">Password</label>
-                    <input type="password" name="password" placeholder="••••••••" required class="input-auth">
+                    <label class="text-sm fw-700 mb-2">Password</label>
+                    <div style="position: relative;">
+                        <input type="password" id="passwordInput" name="password" placeholder="••••••••" required class="input-auth" style="padding-right: 40px;">
+                        <i class="fa-solid fa-eye text-muted" id="togglePassword"
+                           style="position: absolute; right: 15px; top: 50%; transform: translateY(-50%); cursor: pointer;"
+                           onclick="togglePasswordVisibility()"></i>
+                    </div>
                 </div>
 
-                <button class="btn btn-warning w-full mb-4 text-slate-800"><i
-                        class="fa-solid fa-right-to-bracket mr-2"></i> Sign in</button>
+                <script>
+                function togglePasswordVisibility() {
+                    const pw   = document.getElementById('passwordInput');
+                    const icon = document.getElementById('togglePassword');
+                    const isHidden = pw.type === 'password';
+                    pw.type = isHidden ? 'text' : 'password';
+                    icon.classList.toggle('fa-eye',       !isHidden);
+                    icon.classList.toggle('fa-eye-slash',  isHidden);
+                }
+                </script>
+
+                <button class="btn btn-warning w-full mb-4" style="color: var(--c-primary-dark);"><i class="fa-solid fa-right-to-bracket mr-2"></i> Sign in</button>
 
                 <div class="text-center text-muted text-sm mb-6">
-                    <a href="forgot_password.php" class="hover:text-primary transition-colors">Forgot Password?</a>
+                    <a href="forgot_password.php" class="text-muted">Forgot Password?</a>
                 </div>
 
-                <div class="text-center text-sm pt-4 border-t border-slate-200 text-muted">
+                <div class="text-center text-sm pt-4 text-muted" style="border-top: 1px solid var(--c-border);">
                     Student Portal? <a href="login.php" class="text-primary fw-700">Student Login</a>
                 </div>
             </form>

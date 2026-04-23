@@ -321,10 +321,10 @@ lines += [
     "-- Hostel ID plan:",
     "--   1-18  : Prophet Moses Hall (Male, blocks 1-18)",
     "--  19-26  : Prophet Moses Extension Hall (Male, blocks 19-26)",
-    "--  27-32  : Prophet Moses Engineering Hall (Male, blocks 27-32)",
+    "--  27-32  : Joshua Hall (Male, blocks 27-32)",
     "--  33-50  : Queen Esther Hall (Female, blocks 1-18)",
     "--  51-67  : Queen Esther Extension Hall (Female, blocks 19-35)",
-    "--  68-72  : Queen Esther Engineering Hall (Female, blocks 36-40)",
+    "--  68-72  : Deborah Hall (Female, blocks 36-40)",
     "-- Male total capacity : 3,416 beds",
     "-- Female total capacity: 3,860 beds",
     "-- ============================================================",
@@ -341,9 +341,9 @@ for b in range(1, 19):
 for hid in range(19, 27):
     hostel_rows.append(hostel_row(hid, 'Prophet Moses Extension Hall', hid, 'Male', None, False, 76))
 
-# 3. Prophet Moses Engineering Hall: IDs 27-32, blocks 27-32
+# 3. Joshua Hall: IDs 27-32, blocks 27-32
 for hid in range(27, 33):
-    hostel_rows.append(hostel_row(hid, 'Prophet Moses Engineering Hall', hid, 'Male', 2, True, 240))
+    hostel_rows.append(hostel_row(hid, 'Joshua Hall', hid, 'Male', 2, True, 240))
 
 # 4. Queen Esther Hall: IDs 33-50, blocks 1-18 (continuous female sequence)
 for b, hid in enumerate(range(33, 51), 1):
@@ -353,9 +353,9 @@ for b, hid in enumerate(range(33, 51), 1):
 for b, hid in enumerate(range(51, 68), 19):
     hostel_rows.append(hostel_row(hid, 'Queen Esther Extension Hall', b, 'Female', None, False, 76))
 
-# 6. Queen Esther Engineering Hall: IDs 68-72, blocks 36-40
+# 6. Deborah Hall: IDs 68-72, blocks 36-40
 for b, hid in enumerate(range(68, 73), 36):
-    hostel_rows.append(hostel_row(hid, 'Queen Esther Engineering Hall', b, 'Female', 2, True, 240))
+    hostel_rows.append(hostel_row(hid, 'Deborah Hall', b, 'Female', 2, True, 240))
 
 lines.append("INSERT INTO hostels (hostel_id, name, block_name, gender_allowed, proximal_faculty_id, is_proximal, total_capacity) VALUES")
 lines.append(",\n".join(hostel_rows) + ";")
@@ -378,8 +378,8 @@ for hid in range(19, 27):
     lines.append(std_block_rooms(hid))
     lines.append("")
 
-# 3. Prophet Moses Engineering Hall: IDs 27-32, blocks 27-32
-lines.append("-- 3. Prophet Moses Engineering Hall (Male, blocks 27-32)")
+# 3. Joshua Hall: IDs 27-32, blocks 27-32
+lines.append("-- 3. Joshua Hall (Male, blocks 27-32)")
 lines.append("-- Room layout: 60 rooms per block | rooms 1-30 ground level | rooms 31-60 upper level | all cap=4")
 for hid in range(27, 33):
     lines.append(eng_block_rooms(hid))
@@ -397,8 +397,8 @@ for hid in range(51, 68):
     lines.append(std_block_rooms(hid))
     lines.append("")
 
-# 6. Queen Esther Engineering Hall: IDs 68-72, blocks 36-40
-lines.append("-- 6. Queen Esther Engineering Hall (Female, blocks 36-40)")
+# 6. Deborah Hall: IDs 68-72, blocks 36-40
+lines.append("-- 6. Deborah Hall (Female, blocks 36-40)")
 for hid in range(68, 73):
     lines.append(eng_block_rooms(hid))
     lines.append("")

@@ -1,6 +1,6 @@
 <?php
 /**
- * signup.php — Student Registration
+ * signup.php -- Student Registration
  * ==================================
  * Handles new student account creation:
  *   1. Validates & sanitizes all form inputs.
@@ -32,7 +32,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
     $matric = sanitize_input($_POST['matric_no']);
     $email  = sanitize_input($_POST['email']);
     $name   = sanitize_input($_POST['full_name']);
-    $pass   = $_POST['password'];           // Not sanitized — password_hash() handles raw value.
+    $pass   = $_POST['password'];           // Not sanitized â€” password_hash() handles raw value.
     $level  = (int)($_POST['level'] ?? 100);
     $role   = 'student';                    // Role is always 'student' on this page; never trust user input for role.
 
@@ -84,12 +84,22 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
             $condition = sanitize_input($_POST['medical_condition']);
             if ($condition && $condition !== 'None') {
                 $severity = sanitize_input($_POST['severity'] ?? 'Low');
-                $details = "$condition (Self-Reported)";
-                
-                // Assign a temporary heuristic baseline score immediately
-                $sev_map = ['Low' => 1, 'Medium' => 2, 'High' => 3];
-                $sev_val = $sev_map[$severity] ?? 1;
-                $score = $sev_val * 10;
+                $details  = "$condition (Self-Reported)";
+
+                // Compute baseline urgency score using the same weights as predict.py fallback.
+                // This gives high-priority patients (Epilepsy, Sickle Cell, etc.) correct
+                // urgency from day one, rather than a flat severity*10 guess.
+                $condition_weights = [
+                    'Sickle Cell'        => 90.0, 'Epilepsy'           => 90.0,
+                    'Diabetes'           => 90.0, 'Cardiovascular'     => 90.0,
+                    'Neurological'       => 70.0, 'Physical Disability'=> 65.0,
+                    'Visual Impairment'  => 60.0, 'Asthma'             => 50.0,
+                    'Respiratory'        => 50.0, 'Ulcer'              => 30.0,
+                    'Other'              => 20.0,
+                ];
+                $sev_map  = ['Low' => 1, 'Medium' => 2, 'High' => 3];
+                $sev_val  = $sev_map[$severity] ?? 1;
+                $score    = min(10.0 + ($condition_weights[$condition] ?? 20.0) + ($sev_val * 5.0), 100.0);
 
                 $stmt_med = $conn->prepare("INSERT INTO medical_records (student_id, condition_category, condition_details, severity_level, urgency_score) VALUES (?, ?, ?, ?, ?)");
                 $stmt_med->bind_param("isssd", $new_id, $condition, $details, $severity, $score);
@@ -109,7 +119,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
             header("Location: student_dashboard.php");
             exit();
         } else {
-            // Database insertion failure — surface a generic error (do not expose DB details).
+            // Database insertion failure â€” surface a generic error (do not expose DB details).
             $msg = "Error creating account. Please try again.";
             $msg_type = "error";
         }
@@ -149,7 +159,7 @@ require_once 'includes/header.php';
 
             <?php if($msg): ?>
                 <div class="alert <?php echo $msg_type == 'error' ? 'alert-danger' : 'alert-success'; ?>">
-                    <?php echo $msg; ?>
+                    <?php echo htmlspecialchars($msg); ?>
                 </div>
             <?php endif; ?>
 
@@ -157,17 +167,17 @@ require_once 'includes/header.php';
                 <?php csrf_field(); ?>
 
                 <div class="form-group mb-4">
-                    <label class="text-sm font-bold text-slate-700 mb-2">Full Name</label>
+                    <label class="text-sm fw-700 mb-2">Full Name</label>
                     <input type="text" name="full_name" placeholder="Surname Firstname Middle" required class="input-auth">
                 </div>
 
                 <div class="form-group mb-4">
-                    <label class="text-sm font-bold text-slate-700 mb-2">Matric Number</label>
+                    <label class="text-sm fw-700 mb-2">Matric Number</label>
                     <input type="text" name="matric_no" placeholder="RUN/CMP/22/..." required class="input-auth">
                 </div>
                 <div class="grid grid-cols-2 gap-4 mb-4">
                     <div class="form-group">
-                        <label class="text-sm font-bold text-slate-700 mb-2">Level</label>
+                        <label class="text-sm fw-700 mb-2">Level</label>
                         <select name="level" class="input-auth">
                             <option value="100">100 Level</option>
                             <option value="200">200 Level</option>
@@ -177,7 +187,7 @@ require_once 'includes/header.php';
                         </select>
                     </div>
                     <div class="form-group">
-                        <label class="text-sm font-bold text-slate-700 mb-2">Gender</label>
+                        <label class="text-sm fw-700 mb-2">Gender</label>
                         <select name="gender" class="input-auth" required>
                             <option value="">Select...</option>
                             <option value="Male">Male</option>
@@ -188,7 +198,7 @@ require_once 'includes/header.php';
 
                 <div class="grid grid-cols-2 gap-4 mb-4">
                     <div class="form-group">
-                        <label class="text-sm font-bold text-slate-700 mb-2">Faculty</label>
+                        <label class="text-sm fw-700 mb-2">Faculty</label>
                         <select name="faculty" id="facultySelect" required onchange="updateDepartments()" class="input-auth">
                             <option value="">Select...</option>
                             <?php
@@ -200,7 +210,7 @@ require_once 'includes/header.php';
                         </select>
                     </div>
                     <div class="form-group">
-                        <label class="text-sm font-bold text-slate-700 mb-2">Department</label>
+                        <label class="text-sm fw-700 mb-2">Department</label>
                         <select name="department" id="deptSelect" required class="input-auth">
                             <option value="">Select Faculty First</option>
                         </select>
@@ -209,7 +219,7 @@ require_once 'includes/header.php';
 
                 <div class="grid grid-cols-2 gap-4 mb-4">
                     <div class="form-group">
-                        <label class="text-sm font-bold text-slate-700 mb-2">Medical Condition</label>
+                        <label class="text-sm fw-700 mb-2">Medical Condition</label>
                         <select name="medical_condition" id="medCondition" required class="input-auth" onchange="toggleSeverity()">
                             <option value="">Select Status...</option>
                             <option value="None">None (Healthy)</option>
@@ -227,7 +237,7 @@ require_once 'includes/header.php';
                         </select>
                     </div>
                         <div class="form-group" id="severityGroup" style="display:none;">
-                            <label class="text-sm font-bold text-slate-700 mb-2">Condition Severity</label>
+                            <label class="text-sm fw-700 mb-2">Condition Severity</label>
                             <select name="severity" id="severityInput" class="input-auth">
                                 <option value="High">High</option>
                                 <option value="Medium">Medium</option>
@@ -253,12 +263,12 @@ require_once 'includes/header.php';
                 </script>
 
                 <div class="form-group mb-4">
-                    <label class="text-sm font-bold text-slate-700 mb-2">Email Address</label>
+                    <label class="text-sm fw-700 mb-2">Email Address</label>
                     <input type="email" name="email" required class="input-auth">
                 </div>
 
                 <div class="form-group mb-8">
-                    <label class="text-sm font-bold text-slate-700 mb-2">Password</label>
+                    <label class="text-sm fw-700 mb-2">Password</label>
                     <input type="password" name="password" placeholder="Create a strong password" required class="input-auth" minlength="8" pattern="(?=.*\d)(?=.*[a-z])(?=.*[A-Z]).{8,}" title="Must contain at least one number and one uppercase and lowercase letter, and at least 8 or more characters">
                     <div class="text-xs text-muted mt-2">For security, please ensure your password is at least 8 characters long and includes a mix of letters and numbers.</div>
                 </div>
@@ -271,7 +281,7 @@ require_once 'includes/header.php';
                     Already have an account? <a href="login.php" class="text-primary fw-700">Sign In</a>
                 </div>
                 <!-- Admin specific note -->
-                <div class="text-center text-sm mt-6 pt-4 border-t border-slate-200 text-muted">
+                <div class="text-center text-sm mt-6 pt-4 text-muted" style="border-top: 1px solid var(--c-border);" text-muted">
                     Staff Member? <a href="admin_signup.php" class="text-primary fw-700">Admin Registration</a>
                 </div>
             </form>

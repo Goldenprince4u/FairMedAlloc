@@ -1,6 +1,6 @@
 <?php
 /**
- * admin_profile.php — Administrator Profile & Security Settings
+ * admin_profile.php â€” Administrator Profile & Security Settings
  * ===============================================================
  * Allows the currently logged-in admin to:
  *   1. Update their profile picture (validated for type and MIME, not just extension).
@@ -38,12 +38,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $msg      = "Invalid file type. Only JPG, PNG, GIF allowed.";
             $msg_type = "error";
         } elseif ($_FILES['profile_pic']['size'] > 2 * 1024 * 1024) {
-            // Cap at 2MB — prevents storing oversized images in the uploads directory
+            // Cap at 2MB â€” prevents storing oversized images in the uploads directory
             $msg      = "Image too large. Maximum file size is 2MB.";
             $msg_type = "error";
         } else {
             // Validate actual MIME type, not just the extension.
-            // Uses OOP finfo class (PHP 8.5+): auto-closes on scope exit — no finfo_close() needed.
+            // Uses OOP finfo class (PHP 8.5+): auto-closes on scope exit â€” no finfo_close() needed.
             $finfo = new finfo(FILEINFO_MIME_TYPE);
             $mime  = $finfo->file($_FILES['profile_pic']['tmp_name']);
 
@@ -146,7 +146,7 @@ require_once 'includes/header.php';
             <!-- Profile Card -->
             <div class="card text-center p-8">
                 <div class="relative inline-block mb-6 group">
-                    <img src="uploads/profile_pics/<?php echo $_SESSION['profile_pic'] ?? 'default.png'; ?>" 
+                    <img src="uploads/profile_pics/<?php echo htmlspecialchars(basename($_SESSION['profile_pic'] ?? 'default.png')); ?>" 
                          class="avatar-lg bg-white">
                     
                     <form method="post" enctype="multipart/form-data" id="picForm">
@@ -163,7 +163,7 @@ require_once 'includes/header.php';
                 
                 <div class="text-left border-t border-gray-100 pt-6">
                     <div class="text-sm text-muted mb-2 uppercase tracking-wider font-bold">Role Capabilities</div>
-                    <ul class="text-sm space-y-2 text-slate-700" style="list-style: none;">
+                    <ul class="text-sm" style="list-style: none;">
                         <li class="flex items-center gap-2 mb-2"><i class="fa-solid fa-check text-green-500" style="color: var(--c-success);"></i> Full System Access</li>
                         <li class="flex items-center gap-2 mb-2"><i class="fa-solid fa-check text-green-500" style="color: var(--c-success);"></i> User Management</li>
                         <li class="flex items-center gap-2"><i class="fa-solid fa-check text-green-500" style="color: var(--c-success);"></i> Allocation Control</li>

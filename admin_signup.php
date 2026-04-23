@@ -65,22 +65,14 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
         $stmt->bind_param("sssss", $username, $name, $email, $hash, $role);
         
         if ($stmt->execute()) {
-            $new_id = $conn->insert_id;
-            
-            // --- 2. Transfer Session to New Admin ---
-            // The creating admin is now impersonating the new account to land on the dashboard.
-            // NOTE: In a multi-admin setup, you might want to avoid this and redirect back instead.
-            $_SESSION['logged_in'] = true;
-            $_SESSION['user_id']   = $new_id;
-            $_SESSION['role']      = $role;
-            $_SESSION['username']  = $username;
-            $_SESSION['profile_pic'] = 'default.png';
-
-            header("Location: admin_dashboard.php");
-            exit();
+            // FIX: Previously this code replaced the creating admin's session with the
+            // new account's session — a silent session-hijack bug. Now the creator stays
+            // logged in and receives a clear confirmation message instead.
+            $msg      = "Admin account '{$username}' created successfully. They can now log in at admin_login.php.";
+            $msg_type = "success";
         } else {
             // Generic error — do not expose DB error details to the client.
-            $msg = "Error creating account. Please try again.";
+            $msg      = "Error creating account. Please try again.";
             $msg_type = "error";
         }
     }
@@ -119,7 +111,7 @@ require_once 'includes/header.php';
 
             <?php if($msg): ?>
                 <div class="alert <?php echo $msg_type == 'error' ? 'alert-danger' : 'alert-success'; ?>">
-                    <?php echo $msg; ?>
+                    <?php echo htmlspecialchars($msg); ?>
                 </div>
             <?php endif; ?>
 
@@ -127,30 +119,30 @@ require_once 'includes/header.php';
                 <?php csrf_field(); ?>
 
                 <div class="form-group mb-4">
-                    <label class="text-sm font-bold text-slate-700 mb-2">Full Name</label>
+                    <label class="text-sm fw-700 mb-2">Full Name</label>
                     <input type="text" name="full_name" placeholder="John Doe" required class="input-auth">
                 </div>
 
                 <div class="form-group mb-4">
-                    <label class="text-sm font-bold text-slate-700 mb-2">Username</label>
+                    <label class="text-sm fw-700 mb-2">Username</label>
                     <input type="text" name="username" placeholder="admin_johndoe" required class="input-auth">
                 </div>
 
                 <div class="form-group mb-4">
-                    <label class="text-sm font-bold text-slate-700 mb-2">Email Address</label>
+                    <label class="text-sm fw-700 mb-2">Email Address</label>
                     <input type="email" name="email" required class="input-auth">
                 </div>
 
                 <div class="form-group mb-8">
-                    <label class="text-sm font-bold text-slate-700 mb-2">Password</label>
+                    <label class="text-sm fw-700 mb-2">Password</label>
                     <input type="password" name="password" placeholder="Create a strong password" required class="input-auth" minlength="8" pattern="(?=.*\d)(?=.*[a-z])(?=.*[A-Z]).{8,}" title="Must contain at least one number and one uppercase and lowercase letter, and at least 8 or more characters">
                 </div>
 
                 <div class="text-center">
-                    <button class="btn btn-warning text-slate-800 w-full mb-4">Create Admin Account</button>
+                    <button class="btn btn-warning text-dark w-full mb-4" style="color: var(--c-primary-dark);">Create Admin Account</button>
                 </div>
                 
-                <div class="text-center text-sm pt-4 border-t border-slate-200 text-muted">
+                <div class="text-center text-sm pt-4 text-muted" style="border-top: 1px solid var(--c-border);">
                     Already an admin? <a href="admin_login.php" class="text-primary fw-700">Admin Login</a>
                 </div>
             </form>

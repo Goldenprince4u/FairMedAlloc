@@ -5,6 +5,7 @@
  */
 session_start();
 require_once 'db_config.php';
+require_once 'includes/security_helper.php'; // Enforces 30-min idle session timeout
 
 require_once 'includes/Student.php';
 
@@ -52,12 +53,12 @@ require_once 'includes/header.php';
                             <i class="fa-solid fa-circle-check text-success text-xl mt-1"></i>
                             <div>
                                 <div class="fw-700 text-success text-lg mb-2">Allocation Successful</div>
-                                <p class="text-muted">You have been placed in <strong class="text-slate-800"><?php echo htmlspecialchars($alloc['hostel_name']); ?></strong><?php if(!empty($alloc['block_name'])) echo ', ' . htmlspecialchars($alloc['block_name']); ?>.</p>
+                                <p class="text-muted">You have been placed in <strong class="text-head"><?php echo htmlspecialchars($alloc['hostel_name']); ?></strong><?php if(!empty($alloc['block_name'])) echo ', ' . htmlspecialchars($alloc['block_name']); ?>.</p>
                             </div>
                         </div>
 
                         <div class="grid grid-cols-3 gap-4 mb-6">
-                            <div class="p-3 rounded" style="background:#f8fafc; border:1px dashed #cbd5e1;">
+                            <div class="p-3 surface-inset">
                                 <div class="text-xs text-muted uppercase tracking-wider mb-1">Block</div>
                                 <div class="text-xl fw-700 text-primary">
                                     <?php 
@@ -68,11 +69,11 @@ require_once 'includes/header.php';
                                     ?>
                                 </div>
                             </div>
-                            <div class="p-3 rounded" style="background:#f8fafc; border:1px dashed #cbd5e1;">
+                            <div class="p-3 surface-inset">
                                 <div class="text-xs text-muted uppercase tracking-wider mb-1">Room</div>
                                 <div class="text-xl fw-700 text-primary"><?php echo htmlspecialchars($alloc['room_number']); ?></div>
                             </div>
-                            <div class="p-3 rounded" style="background:#f8fafc; border:1px dashed #cbd5e1;">
+                            <div class="p-3 surface-inset">
                                 <div class="text-xs text-muted uppercase tracking-wider mb-1">Bed</div>
                                 <div class="text-xl fw-700 text-primary"><?php echo htmlspecialchars($alloc['bed_label'] ?? 'N/A'); ?></div>
                             </div>
@@ -101,10 +102,10 @@ require_once 'includes/header.php';
                             <span class="badge badge-success px-4 py-2"><i class="fa-solid fa-check mr-2"></i>School Fees Paid</span>
                         </div>
                         
-                         <div class="p-4 rounded mb-6" style="background:#f8fafc; border:1px dashed #cbd5e1; display:inline-block; min-width:200px;">
-                            <div class="text-xs text-muted uppercase tracking-wider mb-1">STATUS</div>
-                            <div class="text-3xl fw-700 text-warning">Waiting...</div>
-                        </div>
+                         <div class="p-4 surface-inset mb-6" style="display:inline-block; min-width:200px;">
+                             <div class="text-xs text-muted uppercase tracking-wider mb-1">STATUS</div>
+                             <div class="text-3xl fw-700 text-warning">Waiting...</div>
+                         </div>
                     </div>
                 <?php endif; ?>
             <?php else: ?>
@@ -122,13 +123,13 @@ require_once 'includes/header.php';
                     </div>
 
                     <div class="alert alert-info mb-4">
-                        <i class="fa-solid fa-info-circle mr-2"></i> Fee: ₦50,000
+                        <i class="fa-solid fa-info-circle mr-2"></i> Fee: &#8358;50,000
                     </div>
 
                     <?php require_once 'includes/security_helper.php'; csrf_field(); ?>
 
                     <button id="payBtn" class="btn btn-primary">
-                        <i class="fa-solid fa-credit-card mr-2"></i> Pay School Fees (₦50,000)
+                        <i class="fa-solid fa-credit-card mr-2"></i> Pay School Fees (&#8358;50,000)
                     </button>
                     <div id="payMsg" class="mt-4 hidden"></div>
                 </div>
@@ -183,20 +184,22 @@ require_once 'includes/header.php';
                 <?php
                 require_once 'includes/NotificationManager.php';
                 $notifier = new NotificationManager($conn);
-                $notices = $notifier->getUnread($user_id);
+                $notices = $notifier->getRecent($user_id, 5);
 
                 if (count($notices) > 0) {
                     foreach ($notices as $notice) {
-                        echo '<div class="mb-4 p-3 rounded text-sm" style="background:rgba(59,130,246,0.06); border-left:4px solid var(--c-primary);">';
-                        echo '<div class="fw-700 text-primary mb-1"><i class="fa-solid fa-bell mr-2"></i>New Alert</div>';
-                        echo '<p style="color:#334155;">' . htmlspecialchars($notice['message']) . '</p>';
+                        $bg = $notice['is_read'] ? 'rgba(0,0,0,0.02)' : 'rgba(59,130,246,0.06)';
+                        $border = $notice['is_read'] ? 'var(--c-muted)' : 'var(--c-primary)';
+                        echo '<div class="mb-4 p-3 rounded text-sm" style="background:'.$bg.'; border-left:4px solid '.$border.';">';
+                        echo '<div class="fw-700 text-primary mb-1"><i class="fa-solid fa-bell mr-2"></i>Notice</div>';
+                        echo '<p class="text-body">' . htmlspecialchars($notice['message']) . '</p>';
                         echo '<div class="text-xs text-muted mt-1">' . date('M d, H:i', strtotime($notice['created_at'])) . '</div>';
                         echo '</div>';
                     }
                     // Mark as read now that they've been displayed
                     $notifier->markAllRead($user_id);
                 } else {
-                    echo '<p class="text-muted text-sm" style="font-style:italic;">No new notifications.</p>';
+                    echo '<p class="text-muted text-sm" style="font-style:italic;">No recent notifications.</p>';
                 }
                 ?>
 

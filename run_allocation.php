@@ -35,10 +35,11 @@ require_once 'includes/header.php';
                 <h3 class="serif mb-4 text-2xl font-bold">Control Panel</h3>
                 <p class="text-muted mb-4 text-sm">This process will:</p>
                 <ul class="list-instructions">
-                    <li>Clear all existing allocations.</li>
-                    <li>Fetch latest student medical scores.</li>
+                    <li>Fetch all unallocated students who have paid.</li>
+                    <li>Recalculate urgency scores via the XGBoost model.</li>
                     <li>Prioritize high-risk students for proximal hostels.</li>
-                    <li>Fill remaining spots with general population.</li>
+                    <li>Run the OR-Tools CP-SAT solver to assign rooms.</li>
+                    <li>Write audit logs and notify each student of their result.</li>
                 </ul>
 
                 <?php if ($is_locked): ?>
@@ -69,37 +70,37 @@ require_once 'includes/header.php';
 
 <script>
 function startAllocation() {
-    const console = document.getElementById('console');
-    console.innerHTML = '<div class="mb-2 text-warning">Initializing Engine...</div>';
-    
-    // --- 1. Start Simulated Visualization ---
-    // Since algorithm processing happens on the backend and is usually very fast,
-    // this timeout block adds an artificial staging delay to make the process visually apparent to the admin.
-    setTimeout(() => {
-        console.innerHTML += '<div class="mb-2">Fetching Student Data (Algorithm Input)...</div>';
-    }, 500);
+    const logEl = document.getElementById('console');
+    const btn   = document.querySelector('.btn-primary[onclick]');
 
-    setTimeout(() => {
-        console.innerHTML += '<div class="mb-2">Connecting to XGBoost Model (Simulation)...</div>';
-        
-        // Actual AJAX Call
-        fetch('api/admin_api.php?action=run_algorithm')
-            .then(response => response.json())
-            .then(data => {
-                if(data.status === 'success') {
-                    console.innerHTML += '<div class="mb-2 text-green-400">> Algorithm Priority Sorting Complete</div>';
-                    console.innerHTML += `<div class="mb-2 text-green-400">> Allocated: ${data.allocated} Students</div>`;
-                    console.innerHTML += '<div class="text-success fw-700 mt-4">>> ALLOCATION CYCLE COMPLETE <<</div>';
-                    console.innerHTML += '<div class="text-xs text-muted mt-2">Database Updated. Students can now verify status.</div>';
-                } else {
-                    console.innerHTML += `<div class="text-red-500 mt-4">Error: ${data.message}</div>`;
-                }
-            })
-            .catch(err => {
-                console.innerHTML += `<div class="text-red-500 mt-4">Network Error: ${err}</div>`;
-            });
-            
-    }, 1500);
+    // Disable button and show starting state
+    if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin mr-2"></i> Running...'; }
+    logEl.innerHTML = '<div class="mb-2" style="color:var(--c-warning);">&#9654; Initializing Allocation Engine...</div>';
+    logEl.innerHTML += '<div class="mb-2">&#9654; Fetching paid, unallocated students...</div>';
+    logEl.innerHTML += '<div class="mb-2">&#9654; Invoking XGBoost urgency scorer (predict.py)...</div>';
+    logEl.innerHTML += '<div class="mb-2">&#9654; Running OR-Tools CP-SAT solver (allocate.py)...</div>';
+    logEl.innerHTML += '<div class="mb-2 opacity-60" style="font-style:italic;">Please wait — this may take up to 60 seconds...</div>';
+
+    fetch('api/admin_api.php?action=run_algorithm')
+        .then(response => response.json())
+        .then(data => {
+            if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fa-solid fa-play mr-2"></i> Start Allocation Engine'; }
+
+            if (data.status === 'success') {
+                const optimality = data.optimal ? 'OPTIMAL' : 'FEASIBLE (time limit reached)';
+                logEl.innerHTML += `<div class="mb-2" style="color:var(--c-success);">&#10003; Solver finished: ${optimality}</div>`;
+                logEl.innerHTML += `<div class="mb-2" style="color:var(--c-success);">&#10003; Allocated: ${data.allocated} of ${data.total} eligible students</div>`;
+                logEl.innerHTML += '<div class="fw-700 mt-4" style="color:var(--c-success);">&#187; ALLOCATION CYCLE COMPLETE &#171;</div>';
+                logEl.innerHTML += '<div class="text-xs text-muted mt-2">Audit logs written. Students can now view their status on the dashboard.</div>';
+            } else {
+                logEl.innerHTML += `<div class="mt-4" style="color:var(--c-danger);">&#10007; Error: ${data.message}</div>`;
+                logEl.innerHTML += '<div class="text-xs text-muted mt-1">Check that Python, ortools, and xgboost are installed and that XAMPP has permission to run shell commands.</div>';
+            }
+        })
+        .catch(err => {
+            if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fa-solid fa-play mr-2"></i> Start Allocation Engine'; }
+            logEl.innerHTML += `<div class="mt-4" style="color:var(--c-danger);">&#10007; Network Error: ${err}</div>`;
+        });
 }
 </script>
 </body>

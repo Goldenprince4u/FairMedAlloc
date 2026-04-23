@@ -16,6 +16,44 @@ if (session_status() === PHP_SESSION_NONE) {
 }
 
 /**
+ * Session Idle Timeout
+ * ====================
+ * Logs out users who have been idle longer than SESSION_TIMEOUT_SECONDS.
+ * Fires on every protected page load — not while the user is actively
+ * navigating, only after they walk away.
+ *
+ * Standard procedure:
+ *  1. Record 'last_activity' in the session on each request.
+ *  2. On the next request, compare elapsed time to the threshold.
+ *  3. If exceeded → wipe session → destroy → redirect to login.
+ */
+defined('SESSION_TIMEOUT_SECONDS') || define('SESSION_TIMEOUT_SECONDS', 1800); // 30-minute idle window
+
+if (isset($_SESSION['logged_in']) && $_SESSION['logged_in'] === true) {
+    $now = time();
+    if (isset($_SESSION['last_activity'])) {
+        $idle = $now - (int)$_SESSION['last_activity'];
+        if ($idle > SESSION_TIMEOUT_SECONDS) {
+            // Clean logout
+            $_SESSION = [];
+            if (ini_get('session.use_cookies')) {
+                $p = session_get_cookie_params();
+                setcookie(session_name(), '', time() - 42000,
+                          $p['path'], $p['domain'], $p['secure'], $p['httponly']);
+            }
+            session_destroy();
+            $is_admin = strpos($_SERVER['PHP_SELF'] ?? '', 'admin') !== false;
+            $base = rtrim(dirname($_SERVER['SCRIPT_NAME']), '/\\');
+            $target = $is_admin ? 'admin_login.php' : 'login.php';
+            header('Location: ' . $base . '/' . $target . '?timeout=1');
+            exit();
+        }
+    }
+    // Refresh timestamp on every active request
+    $_SESSION['last_activity'] = $now;
+}
+
+/**
  * Generate CSRF Token
  * 
  * Creates a cryptographically secure token if one does not already exist 

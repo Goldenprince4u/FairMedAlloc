@@ -21,16 +21,20 @@ $offset = ($page - 1) * $limit;
 // Count Total Records
 $count_sql = "SELECT COUNT(*) as total FROM student_profiles p JOIN users u ON p.user_id = u.user_id";
 $total_result = $conn->query($count_sql);
-$total_rows = $total_result->fetch_assoc()['total'];
-$total_pages = ceil($total_rows / $limit);
+$total_rows = (int)($total_result->fetch_assoc()['total'] ?? 0);
+$total_pages = max(1, ceil($total_rows / $limit));
+// Clamp page to valid range
+$page = max(1, min($page, $total_pages));
+$offset = ($page - 1) * $limit;
 
 // Fetch Data with Limit
-$query_tpl = "
+$query_sql = "
     SELECT 
         p.user_id, u.full_name, u.username AS matric_no, p.level,
         d.name as department, f.name as faculty,
-        m.urgency_score, m.condition_category, m.mobility_status,
-        h.name as hostel_name, r.room_number,
+        p.gender,
+        m.urgency_score, m.condition_category, m.mobility_status, m.severity_level,
+        h.name as hostel_name, h.block_name, r.room_number,
         u.profile_pic, u.email
     FROM student_profiles p 
     JOIN users u ON p.user_id = u.user_id 
@@ -41,13 +45,20 @@ $query_tpl = "
     LEFT JOIN rooms r ON a.room_id = r.room_id 
     LEFT JOIN hostels h ON r.hostel_id = h.hostel_id
     ORDER BY m.urgency_score DESC, u.username ASC 
-    LIMIT %d OFFSET %d
+    LIMIT ? OFFSET ?
 ";
-$query  = sprintf($query_tpl, $limit, $offset);
-$result = $conn->query($query);
+$stmt = $conn->prepare($query_sql);
+$stmt->bind_param("ii", $limit, $offset);
+$stmt->execute();
+$result = $stmt->get_result();
 
-// Fetch Hostels for Manual Allocation
-$hostels_result = $conn->query("SELECT hostel_id, name, gender_allowed FROM hostels");
+// Fetch Hostels for Manual Allocation (exclude postgrad and foundation blocks)
+$hostels_result = $conn->query(
+    "SELECT hostel_id, name, block_name, gender_allowed 
+     FROM hostels 
+     WHERE is_postgrad = 0 AND is_foundation = 0 
+     ORDER BY gender_allowed, name, CAST(block_name AS UNSIGNED)"
+);
 $hostels = [];
 while ($h = $hostels_result->fetch_assoc()) {
     $hostels[] = $h;
@@ -103,24 +114,31 @@ require_once 'includes/header.php';
                                         <div class="text-xs text-muted"><?php echo htmlspecialchars($row['department']); ?> • <?php echo $row['level']; ?>L</div>
                                     </td>
                                     <td>
-                                        <?php if(($row['urgency_score'] ?? 0) > 70): ?>
+                                        <?php 
+                                        $score = (float)($row['urgency_score'] ?? 0);
+                                        $severity = $row['severity_level'] ?? 'Low';
+                                        if ($score > 70 || $severity === 'High'): ?>
                                             <span class="badge badge-danger">
-                                                <i class="fa-solid fa-heart-pulse"></i> HIGH RISK (<?php echo $row['urgency_score']; ?>)
+                                                <i class="fa-solid fa-heart-pulse"></i> HIGH (<?php echo number_format($score, 1); ?>)
+                                            </span>
+                                        <?php elseif ($score > 40 || $severity === 'Medium'): ?>
+                                            <span class="badge badge-warning" style="color:var(--c-primary-dark);">
+                                                <i class="fa-solid fa-triangle-exclamation"></i> MEDIUM (<?php echo number_format($score, 1); ?>)
                                             </span>
                                         <?php else: ?>
                                             <span class="badge badge-success">
-                                                <i class="fa-solid fa-check"></i> NORMAL
+                                                <i class="fa-solid fa-check"></i> LOW (<?php echo number_format($score, 1); ?>)
                                             </span>
                                         <?php endif; ?>
                                         
                                         <?php if(!empty($row['condition_category']) && $row['condition_category'] !== 'None'): ?>
-                                            <div class="text-xs text-muted mt-1">Condition: <?php echo htmlspecialchars($row['condition_category']); ?></div>
+                                            <div class="text-xs text-muted mt-1"><?php echo htmlspecialchars($row['condition_category']); ?> &bull; <?php echo htmlspecialchars($severity); ?></div>
                                         <?php endif; ?>
                                     </td>
                                     <td>
                                         <?php if($row['hostel_name']): ?>
                                             <div class="text-sm fw-700 text-primary">
-                                                <?php echo htmlspecialchars($row['hostel_name']); ?>
+                                                <?php echo htmlspecialchars($row['hostel_name']); ?> — Blk <?php echo htmlspecialchars($row['block_name']); ?>
                                             </div>
                                             <div class="text-xs text-muted">Room <?php echo htmlspecialchars($row['room_number']); ?></div>
                                         <?php else: ?>
@@ -153,7 +171,11 @@ require_once 'includes/header.php';
             <!-- Pagination -->
             <div class="p-4 flex justify-between items-center text-xs text-muted" style="border-top: 1px solid var(--c-border);">
                 <div>
-                    Showing <?php echo ($offset + 1); ?>-<?php echo min($offset + $limit, $total_rows); ?> of <?php echo $total_rows; ?> entries
+                    <?php if ($total_rows > 0): ?>
+                        Showing <?php echo ($offset + 1); ?>–<?php echo min($offset + $limit, $total_rows); ?> of <?php echo $total_rows; ?> entries
+                    <?php else: ?>
+                        No entries found
+                    <?php endif; ?>
                 </div>
                 <div class="flex gap-2">
                     <a href="?page=<?php echo max(1, $page - 1); ?>" class="btn btn-sm btn-secondary <?php echo ($page <= 1) ? 'opacity-50 pointer-events-none' : ''; ?>">
@@ -171,9 +193,9 @@ require_once 'includes/header.php';
 </div>
 
 <!-- Manual Allocation Modal -->
-<div id="assignModal" class="modal-overlay hidden" style="position: fixed; inset: 0; background: rgba(0,0,0,0.5); z-index: 50; display: flex; align-items: center; justify-content: center;">
-    <div class="card p-6 w-full max-w-md bg-white shadow-xl rounded-lg">
-        <h3 class="text-xl font-bold mb-4">Manual Room Allocation</h3>
+<div id="assignModal" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.55); z-index:50; align-items:center; justify-content:center;">
+    <div class="card p-6 w-full" style="max-width:480px; background:var(--c-bg-surface); box-shadow: var(--shadow-lg);">
+        <h3 class="text-xl fw-700 mb-4">Manual Room Allocation</h3>
         <p class="text-sm text-muted mb-4">Assigning room for: <strong id="assignStudentName">...</strong></p>
         
         <form id="assignForm">
@@ -184,9 +206,21 @@ require_once 'includes/header.php';
                 <label class="block text-sm font-bold mb-2">Select Hostel</label>
                 <select id="assignHostel" class="input w-full" required>
                     <option value="">-- Choose Hostel --</option>
-                    <?php foreach($hostels as $h): ?>
-                        <option value="<?php echo $h['hostel_id']; ?>"><?php echo htmlspecialchars($h['name']); ?></option>
+                    <?php 
+                    $last_gender = '';
+                    foreach($hostels as $h): 
+                        // Add optgroup separators by gender
+                        if ($h['gender_allowed'] !== $last_gender):
+                            if ($last_gender !== '') echo '</optgroup>';
+                            echo '<optgroup label="' . htmlspecialchars($h['gender_allowed']) . ' Hostels">';
+                            $last_gender = $h['gender_allowed'];
+                        endif;
+                    ?>
+                        <option value="<?php echo $h['hostel_id']; ?>">
+                            <?php echo htmlspecialchars($h['name']); ?> — Block <?php echo htmlspecialchars($h['block_name']); ?>
+                        </option>
                     <?php endforeach; ?>
+                    <?php if ($last_gender !== '') echo '</optgroup>'; ?>
                 </select>
             </div>
             

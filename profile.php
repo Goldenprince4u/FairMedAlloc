@@ -16,19 +16,78 @@ $user_id = $_SESSION['user_id'];
 $msg = '';
 $msg_type = '';
 
+/**
+ * Calculate urgency score using the same weighted logic as ml_models/predict.py fallback.
+ * This ensures profile updates stay consistent with the allocation engine's scoring.
+ */
+function calculateUrgencyScore(string $condition, string $mobility, string $severity_str, int $has_special_needs): float {
+    $score = 10.0;
+
+    // Severity multiplier
+    $sev_map = ['Low' => 1, 'Medium' => 2, 'High' => 3];
+    $severity = $sev_map[$severity_str] ?? 1;
+
+    // Condition weights — must mirror predict.py weights dict exactly
+    $weights = [
+        'Sickle Cell'        => 90.0,
+        'Epilepsy'           => 90.0,
+        'Diabetes'           => 90.0,
+        'Cardiac'            => 90.0,
+        'Cardiovascular'     => 90.0,
+        'Neurological'       => 70.0,
+        'Orthopaedic'        => 65.0,
+        'Physical Disability'=> 65.0,
+        'Visual Impairment'  => 60.0,
+        'Asthma'             => 50.0,
+        'Respiratory'        => 50.0,
+        'Ulcer'              => 30.0,
+        'Other'              => 20.0,
+        'Mobility'           => 0.0,
+    ];
+
+    $score += $weights[$condition] ?? 0.0;
+
+    // Mobility boost (takes precedence via max() to prevent double-counting)
+    $mobility_score = 0.0;
+    if (in_array($mobility, ['Wheelchair User', 'Crutches/Walker', 'Artificial Limb'])) {
+        $mobility_score = $has_special_needs ? 90.0 : 75.0;
+    }
+    $score = max($score, $mobility_score);
+
+    // Severity bump (mirrors predict.py: severity * 5)
+    $score += ($severity * 5.0);
+
+    return min((float)$score, 100.0);
+}
+
 // Handle Update
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     check_csrf();
-    // 1. Profile Pic
+
+    // 1. Profile Pic — with size and MIME-type validation
     if (isset($_FILES['profile_pic']) && $_FILES['profile_pic']['error'] === 0) {
-        $allowed = ['jpg', 'jpeg', 'png', 'gif'];
-        $ext = strtolower(pathinfo($_FILES['profile_pic']['name'], PATHINFO_EXTENSION));
-        
-        if (in_array($ext, $allowed)) {
+        $allowed_exts  = ['jpg', 'jpeg', 'png', 'gif'];
+        $allowed_mimes = ['image/jpeg', 'image/png', 'image/gif'];
+        $max_size_bytes = 2 * 1024 * 1024; // 2 MB limit
+
+        $ext      = strtolower(pathinfo($_FILES['profile_pic']['name'], PATHINFO_EXTENSION));
+        $filesize = $_FILES['profile_pic']['size'];
+
+        // Validate MIME type via finfo OOP API (PHP 8.5+ compatible — auto-closes on scope exit)
+        $finfo = new finfo(FILEINFO_MIME_TYPE);
+        $mime  = $finfo->file($_FILES['profile_pic']['tmp_name']);
+
+        if (!in_array($ext, $allowed_exts) || !in_array($mime, $allowed_mimes)) {
+            $msg      = "Invalid file type. Only JPG, PNG, and GIF images are allowed.";
+            $msg_type = "error";
+        } elseif ($filesize > $max_size_bytes) {
+            $msg      = "Image is too large. Maximum allowed size is 2 MB.";
+            $msg_type = "error";
+        } else {
             $upload_dir = __DIR__ . "/uploads/profile_pics/";
             if (!file_exists($upload_dir)) mkdir($upload_dir, 0777, true);
 
-            $new_name = "u{$user_id}_" . time() . ".$ext";
+            $new_name = "u{$user_id}_" . time() . "." . $ext;
 
             if (move_uploaded_file($_FILES['profile_pic']['tmp_name'], $upload_dir . $new_name)) {
                 $pic_stmt = $conn->prepare("UPDATE users SET profile_pic = ? WHERE user_id = ?");
@@ -39,46 +98,45 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
     }
 
-    // 2. Data
-    // Check if fields are set to avoid notices
-    $name = sanitize_input($_POST['full_name'] ?? '');
-    $lvl  = (int) ($_POST['level'] ?? 0);
-    $dept_id = (int)($_POST['department'] ?? 0);
-    $cond = sanitize_input($_POST['medical_condition'] ?? 'None');
-    $mob  = sanitize_input($_POST['mobility_status'] ?? 'Normal Mobility');
-
-    $needs = isset($_POST['has_special_needs']) ? 1 : 0;
-    $sev = sanitize_input($_POST['severity_level'] ?? 'Low');
+    // 2. Academic & Medical Data
+    $name    = sanitize_input($_POST['full_name']        ?? '');
+    $lvl     = (int)($_POST['level']                    ?? 0);
+    $dept_id = (int)($_POST['department']               ?? 0);
+    $cond    = sanitize_input($_POST['medical_condition'] ?? 'None');
+    $mob     = sanitize_input($_POST['mobility_status']  ?? 'Normal Mobility');
+    $needs   = isset($_POST['has_special_needs']) ? 1 : 0;
+    $sev     = sanitize_input($_POST['severity_level']   ?? 'Low');
 
     $stmt = $conn->prepare("UPDATE student_profiles SET level=?, department_id=?, has_special_needs=? WHERE user_id=?");
     $stmt->bind_param("iiii", $lvl, $dept_id, $needs, $user_id);
-    
+
     if ($stmt->execute()) {
         $stmt_u = $conn->prepare("UPDATE users SET full_name=? WHERE user_id=?");
         $stmt_u->bind_param("si", $name, $user_id);
         $stmt_u->execute();
-        // Update Medical
-        $score = 10;
-        if ($cond !== 'None') $score += 50;
-        if ($mob !== 'Normal Mobility') $score += 30;
 
-            $check_stmt = $conn->prepare("SELECT record_id FROM medical_records WHERE student_id = ?");
-            $check_stmt->bind_param("i", $user_id);
-            $check_stmt->execute();
-            $check = $check_stmt->get_result();
-            if ($check->num_rows > 0) {
-                $m_stmt = $conn->prepare("UPDATE medical_records SET condition_category=?, mobility_status=?, severity_level=?, urgency_score=? WHERE student_id=?");
-                $m_stmt->bind_param("sssdi", $cond, $mob, $sev, $score, $user_id);
-            } else {
-                $m_stmt = $conn->prepare("INSERT INTO medical_records (student_id, condition_category, mobility_status, severity_level, urgency_score) VALUES (?, ?, ?, ?, ?)");
-                $m_stmt->bind_param("isssd", $user_id, $cond, $mob, $sev, $score);
-            }
-            $m_stmt->execute();
-        
-        $msg = "Profile updated successfully.";
+        // FIX: Compute urgency score using the same weighted logic as predict.py fallback
+        // (previously used a naive formula: 10 + 50 + 30 which ignored condition severity)
+        $score = calculateUrgencyScore($cond, $mob, $sev, $needs);
+
+        $check_stmt = $conn->prepare("SELECT record_id FROM medical_records WHERE student_id = ?");
+        $check_stmt->bind_param("i", $user_id);
+        $check_stmt->execute();
+        $check = $check_stmt->get_result();
+
+        if ($check->num_rows > 0) {
+            $m_stmt = $conn->prepare("UPDATE medical_records SET condition_category=?, mobility_status=?, severity_level=?, urgency_score=? WHERE student_id=?");
+            $m_stmt->bind_param("sssdi", $cond, $mob, $sev, $score, $user_id);
+        } else {
+            $m_stmt = $conn->prepare("INSERT INTO medical_records (student_id, condition_category, mobility_status, severity_level, urgency_score) VALUES (?, ?, ?, ?, ?)");
+            $m_stmt->bind_param("isssd", $user_id, $cond, $mob, $sev, $score);
+        }
+        $m_stmt->execute();
+
+        $msg      = "Profile updated successfully.";
         $msg_type = "success";
     } else {
-        $msg = "Error updating profile details.";
+        $msg      = "Error updating profile details.";
         $msg_type = "error";
     }
 }
@@ -109,7 +167,7 @@ require_once 'includes/header.php';
                 <h1 class="serif mb-1 text-3xl">Student Profile</h1>
                 <p class="text-muted">Manage your personal and medical information.</p>
             </div>
-            <a href="student_dashboard.php" class="btn btn-outline text-primary border-slate-300 hover:bg-slate-50">
+            <a href="student_dashboard.php" class="btn btn-outline text-primary ">
                 <i class="fa-solid fa-arrow-left mr-2"></i> Dashboard
             </a>
         </div>
@@ -117,7 +175,7 @@ require_once 'includes/header.php';
         <?php if($msg): ?>
             <div class="mb-6 p-4 rounded-lg flex items-center gap-3 <?php echo $msg_type == 'success' ? 'bg-green-50 text-green-700 border border-green-200' : 'bg-red-50 text-red-700 border border-red-200'; ?>">
                  <i class="fa-solid <?php echo $msg_type == 'success' ? 'fa-check-circle' : 'fa-circle-exclamation'; ?>"></i>
-                 <?php echo $msg; ?>
+                 <?php echo htmlspecialchars($msg); ?>
             </div>
         <?php endif; ?>
 

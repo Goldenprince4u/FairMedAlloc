@@ -65,7 +65,7 @@ document.addEventListener('DOMContentLoaded', () => {
 /* ---- Logic Functions ---- */
 
 function openAssignModal(id, name) {
-    document.getElementById('assignStudentId').value     = id;
+    document.getElementById('assignStudentId').value        = id;
     document.getElementById('assignStudentName').textContent = name;
     // Reset room select
     const roomSelect = document.getElementById('assignRoom');
@@ -73,11 +73,15 @@ function openAssignModal(id, name) {
     roomSelect.disabled  = true;
     const infoEl = document.getElementById('roomAvailInfo');
     if (infoEl) infoEl.style.display = 'none';
-    document.getElementById('assignModal').classList.remove('hidden');
+    // Show modal using flexbox (matches the inline display:none → flex pattern)
+    const modal = document.getElementById('assignModal');
+    modal.style.display = 'flex';
 }
 
 function closeAssignModal() {
-    document.getElementById('assignModal').classList.add('hidden');
+    document.getElementById('assignModal').style.display = 'none';
+    // Reset form state
+    document.getElementById('assignForm').reset();
 }
 
 /**

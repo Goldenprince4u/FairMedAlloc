@@ -50,6 +50,36 @@ def allocate(students_csv, rooms_csv, output_csv):
     # === 2. Hard Constraints ===
     # These are strict rules that must be satisfied for a valid allocation.
 
+    # ── FACULTY–HOSTEL ROUTING ──────────────────────────────────────────────
+    # Students from these 4 faculties must ONLY go to their gender-matching
+    # Engineering Hall.  All other students must NOT go to Engineering Halls.
+    TARGET_FACULTIES = {
+        'Faculty of Basic Medical Sciences',
+        'Faculty of Engineering',
+        'Faculty of Law',
+        'Faculty of Built Environment Studies',
+    }
+
+    for s_idx, s in enumerate(students):
+        s_faculty    = s.get('faculty', '')
+        is_target    = s_faculty in TARGET_FACULTIES
+
+        for r_idx, r in enumerate(rooms):
+            is_eng_hall = r.get('hostel_name', '') in ['Joshua Hall', 'Deborah Hall']
+            is_pmh_block_1 = (r.get('hostel_name', '') == 'Prophet Moses Hall' and r.get('block_name', '') == '1')
+            s_severity = s.get('severity', '')
+            
+            # High urgency students are exempt from the restriction for PMH Block 1
+            exempt_from_target_rule = (s_severity == 'High' and is_pmh_block_1)
+
+            if is_target and not is_eng_hall and not exempt_from_target_rule:
+                # Target-faculty students: forbidden from non-Engineering halls
+                model.Add(x[(s_idx, r_idx)] == 0)
+            elif not is_target and is_eng_hall:
+                # Non-target students: forbidden from Engineering halls
+                model.Add(x[(s_idx, r_idx)] == 0)
+    # ───────────────────────────────────────────────────────────────────────
+
     # 2a. Room Capacity Constraint
     # The total number of students assigned to a room must not exceed its capacity.
     for r_idx, r in enumerate(rooms):
@@ -61,65 +91,53 @@ def allocate(students_csv, rooms_csv, output_csv):
     for s_idx in range(len(students)):
         model.Add(sum(x[(s_idx, r_idx)] for r_idx in range(len(rooms))) <= 1)
 
-    # 2c. General & Mobility Match Constraints
+    # 2c. Gender & Mobility Match Constraints
     for s_idx, s in enumerate(students):
-        s_gender = s.get('gender')
+        s_gender  = s.get('gender')
         s_mobility = s.get('mobility', 'Normal')
-        
-        # Check if the student relies on mobility aids
-        needs_ground = False
-        if any(keyword in str(s_mobility) for keyword in ['Wheelchair', 'Crutches', 'Walker']):
-            needs_ground = True
 
         for r_idx, r in enumerate(rooms):
             r_gender = r.get('gender')
-            
+
             # Prevent assigning a student to a room meant for the opposite gender
             if s_gender != r_gender:
                 model.Add(x[(s_idx, r_idx)] == 0)
 
     # === 3. Objective Function ===
-    # Formulate weights to maximize the value of the allocations (e.g., prioritize high urgency, match faculties).
+    # Maximise value of allocations: urgency scores + faculty-room match bonuses.
     obj_terms = []
-    
-    TARGET_FACULTIES = [
-        'Faculty of Law', 
-        'Faculty of Engineering', 
-        'Faculty of Basic Medical Sciences', 
-        'Faculty of Built Environment Studies'
-    ]
-    
+
     for s_idx, s in enumerate(students):
-        score = float(s.get('score', 0)) # Predictive score out of 100
-        s_faculty = s.get('faculty', '')
-        s_severity = str(s.get('severity', '')).strip().lower()
-        
-        # Determine if this student requires urgent accommodation
+        score       = float(s.get('score', 0))   # Predictive score 0-100
+        s_faculty   = s.get('faculty', '')
         is_high_urgency = score >= 75.0
-        
+
         for r_idx, r in enumerate(rooms):
             r_faculty_target = r.get('faculty_target', 'General')
-            r_is_proximal = bool(int(r.get('is_proximal', 0)))
-            r_hostel_name = r.get('hostel_name', '')
-            
-            # Base weight for a successful allocation
-            weight = 1000000 
-            # Sub-weight based on the student's predictive score (higher score = slightly more weight)
-            weight += int(score * 100) 
-            
-            # Bonus weight: High-urgency students should ideally be placed in proximal rooms
-            if is_high_urgency and r_is_proximal:
-                weight += 50000
-                
-            # Bonus weight: Prefer assigning students to rooms designated for their faculty
-            if s_faculty == r_faculty_target:
-                weight += 10000
+            r_is_proximal    = bool(int(r.get('is_proximal', 0)))
 
-            # Massive Bonus weight: Low severity + Target Faculty + Engineering Hall
-            is_eng_hall = 'Engineering Hall' in r_hostel_name
-            if s_severity == 'low' and s_faculty in TARGET_FACULTIES and is_eng_hall:
-                weight += 500000
+            # Base weight for any successful allocation
+            weight = 1_000_000
+            # Fractional bonus for urgency score (higher priority = slightly more weight)
+            weight += int(score * 100)
+
+            # High-urgency students prefer proximal rooms
+            if is_high_urgency and r_is_proximal:
+                weight += 50_000
+
+            # Prefer rooms explicitly designated for the student's faculty
+            if s_faculty == r_faculty_target:
+                weight += 10_000
                 
+            r_hostel_name = r.get('hostel_name', '')
+            r_block_name = r.get('block_name', '')
+            is_pmh_block_1 = (r_hostel_name == 'Prophet Moses Hall' and r_block_name == '1')
+            s_severity = s.get('severity', '')
+            
+            # Huge bonus to assign High urgency to Prophet Moses Hall Block 1
+            if s_severity == 'High' and is_pmh_block_1:
+                weight += 5_000_000
+
             obj_terms.append(x[(s_idx, r_idx)] * weight)
 
     # Instruct the solver to maximize the overall score

@@ -35,7 +35,7 @@ if (!$data) {
     http_response_code(404);
     echo "<!DOCTYPE html><html><head><title>No Allocation</title></head><body style='font-family:sans-serif;text-align:center;padding:4rem;'>
           <h2>No Allocation Found</h2><p>Your hostel allocation has not been processed yet. Please contact the admin.</p>
-          <a href='student_dashboard.php' style='color:#002147;'>Return to Dashboard</a></body></html>";
+          <a href='student_dashboard.php' style='color:var(--c-primary);'>Return to Dashboard</a></body></html>";
     exit();
 }
 ?>

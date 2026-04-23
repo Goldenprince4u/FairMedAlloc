@@ -2,5 +2,22 @@
 *.log
 .DS_Store
 Thumbs.db
+
+# Uploads directory (keep the .gitkeep placeholder, ignore all actual files)
 /uploads/*
 !/uploads/.gitkeep
+
+# Environment file — contains DB credentials, must NEVER be committed
+.env
+
+# Password reset token log — contains live tokens, must NEVER be committed
+email_log.txt
+
+# Python bytecode cache
+__pycache__/
+*.pyc
+*.pyo
+
+# Trained ML model (large binary, regenerated from train_model.py)
+ml_models/urgency_model.json
+ml_models/label_encoders.json

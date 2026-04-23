@@ -47,8 +47,6 @@ DB_NAME=fairmedalloc
 ### 3. Create the Database
 Open **phpMyAdmin** → create a database named `fairmedalloc` → import `setup.sql`.
 
-Or visit `http://localhost/FairMedAlloc/install.php` if available.
-
 ### 4. First Login (Admin)
 
 | Field | Value |
@@ -86,7 +84,7 @@ FairMedAlloc/
 │
 ├── api/
 │   ├── admin_api.php        # Admin AJAX endpoints (rooms, manual assign, analytics, hostel stats)
-│   ├── pay_simulation.php   # Fee payment simulation + instant allocation trigger
+│   ├── pay_simulation.php   # Fee payment simulation (allocates on next admin cycle)
 │   ├── update_score.php     # Internal webhook for Python ML score updates (loopback-only)
 │   └── get_departments.php  # AJAX: cascading faculty → department dropdown
 │
@@ -130,7 +128,7 @@ Column order for `upload_data.php`:
 | 5 | Department | `Biochemistry` |
 | 6 | Gender | `Female` |
 | 7 | Medical Condition | `Asthma` (or `None`) |
-| 8 | Severity (1–10) | `6` *(optional)* |
+| 8 | Severity | `Low`, `Medium`, or `High` *(optional, defaults to Low)* |
 | 9 | Mobility Status | `Normal Mobility` *(optional)* |
 
 > Default student password = lowercase matric number (e.g. `run/cmp/22/001`). Students should change this on first login.

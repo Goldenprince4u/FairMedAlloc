@@ -8,13 +8,14 @@
  */
 session_start();
 require_once '../db_config.php';
+require_once '../includes/security_helper.php';
 
 // All responses from this file will be JSON-formatted
 header('Content-Type: application/json');
 
 // --- 1. Security Check ---
 // Ensure the request is coming from an authenticated administrator
-if (($_SESSION['role'] ?? '') !== 'admin') {
+if (!isset($_SESSION['logged_in']) || ($_SESSION['role'] ?? '') !== 'admin') {
     http_response_code(403);
     echo json_encode(['status' => 'error', 'message' => 'Unauthorized']);
     exit();
@@ -80,6 +81,9 @@ function handleManualAssign($conn) {
         echo json_encode(['status' => 'error', 'message' => 'POST required']);
         return;
     }
+
+    // Validate CSRF token to prevent cross-site request forgery
+    check_csrf();
 
     $student_id = (int) $_POST['student_id'];
     $room_id    = (int) $_POST['room_id'];

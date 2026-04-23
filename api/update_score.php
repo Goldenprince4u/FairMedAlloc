@@ -1,10 +1,15 @@
-<?php
 /**
  * FairMedAlloc - ML Score Update API
  * ==================================
- * Secondary Webhook Endpoint: Receives JSON data updates directly from the Background Python ML process.
- * Used internally for syncing scores across services.
- * Payload example: { "matric": "RUN/2026/001", "score": 85.5 }
+ * INTERNAL WEBHOOK (loopback only — restricted to 127.0.0.1).
+ * Receives JSON { "matric": "RUN/2026/001", "score": 85.5 } and updates
+ * urgency_score in medical_records.
+ *
+ * NOTE: As of current architecture, the PHP allocation engine calls Python via
+ * shell_exec() and reads results from stdout — it does NOT POST to this endpoint.
+ * This endpoint exists as forward-compatible scaffolding for a future architecture
+ * where the Python process runs as a long-lived service and pushes scores via HTTP.
+ * It is safe to keep but is currently NOT called by any part of the live system.
  */
 
 header("Content-Type: application/json");
@@ -74,7 +79,10 @@ if ($stmt->execute()) {
         echo json_encode(["status" => "warning", "message" => "Matric not found or score unchanged"]);
     }
 } else {
+    // FIX: Do not expose $conn->error (MySQL internals) in the response.
+    // Log the error server-side only.
+    error_log("[update_score] DB error for matric={$matric}: " . $conn->error);
     http_response_code(500);
-    echo json_encode(["status" => "error", "message" => "Database error: " . $conn->error]);
+    echo json_encode(["status" => "error", "message" => "Database update failed."]);
 }
 ?>

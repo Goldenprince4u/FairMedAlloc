@@ -175,3 +175,28 @@ body {
         display: none;
     }
 }
+
+/*
+ * Force light-mode for the print slip page:
+ * This document must always look professional on screen & paper,
+ * regardless of the user's dark mode preference.
+ */
+[data-theme="dark"] body {
+    background: #525659;
+    color: #000;
+}
+
+[data-theme="dark"] .slip-container { background: white; color: #000; }
+[data-theme="dark"] .uni-name       { color: #1e3a8a; }
+[data-theme="dark"] .sub-head       { color: #555; }
+[data-theme="dark"] .alloc-box      { background: #fff; border-color: #1e3a8a; }
+[data-theme="dark"] .alloc-header   { background: #1e3a8a; color: white; }
+[data-theme="dark"] .alloc-hostel   { color: #333; }
+[data-theme="dark"] .alloc-item     { background: #f8fafc; }
+[data-theme="dark"] .alloc-label    { color: #64748b; }
+[data-theme="dark"] .alloc-value    { color: #1e3a8a; }
+[data-theme="dark"] .label          { color: #555; }
+[data-theme="dark"] .value          { color: #000; }
+[data-theme="dark"] .footer         { color: #999; border-top-color: #eee; }
+[data-theme="dark"] .row            { border-bottom-color: #eee; }
+[data-theme="dark"] .stamp          { color: #c2410c; border-color: #c2410c; }

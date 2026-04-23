@@ -16,8 +16,9 @@ session_start();
 require_once 'db_config.php';
 require_once 'includes/security_helper.php';
 
-$message = '';
+$message  = '';
 $msg_type = '';
+$msg_html = false; // True only when $message contains intentional safe HTML (e.g., login link)
 $token = $_GET['token'] ?? '';
 $valid_token = false;
 
@@ -74,8 +75,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $valid_token) {
                 $stmt_del->bind_param("i", $user_id);
                 $stmt_del->execute();
 
-                // NOTE: $message contains a hardcoded HTML link, not user input, so it is safe here.
+                // The link below uses a hardcoded href (not user input), so it is safe to echo as HTML.
+                // $msg_html = true signals the template to skip htmlspecialchars() for this message only.
                 $message  = "Password reset successfully! <a href='login.php' style='font-weight:700; text-decoration:underline;'>Login Now</a>";
+                $msg_html = true;
                 $msg_type = "success";
                 $valid_token = false; // Hide the form after success
             } else {
@@ -101,13 +104,13 @@ require_once 'includes/header.php';
     </div>
 
     <div class="auth-right">
-        <div class="auth-box glass-card" style="background: white; border: none; box-shadow: none;">
+        <div class="auth-box glass-card">
             
             <h2 class="mb-2" style="font-size: 2rem; color: var(--c-primary);">Reset Password</h2>
             
             <?php if($message): ?>
                 <div class="alert alert-<?php echo ($msg_type == 'error' ? 'danger' : 'success'); ?> mb-4 text-center">
-                    <?php echo $message; ?>
+                    <?php echo $msg_html ? $message : htmlspecialchars($message); ?>
                 </div>
             <?php endif; ?>
 

@@ -38,7 +38,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $session      = sanitize_input($_POST['academic_session'] ?? '');
     $threshold    = (int)($_POST['threshold'] ?? 0);
     $gf_threshold = (int)($_POST['gf_threshold'] ?? 85);
-    $alloc_status = sanitize_input($_POST['alloc_status'] ?? 'open');
+    // FIX: Whitelist-validate alloc_status — previously any string could be stored
+    $raw_status   = sanitize_input($_POST['alloc_status'] ?? 'open');
+    $alloc_status = in_array($raw_status, ['open', 'locked']) ? $raw_status : 'open';
 
     // --- Server-side Validation ---
     // Threshold values must be percentages (0–100).
