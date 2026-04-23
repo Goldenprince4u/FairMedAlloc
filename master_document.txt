@@ -2487,6 +2487,34 @@ INSERT INTO rooms (hostel_id, room_number, capacity, is_corner, bed_config) VALU
 (75, '27', 4, 0, 'LB,UB,LB,UB'),
 (75, '28', 4, 0, 'LB,UB,LB,UB');
 
- 
- - -   N E W   R U L E :   P r o p h e t   M o s e s   H a l l   B l o c k   1   i s   s t r i c t l y   p r i o r i t i z e d   f o r   ' H i g h '   u r g e n c y   s c o r e   s t u d e n t s .  
- 
+-- ============================================================
+-- CHANGE LOG (2026-04-24)
+-- ============================================================
+-- 1. HOSTEL RENAMES:
+--    Prophet Moses Engineering Hall (blocks 28-33) -> Joshua Hall
+--    Queen Esther Engineering Hall  (blocks 69-73) -> Deborah Hall
+--    Updated in: hostels table (live DB), setup.sql, master_document.txt.
+--
+-- 2. ALLOCATION RULE - PMH Block 1 (High Urgency Priority):
+--    Prophet Moses Hall Block 1 (hostel_id=1) is strictly prioritized
+--    for students with severity_level = High. The OR-Tools objective
+--    function assigns a +5,000,000 weight bonus for High-severity students
+--    placed in PMH Block 1. Faculty-routing hard constraints are relaxed
+--    for this block so that any High-severity student (regardless of faculty)
+--    can be placed there. Remaining capacity is filled by general allocation.
+--
+-- 3. NOTIFICATION FIX (student_dashboard.php):
+--    Changed from getUnread() to getRecent(5) so students always see their
+--    last 5 notices instead of a blank panel after first page visit.
+--    Added getRecent() method to NotificationManager.php.
+--
+-- 4. BUG FIXES (codebase audit 2026-04-24):
+--    - signup.php: sanitize_input() incorrectly applied to condition/severity
+--      before DB insert, corrupting ML scoring lookups. Fixed: use trim() only.
+--    - upload_data.php: same root-cause fix applied to CSV import path.
+--    - api/update_score.php: missing opening PHP tag. File was served as raw
+--      text instead of executed. Fixed.
+--    - signup.php: broken HTML attribute (dangling text-muted token). Fixed.
+--    - login.php: misplaced closing body/html tags inside auth-container. Fixed.
+--    - forgot_password.php: message echo was not XSS-safe in error case. Fixed.
+-- ============================================================
