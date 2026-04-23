@@ -81,9 +81,9 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
             // --- 3. Process Medical Record (conditional) ---
             // If the student reports a medical condition, store it as a pending record.
             // This data is later used by the XGBoost ML model to calculate urgency scores.
-            $condition = sanitize_input($_POST['medical_condition']);
+            $condition = trim($_POST['medical_condition']); // Raw, validated against ENUM — do NOT HTML-encode before DB insert
             if ($condition && $condition !== 'None') {
-                $severity = sanitize_input($_POST['severity'] ?? 'Low');
+                $severity = trim($_POST['severity'] ?? 'Low'); // Raw, validated against ENUM — do NOT HTML-encode before DB insert
                 $details  = "$condition (Self-Reported)";
 
                 // Compute baseline urgency score using the same weights as predict.py fallback.
@@ -281,7 +281,7 @@ require_once 'includes/header.php';
                     Already have an account? <a href="login.php" class="text-primary fw-700">Sign In</a>
                 </div>
                 <!-- Admin specific note -->
-                <div class="text-center text-sm mt-6 pt-4 text-muted" style="border-top: 1px solid var(--c-border);" text-muted">
+                <div class="text-center text-sm mt-6 pt-4 text-muted" style="border-top: 1px solid var(--c-border);">
                     Staff Member? <a href="admin_signup.php" class="text-primary fw-700">Admin Registration</a>
                 </div>
             </form>

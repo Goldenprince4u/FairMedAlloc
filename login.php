@@ -183,6 +183,6 @@ require_once 'includes/header.php';
             </div>
         </div>
     </div>
-    </body>
-
-    </html>
+    </div>
+</body>
+</html>

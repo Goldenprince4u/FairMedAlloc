@@ -87,7 +87,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_FILES['csv_file'])) {
             $level     = (int)trim($row[2]);
             $dept      = trim($row[4]);
             $gender    = trim($row[5]);
-            $condition = trim($row[6]);
+            $condition = trim($row[6]); // Raw ENUM value — do NOT HTML-encode
 
             if (empty($condition)) continue;
 
@@ -125,8 +125,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_FILES['csv_file'])) {
                     $pending_medical[] = [
                         'id'             => $uid,
                         'condition'      => $condition,
-                        'severity'       => !empty($row[7]) ? trim($row[7]) : 'Low',
-                        'mobility'       => !empty($row[8]) ? trim($row[8]) : 'Normal Mobility',
+                        'severity'       => !empty($row[7]) ? trim($row[7]) : 'Low',  // Raw ENUM value
+                        'mobility'       => !empty($row[8]) ? trim($row[8]) : 'Normal Mobility', // Raw ENUM value
                         'academic_level' => $level,
                     ];
                 }

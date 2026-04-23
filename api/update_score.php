@@ -1,3 +1,4 @@
+<?php
 /**
  * FairMedAlloc - ML Score Update API
  * ==================================

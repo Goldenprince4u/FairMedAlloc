@@ -13,7 +13,6 @@ if (!isset($_SESSION['logged_in']) || ($_SESSION['role'] ?? '') !== 'admin') {
     exit(); 
 }
 
-// Aggregation Stats
 // Aggregation Stats (Optimized Single Query)
 $stats_query = "
     SELECT 

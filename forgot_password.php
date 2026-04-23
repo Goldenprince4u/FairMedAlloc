@@ -109,8 +109,13 @@ require_once 'includes/header.php';
             <p class="text-muted mb-6">Enter your matriculation number to reset your access key.</p>
 
             <?php if($message): ?>
-                <div class="alert alert-<?php echo $msg_type; ?> mb-4 text-center">
-                    <?php echo $message; ?>
+                <div class="alert alert-<?php echo htmlspecialchars($msg_type); ?> mb-4 text-center">
+                    <?php
+                    // The success message intentionally contains a safe HTML anchor link built
+                    // from server-controlled variables (not raw user input), so it is safe to echo directly.
+                    // All other messages use htmlspecialchars() for XSS safety.
+                    echo ($msg_type === 'success') ? $message : htmlspecialchars($message);
+                    ?>
                 </div>
             <?php endif; ?>
 
