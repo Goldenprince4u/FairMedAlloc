@@ -14,8 +14,8 @@
  *   - Generic success message even when user not found (prevents enumeration).
  *   - Token expiry: 1 hour.
  *
- * NOTE (Production TODO): Replace the placeholder audit log with a real
- *   email delivery library (e.g. PHPMailer/SwiftMailer).
+ * NOTE (Production TODO): Replace the file_put_contents() log and direct link
+ *   display with a real email delivery library (e.g. PHPMailer/SwiftMailer).
  */
 session_start();
 require_once 'db_config.php';
@@ -72,15 +72,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         
         // TODO (Production): Replace this with a real email delivery call:
         // mailer->send($user['email'], 'Reset your FairMedAlloc password', $reset_link);
-        // Never echo or write the raw token to a web-accessible location.
-        error_log("[FairMedAlloc] Password reset token created for user_id={$user_id}.");
+        $log_entry = "[" . date('Y-m-d H:i:s') . "] Reset for {$username}: {$reset_link}" . PHP_EOL;
+        file_put_contents('email_log.txt', $log_entry, FILE_APPEND | LOCK_EX);
 
-        $message  = "If an account exists with that ID, reset instructions have been sent to the registered email address. If email delivery is not configured yet, contact the system administrator.";
-        $msg_type = 'info';
+        // NOTE: The link below is intentional for dev/demo. In production, remove this
+        // and only send the link via email. It is safe to echo here because $reset_link
+        // is built from server variables and urlencode(), not raw user input.
+        $message  = "A reset link has been sent to your registered email (Simulated).<br><strong><a href='" . $reset_link . "'>Click here to Reset Password</a></strong>";
+        $msg_type = 'success';
     } else {
         // --- Enumeration Prevention ---
         // Return the same message whether the user exists or not.
-        $message  = "If an account exists with that ID, reset instructions have been sent to the registered email address. If email delivery is not configured yet, contact the system administrator.";
+        $message  = "If an account exists with that ID, a reset link has been sent.";
         $msg_type = 'info';
     }
 }
@@ -107,7 +110,12 @@ require_once 'includes/header.php';
 
             <?php if($message): ?>
                 <div class="alert alert-<?php echo htmlspecialchars($msg_type); ?> mb-4 text-center">
-                    <?php echo htmlspecialchars($message); ?>
+                    <?php
+                    // The success message intentionally contains a safe HTML anchor link built
+                    // from server-controlled variables (not raw user input), so it is safe to echo directly.
+                    // All other messages use htmlspecialchars() for XSS safety.
+                    echo ($msg_type === 'success') ? $message : htmlspecialchars($message);
+                    ?>
                 </div>
             <?php endif; ?>
 

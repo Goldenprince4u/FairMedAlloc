@@ -1,4 +1,4 @@
-### setup.sql
+### Database Architecture (sql/ directory)
 
 -- ============================================================
 -- Database: fairmedalloc

@@ -62,9 +62,6 @@ require_once 'includes/header.php';
                         <i class="fa-solid fa-lock"></i> Session Locked
                     </button>
                 <?php else: ?>
-                    <form id="run-allocation-form" class="hidden">
-                        <?php csrf_field(); ?>
-                    </form>
                     <button class="btn btn-primary w-full" id="start-alloc-btn"
                             onclick="startAllocation()"
                             style="margin-top:1.5rem;padding:0.875rem;">
@@ -91,12 +88,6 @@ require_once 'includes/header.php';
 function startAllocation() {
     const logEl = document.getElementById('console');
     const btn   = document.getElementById('start-alloc-btn');
-    const csrf  = document.querySelector('#run-allocation-form input[name="csrf_token"]');
-
-    if (!csrf) {
-        logEl.innerHTML = '<div style="color:var(--c-danger);">Security token missing. Reload the page and try again.</div>';
-        return;
-    }
 
     // Disable button and show starting state
     if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Running...'; }
@@ -106,11 +97,7 @@ function startAllocation() {
     logEl.innerHTML += '<div style="margin-bottom:0.5rem;">&#9654; Running OR-Tools CP-SAT solver (allocate.py)...</div>';
     logEl.innerHTML += '<div style="margin-bottom:0.5rem;opacity:0.6;font-style:italic;">Please wait — this may take up to 60 seconds...</div>';
 
-    fetch('api/admin_api.php?action=run_algorithm', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-        body: new URLSearchParams({ csrf_token: csrf.value })
-    })
+    fetch('api/admin_api.php?action=run_algorithm')
         .then(response => response.json())
         .then(data => {
             if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fa-solid fa-play"></i> Start Allocation Engine'; }

@@ -7,8 +7,7 @@
  * Expected CSV column order:
  *   [0] Matric No  [1] Full Name  [2] Level  [3] Faculty
  *   [4] Department [5] Gender     [6] Medical Condition
- *   [7] Severity (optional)       [8] Mobility (optional)
- *   [9] Paid Status (optional, defaults to 0)
+ *   [7] Severity (optional, 1-5)  [8] Mobility (optional)
  *
  * Security measures applied:
  *   - Session-based admin auth guard.
@@ -80,8 +79,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_FILES['csv_file'])) {
         $pending_medical = []; // ['id'=>uid, 'condition'=>..., 'severity'=>..., 'mobility'=>..., 'academic_level'=>...]
 
         while (($row = fgetcsv($file)) !== false) {
-            // Accept legacy shorter rows and default omitted trailing optional columns.
-            if (count($row) < 7) continue;
+            // Skip rows that don't have the minimum 10 required columns (with Paid Status at the end)
+            if (count($row) < 10) continue;
 
             $matric    = trim($row[0]);
             $name      = trim($row[1]);
@@ -89,7 +88,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_FILES['csv_file'])) {
             $dept      = trim($row[4]);
             $gender    = trim($row[5]);
             $condition = trim($row[6]); // Raw ENUM value — do NOT HTML-encode
-            $is_paid   = isset($row[9]) && (int)trim($row[9]) === 1 ? 1 : 0;
+            $is_paid   = (int)trim($row[9]) === 1 ? 1 : 0;
 
             if (empty($condition)) continue;
 
@@ -259,7 +258,7 @@ require_once 'includes/header.php';
                         ['G', 'Condition',    'Sickle Cell / None', 'required'],
                         ['H', 'Severity',     'Low / Medium / High','optional'],
                         ['I', 'Mobility',     'Normal / Wheelchair','optional'],
-                        ['J', 'Paid Status',  '1 or 0',             'optional'],
+                        ['J', 'Paid Status',  '1 or 0',             'required'],
                     ];
                     foreach ($cols as [$col, $name, $example, $req]): ?>
                         <div style="display:flex;align-items:center;gap:0.625rem;padding:0.5rem 0;border-bottom:1px solid var(--c-border);">

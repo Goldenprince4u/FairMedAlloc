@@ -47,11 +47,13 @@ DB_NAME=fairmedalloc
 ### 3. Create the Database
 Open **phpMyAdmin** → create a database named `fairmedalloc` → import `setup.sql`.
 
-### 4. Create the First Admin
+### 4. First Login (Admin)
 
-1. Visit `http://localhost/FairMedAlloc/create_admin.php` from the same machine hosting the app.
-2. Create the initial administrator account.
-3. Sign in at `http://localhost/FairMedAlloc/admin_login.php`.
+| Field | Value |
+|---|---|
+| **URL** | `http://localhost/FairMedAlloc/admin_login.php` |
+| **Username** | `admin` |
+| **Password** | `Admin@2026` |
 
 > ⚠️ **Change your password immediately** after first login via Admin Profile → Security Settings.
 
@@ -128,7 +130,6 @@ Column order for `upload_data.php`:
 | 7 | Medical Condition | `Asthma` (or `None`) |
 | 8 | Severity | `Low`, `Medium`, or `High` *(optional, defaults to Low)* |
 | 9 | Mobility Status | `Normal Mobility` *(optional)* |
-| 10 | Paid Status | `1` or `0` *(optional, defaults to `0`)* |
 
 > Default student password = lowercase matric number (e.g. `run/cmp/22/001`). Students should change this on first login.
 
@@ -164,7 +165,7 @@ After training, `urgency_model.json` is auto-generated. The PHP engine calls `pr
 |---|---|
 | `Database Connection Failed` | Ensure XAMPP MySQL module is running (green) |
 | `Table 'X' doesn't exist` | Re-import `setup.sql` via phpMyAdmin |
-| No admin account exists yet | Visit `http://localhost/FairMedAlloc/create_admin.php` locally to create the first admin |
+| Login fails after import | Visit `http://localhost/FairMedAlloc/create_admin.php` to reset admin password |
 | `shell_exec` disabled | ML scoring falls back to rule-based; enable in `php.ini` if needed |
 | Allocation not running | Check `settings.php` — ensure "Allocation Status" is set to **Open** |
 
