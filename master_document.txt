@@ -3,7 +3,7 @@
 -- ============================================================
 -- Database: fairmedalloc
 -- Project : Machine Learning-Driven Hostel Allocation System
--- Updated : 2026-04-07 (Flat INSERTs, no stored procedures)
+-- Updated : 2026-04-25 (Added is_paid boolean to student_profiles, required in CSV)
 -- ============================================================
 
 CREATE DATABASE IF NOT EXISTS fairmedalloc;
@@ -82,6 +82,7 @@ CREATE TABLE student_profiles (
     department_id INT NOT NULL,
     allocation_status ENUM('Unallocated','Queued','Allocated') DEFAULT 'Unallocated',
     has_special_needs BOOLEAN DEFAULT FALSE,
+    is_paid BOOLEAN DEFAULT FALSE,
     FOREIGN KEY (user_id) REFERENCES users(user_id) ON DELETE CASCADE,
     FOREIGN KEY (department_id) REFERENCES departments(department_id) ON DELETE RESTRICT
 );

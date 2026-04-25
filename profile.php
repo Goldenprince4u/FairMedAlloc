@@ -60,11 +60,38 @@ function calculateUrgencyScore(string $condition, string $mobility, string $seve
     return min((float)$score, 100.0);
 }
 
-// Handle Update
-if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+// ── ACTION: Remove profile photo ─────────────────────────────────────────────
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && !empty($_POST['remove_photo'])) {
     check_csrf();
 
-    // 1. Profile Pic — with size and MIME-type validation
+    $del_stmt = $conn->prepare("SELECT profile_pic FROM users WHERE user_id = ?");
+    $del_stmt->bind_param("i", $user_id);
+    $del_stmt->execute();
+    $current_pic = $del_stmt->get_result()->fetch_assoc()['profile_pic'] ?? '';
+
+    // Delete file from disk (basename prevents path traversal)
+    if ($current_pic && $current_pic !== 'default.png') {
+        $file_path = __DIR__ . '/uploads/profile_pics/' . basename($current_pic);
+        if (file_exists($file_path)) {
+            unlink($file_path);
+        }
+    }
+
+    // Clear in database and session
+    $clr = $conn->prepare("UPDATE users SET profile_pic = NULL WHERE user_id = ?");
+    $clr->bind_param("i", $user_id);
+    $clr->execute();
+    $_SESSION['profile_pic'] = null;
+
+    $msg      = "Profile photo removed successfully.";
+    $msg_type = "success";
+}
+
+// ── ACTION: Full profile update ──────────────────────────────────────────────
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && empty($_POST['remove_photo'])) {
+    check_csrf();
+
+    // Upload new profile photo
     if (isset($_FILES['profile_pic']) && $_FILES['profile_pic']['error'] === 0) {
         $allowed_exts  = ['jpg', 'jpeg', 'png', 'gif'];
         $allowed_mimes = ['image/jpeg', 'image/png', 'image/gif'];
@@ -98,14 +125,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
     }
 
-    // 2. Academic & Medical Data
-    $name    = sanitize_input($_POST['full_name']        ?? '');
-    $lvl     = (int)($_POST['level']                    ?? 0);
-    $dept_id = (int)($_POST['department']               ?? 0);
+    // Academic & Medical Data
+    $name    = sanitize_input($_POST['full_name']         ?? '');
+    $lvl     = (int)($_POST['level']                     ?? 0);
+    $dept_id = (int)($_POST['department']                ?? 0);
     $cond    = sanitize_input($_POST['medical_condition'] ?? 'None');
-    $mob     = sanitize_input($_POST['mobility_status']  ?? 'Normal Mobility');
+    $mob     = sanitize_input($_POST['mobility_status']   ?? 'Normal Mobility');
     $needs   = isset($_POST['has_special_needs']) ? 1 : 0;
-    $sev     = sanitize_input($_POST['severity_level']   ?? 'Low');
+    $sev     = sanitize_input($_POST['severity_level']    ?? 'Low');
 
     $stmt = $conn->prepare("UPDATE student_profiles SET level=?, department_id=?, has_special_needs=? WHERE user_id=?");
     $stmt->bind_param("iiii", $lvl, $dept_id, $needs, $user_id);
@@ -115,8 +142,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $stmt_u->bind_param("si", $name, $user_id);
         $stmt_u->execute();
 
-        // FIX: Compute urgency score using the same weighted logic as predict.py fallback
-        // (previously used a naive formula: 10 + 50 + 30 which ignored condition severity)
+        // Compute urgency score using the same weighted logic as predict.py fallback
         $score = calculateUrgencyScore($cond, $mob, $sev, $needs);
 
         $check_stmt = $conn->prepare("SELECT record_id FROM medical_records WHERE student_id = ?");
@@ -162,72 +188,121 @@ require_once 'includes/header.php';
     <?php require_once 'includes/nav.php'; ?>
 
     <main class="main-content">
-        <div class="flex justify-between items-center mb-8">
-            <div>
-                <h1 class="serif mb-1 text-3xl">Student Profile</h1>
+        <!-- Page Header -->
+        <div class="page-header">
+            <div class="page-header-info">
+                <h1>My Profile</h1>
                 <p class="text-muted">Manage your personal and medical information.</p>
             </div>
-            <a href="student_dashboard.php" class="btn btn-outline text-primary ">
-                <i class="fa-solid fa-arrow-left mr-2"></i> Dashboard
+            <a href="student_dashboard.php" class="btn btn-outline" id="profile-back-btn">
+                <i class="fa-solid fa-arrow-left"></i> Dashboard
             </a>
         </div>
 
         <?php if($msg): ?>
-            <div class="mb-6 p-4 rounded-lg flex items-center gap-3 <?php echo $msg_type == 'success' ? 'bg-green-50 text-green-700 border border-green-200' : 'bg-red-50 text-red-700 border border-red-200'; ?>">
+            <div class="alert <?php echo $msg_type == 'success' ? 'alert-success' : 'alert-danger'; ?> mb-6">
                  <i class="fa-solid <?php echo $msg_type == 'success' ? 'fa-check-circle' : 'fa-circle-exclamation'; ?>"></i>
                  <?php echo htmlspecialchars($msg); ?>
             </div>
         <?php endif; ?>
 
-        <div class="glass-card max-w-4xl mx-auto p-0 mb-8">
-             
-             <!-- Header Banner -->
-             <div class="p-8 relative overflow-hidden bg-gradient-brand text-white rounded-t-lg">
-                  
-                  <div class="relative z-10 flex items-center gap-6">
-                       <div class="relative group">
-                           <img src="uploads/profile_pics/<?php echo $student['profile_pic'] ?: 'default.png'; ?>" 
-                                class="avatar w-[100px] h-[100px] border-4 border-white">
-                           <label class="absolute bottom-0 right-0 bg-white text-primary p-2 rounded-full cursor-pointer shadow-md hover:bg-gray-100 transition-colors w-8 h-8 flex items-center justify-center">
-                               <i class="fa-solid fa-camera"></i>
-                               <input type="file" name="profile_pic" class="hidden" onchange="this.form.submit()" form="profileForm">
-                           </label>
-                       </div>
-                       <div>
-                           <h2 class="serif text-3xl text-white mb-2"><?php echo htmlspecialchars($student['full_name']); ?></h2>
-                           <div class="opacity-90 text-sm mt-1 flex gap-4">
-                               <span><i class="fa-solid fa-id-card mr-1"></i> <?php echo htmlspecialchars($student['matric_no']); ?></span>
-                               <span><i class="fa-solid fa-layer-group mr-1"></i> <?php echo htmlspecialchars($student['level']); ?> Lvl</span>
-                           </div>
-                       </div>
+        <div class="card p-0 mb-8" style="max-width:900px;">
+
+             <!-- Profile Banner: Solid Navy -->
+             <div class="profile-banner">
+                  <div class="relative" style="display:inline-block;">
+                      <img src="uploads/profile_pics/<?php echo htmlspecialchars($student['profile_pic'] ?: 'default.png'); ?>"
+                           class="profile-banner-avatar"
+                           id="profile-pic-preview"
+                           alt="Profile photo"
+                           onerror="this.src='data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 viewBox=%270 0 80 80%27%3E%3Ccircle cx=%2740%27 cy=%2740%27 r=%2740%27 fill=%27rgba(255,255,255,0.15)%27/%3E%3Ccircle cx=%2740%27 cy=%2732%27 r=%2714%27 fill=%27rgba(255,255,255,0.5)%27/%3E%3Cellipse cx=%2740%27 cy=%2768%27 rx=%2722%27 ry=%2716%27 fill=%27rgba(255,255,255,0.5)%27/%3E%3C/svg%3E'">
+
+                      <!-- Camera trigger button -->
+                      <button type="button" id="photo-menu-trigger"
+                              style="position:absolute;bottom:0;right:0;width:28px;height:28px;background:#fff;border-radius:50%;display:flex;align-items:center;justify-content:center;cursor:pointer;border:2px solid rgba(255,255,255,0.5);padding:0;box-shadow:0 1px 4px rgba(0,0,0,0.25);"
+                              title="Change photo"
+                              onclick="togglePhotoMenu(event)">
+                          <i class="fa-solid fa-camera" style="color:var(--c-primary);font-size:0.65rem;"></i>
+                      </button>
+
+                      <!-- Photo action dropdown -->
+                      <div id="photo-action-menu"
+                           style="display:none;position:absolute;bottom:36px;right:-8px;background:#fff;border:1px solid var(--c-border);border-radius:6px;box-shadow:0 4px 16px rgba(0,0,0,0.18);min-width:150px;z-index:50;overflow:hidden;">
+                          <!-- Change photo -->
+                          <label for="profile-pic-upload"
+                                 style="display:flex;align-items:center;gap:0.625rem;padding:0.625rem 0.875rem;font-size:0.82rem;font-weight:600;color:var(--c-text-head);cursor:pointer;transition:background 0.15s;"
+                                 onmouseover="this.style.background='var(--c-bg-surface-2)'"
+                                 onmouseout="this.style.background=''"
+                                 onclick="document.getElementById('photo-action-menu').style.display='none'">
+                              <i class="fa-solid fa-camera" style="color:var(--c-primary);width:14px;"></i>
+                              Change Photo
+                              <input type="file" id="profile-pic-upload" name="profile_pic"
+                                     class="hidden" accept="image/jpeg,image/png,image/gif"
+                                     onchange="this.form.submit()" form="profileForm">
+                          </label>
+
+                          <?php if (!empty($student['profile_pic']) && $student['profile_pic'] !== 'default.png'): ?>
+                          <!-- Divider -->
+                          <div style="height:1px;background:var(--c-border);margin:0;"></div>
+                          <!-- Remove photo -->
+                          <button type="button"
+                                  style="display:flex;align-items:center;gap:0.625rem;width:100%;padding:0.625rem 0.875rem;font-size:0.82rem;font-weight:600;color:var(--c-danger);background:none;border:none;cursor:pointer;font-family:inherit;transition:background 0.15s;"
+                                  onmouseover="this.style.background='rgba(220,38,38,0.06)'"
+                                  onmouseout="this.style.background=''"
+                                  onclick="if(confirm('Remove your profile photo? This cannot be undone.')) document.getElementById('remove-photo-form').submit();">
+                              <i class="fa-solid fa-trash-can" style="width:14px;"></i>
+                              Remove Photo
+                          </button>
+                          <?php endif; ?>
+                      </div>
+
+                      <!-- Hidden remove-photo form -->
+                      <?php if (!empty($student['profile_pic']) && $student['profile_pic'] !== 'default.png'): ?>
+                      <form method="post" id="remove-photo-form" style="display:none;">
+                          <?php csrf_field(); ?>
+                          <input type="hidden" name="remove_photo" value="1">
+                      </form>
+                      <?php endif; ?>
+                  </div>
+                  <div class="profile-banner-info">
+                      <h2><?php echo htmlspecialchars($student['full_name']); ?></h2>
+                      <div class="profile-banner-meta">
+                          <span><i class="fa-solid fa-id-card"></i> <?php echo htmlspecialchars($student['matric_no']); ?></span>
+                          <span><i class="fa-solid fa-layer-group"></i> <?php echo htmlspecialchars($student['level']); ?> Level</span>
+                          <span><i class="fa-solid fa-venus-mars"></i> <?php echo htmlspecialchars($student['gender']); ?></span>
+                      </div>
                   </div>
              </div>
 
-            <form method="post" enctype="multipart/form-data" id="profileForm" class="p-8">
+            <form method="post" enctype="multipart/form-data" id="profileForm" style="padding:1.5rem 2rem;">
                 <?php csrf_field(); ?>
-                
-                <!-- Academic Section -->
-                <div class="mb-10">
-                    <h3 class="flex items-center gap-3 text-lg font-bold mb-6 pb-2 text-head border-b border-border">
-                        <span class="inline-flex w-8 h-8 bg-blue-50 text-primary rounded items-center justify-center"><i class="fa-solid fa-graduation-cap"></i></span>
+
+                <!-- ── ACADEMIC INFORMATION ── -->
+                <div style="margin-bottom:1.5rem;">
+                    <div class="form-section-title" style="margin-bottom:1rem;padding-bottom:0.625rem;">
+                        <span class="form-section-icon" style="background:rgba(37,99,235,0.08);color:var(--c-info);"><i class="fa-solid fa-graduation-cap"></i></span>
                         Academic Information
-                    </h3>
+                    </div>
 
-                    <div class="grid grid-cols-2">
-                        <div class="form-group">
+                    <div style="display:grid;grid-template-columns:1fr 1fr;gap:0.875rem;">
+
+                        <div class="form-group" style="margin-bottom:0;">
                             <label>Full Name</label>
-                            <input type="text" name="full_name" value="<?php echo htmlspecialchars($student['full_name']); ?>">
+                            <input type="text" name="full_name" id="profile-full-name"
+                                   value="<?php echo htmlspecialchars($student['full_name']); ?>">
                         </div>
 
-                        <div class="form-group">
-                            <label>Gender</label>
-                            <input type="text" value="<?php echo htmlspecialchars($student['gender']); ?>" disabled class="bg-gray-100 cursor-not-allowed">
-                            <div class="text-xs text-muted mt-1">Locked for allocation purposes.</div>
+                        <div class="form-group" style="margin-bottom:0;">
+                            <label>Gender <span style="font-size:0.72rem;color:var(--c-text-muted);font-weight:400;">(locked)</span></label>
+                            <input type="text"
+                                   value="<?php echo htmlspecialchars($student['gender']); ?>"
+                                   disabled
+                                   style="opacity:0.6;cursor:not-allowed;background:var(--c-bg-surface-2);">
                         </div>
 
-                        <div class="form-group">
+                        <div class="form-group" style="margin-bottom:0;">
                             <label>Level</label>
-                            <select name="level">
+                            <select name="level" id="profile-level">
                                 <option value="100" <?php if($student['level']==100) echo 'selected'; ?>>100 Level</option>
                                 <option value="200" <?php if($student['level']==200) echo 'selected'; ?>>200 Level</option>
                                 <option value="300" <?php if($student['level']==300) echo 'selected'; ?>>300 Level</option>
@@ -235,11 +310,11 @@ require_once 'includes/header.php';
                                 <option value="500" <?php if($student['level']==500) echo 'selected'; ?>>500 Level</option>
                             </select>
                         </div>
-                        
-                        <div class="form-group">
+
+                        <div class="form-group" style="margin-bottom:0;">
                             <label>Faculty</label>
                             <select name="faculty" id="facultySelect" onchange="updateDepartments()">
-                                <option value="">Select...</option>
+                                <option value="">Select faculty…</option>
                                 <?php
                                 $fac_query = $conn->query("SELECT faculty_id, name FROM faculties ORDER BY name ASC");
                                 while($f = $fac_query->fetch_assoc()) {
@@ -250,77 +325,87 @@ require_once 'includes/header.php';
                             </select>
                         </div>
 
-                        <div class="form-group">
+                        <div class="form-group" style="margin-bottom:0;">
                             <label>Department</label>
-                            <select name="department" id="deptSelect" data-current="<?php echo htmlspecialchars($student['department_id']); ?>">
-                                <option value="<?php echo htmlspecialchars($student['department_id']); ?>"><?php echo htmlspecialchars($student['department_name'] ?: 'Select Faculty First'); ?></option>
+                            <select name="department" id="deptSelect"
+                                    data-current="<?php echo htmlspecialchars($student['department_id']); ?>">
+                                <option value="<?php echo htmlspecialchars($student['department_id']); ?>">
+                                    <?php echo htmlspecialchars($student['department_name'] ?: 'Select faculty first'); ?>
+                                </option>
                             </select>
                         </div>
-                        <div class="form-group flex items-end ml-4">
-                            <label class="flex items-center gap-2 cursor-pointer">
-                                <input type="checkbox" name="has_special_needs" value="1" <?php if(!empty($student['has_special_needs'])) echo 'checked'; ?> class="w-5 h-5 cursor-pointer text-primary border-gray-300 rounded">
-                                <span class="text-sm font-medium">I have documented Special Needs</span>
+
+                        <div style="display:flex;align-items:flex-end;padding-bottom:2px;">
+                            <label style="display:flex;align-items:center;gap:0.5rem;cursor:pointer;font-weight:500;margin-bottom:0;">
+                                <input type="checkbox" id="profile-special-needs"
+                                       name="has_special_needs" value="1"
+                                       <?php if(!empty($student['has_special_needs'])) echo 'checked'; ?>
+                                       style="width:16px;height:16px;cursor:pointer;flex-shrink:0;accent-color:var(--c-primary);">
+                                <span style="font-size:0.85rem;color:var(--c-text-body);">Documented Special Needs</span>
                             </label>
                         </div>
+
                     </div>
                 </div>
 
-                <!-- Medical Section -->
-                <div class="mb-8">
-                    <h3 class="flex items-center gap-3 text-lg font-bold mb-6 pb-2 text-danger border-b border-red-100">
-                        <span class="inline-flex w-8 h-8 bg-red-50 text-danger rounded items-center justify-center"><i class="fa-solid fa-heart-pulse"></i></span>
-                        Medical & Health Status
-                    </h3>
-
-                    <div class="alert alert-danger mb-6">
-                        <p class="text-sm">
-                            <strong>Note:</strong> Information provided here directly impacts your room allocation priority. False claims will be verified by the University Health Center.
-                        </p>
+                <!-- ── MEDICAL & HEALTH STATUS ── -->
+                <div style="margin-bottom:1.25rem;">
+                    <div class="form-section-title" style="margin-bottom:1rem;padding-bottom:0.625rem;color:var(--c-danger);border-bottom-color:rgba(220,38,38,0.15);">
+                        <span class="form-section-icon" style="background:rgba(220,38,38,0.08);color:var(--c-danger);"><i class="fa-solid fa-heart-pulse"></i></span>
+                        Medical &amp; Health Status
                     </div>
 
-                    <div class="grid grid-cols-2">
-                        <div class="form-group">
+                    <div class="alert alert-warning" style="margin-bottom:0.875rem;font-size:0.82rem;padding:0.625rem 0.875rem;">
+                        <i class="fa-solid fa-triangle-exclamation"></i>
+                        <span>Medical data directly affects your allocation priority. False declarations will be cross-verified with the University Health Centre.</span>
+                    </div>
+
+                    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:0.875rem;">
+
+                        <div class="form-group" style="margin-bottom:0;">
                             <label>Medical Condition</label>
-                            <select name="medical_condition">
-                                <option value="None" <?php if(($student['condition_category']??'')=='None') echo 'selected'; ?>>None / Healthy</option>
-                                <option value="Asthma" <?php if(($student['condition_category']??'')=='Asthma') echo 'selected'; ?>>Asthma</option>
-                                <option value="Epilepsy" <?php if(($student['condition_category']??'')=='Epilepsy') echo 'selected'; ?>>Epilepsy</option>
-                                <option value="Ulcer" <?php if(($student['condition_category']??'')=='Ulcer') echo 'selected'; ?>>Ulcer</option>
-                                <option value="Sickle Cell" <?php if(($student['condition_category']??'')=='Sickle Cell') echo 'selected'; ?>>Sickle Cell Disease</option>
-                                <option value="Visual Impairment" <?php if(($student['condition_category']??'')=='Visual Impairment') echo 'selected'; ?>>Visual Impairment</option>
-                                <option value="Physical Disability" <?php if(($student['condition_category']??'')=='Physical Disability') echo 'selected'; ?>>Physical Disability</option>
-                                <option value="Cardiovascular" <?php if(($student['condition_category']??'')=='Cardiovascular') echo 'selected'; ?>>Cardiovascular</option>
-                                <option value="Neurological" <?php if(($student['condition_category']??'')=='Neurological') echo 'selected'; ?>>Neurological</option>
-                                <option value="Respiratory" <?php if(($student['condition_category']??'')=='Respiratory') echo 'selected'; ?>>Respiratory</option>
-                                <option value="Mobility" <?php if(($student['condition_category']??'')=='Mobility') echo 'selected'; ?>>Mobility</option>
-                                <option value="Other" <?php if(($student['condition_category']??'')=='Other') echo 'selected'; ?>>Other</option>
+                            <select name="medical_condition" id="profile-condition">
+                                <option value="None"                <?php if(($student['condition_category']??'')=='None')               echo 'selected'; ?>>None / Healthy</option>
+                                <option value="Asthma"              <?php if(($student['condition_category']??'')=='Asthma')             echo 'selected'; ?>>Asthma</option>
+                                <option value="Epilepsy"            <?php if(($student['condition_category']??'')=='Epilepsy')           echo 'selected'; ?>>Epilepsy</option>
+                                <option value="Ulcer"               <?php if(($student['condition_category']??'')=='Ulcer')              echo 'selected'; ?>>Ulcer</option>
+                                <option value="Sickle Cell"         <?php if(($student['condition_category']??'')=='Sickle Cell')        echo 'selected'; ?>>Sickle Cell Disease</option>
+                                <option value="Visual Impairment"   <?php if(($student['condition_category']??'')=='Visual Impairment')  echo 'selected'; ?>>Visual Impairment</option>
+                                <option value="Physical Disability"  <?php if(($student['condition_category']??'')=='Physical Disability') echo 'selected'; ?>>Physical Disability</option>
+                                <option value="Cardiovascular"      <?php if(($student['condition_category']??'')=='Cardiovascular')     echo 'selected'; ?>>Cardiovascular</option>
+                                <option value="Neurological"        <?php if(($student['condition_category']??'')=='Neurological')       echo 'selected'; ?>>Neurological</option>
+                                <option value="Respiratory"         <?php if(($student['condition_category']??'')=='Respiratory')        echo 'selected'; ?>>Respiratory</option>
+                                <option value="Mobility"            <?php if(($student['condition_category']??'')=='Mobility')           echo 'selected'; ?>>Mobility</option>
+                                <option value="Other"               <?php if(($student['condition_category']??'')=='Other')              echo 'selected'; ?>>Other</option>
                             </select>
                         </div>
 
-                        <div class="form-group">
+                        <div class="form-group" style="margin-bottom:0;">
                             <label>Mobility Status</label>
-                            <select name="mobility_status">
-                                <option value="Normal Mobility" <?php if(($student['mobility_status']??'')=='Normal Mobility') echo 'selected'; ?>>Normal Mobility</option>
-                                <option value="Wheelchair User" <?php if(($student['mobility_status']??'')=='Wheelchair User') echo 'selected'; ?>>Wheelchair User</option>
-                                <option value="Crutches/Walker" <?php if(($student['mobility_status']??'')=='Crutches/Walker') echo 'selected'; ?>>Use of Crutches/Walker</option>
-                                <option value="Artificial Limb" <?php if(($student['mobility_status']??'')=='Artificial Limb') echo 'selected'; ?>>Artificial Limb</option>
+                            <select name="mobility_status" id="profile-mobility">
+                                <option value="Normal Mobility"  <?php if(($student['mobility_status']??'')=='Normal Mobility')  echo 'selected'; ?>>Normal Mobility</option>
+                                <option value="Wheelchair User"  <?php if(($student['mobility_status']??'')=='Wheelchair User')  echo 'selected'; ?>>Wheelchair User</option>
+                                <option value="Crutches/Walker"  <?php if(($student['mobility_status']??'')=='Crutches/Walker')  echo 'selected'; ?>>Crutches / Walker</option>
+                                <option value="Artificial Limb"  <?php if(($student['mobility_status']??'')=='Artificial Limb')  echo 'selected'; ?>>Artificial Limb</option>
                             </select>
                         </div>
-                        
-                        <div class="form-group mt-4">
-                            <label>Condition Severity Level</label>
-                            <select name="severity_level">
-                                <option value="High" <?php if(($student['severity_level']??'')=='High') echo 'selected'; ?>>High</option>
+
+                        <div class="form-group" style="margin-bottom:0;">
+                            <label>Severity Level</label>
+                            <select name="severity_level" id="profile-severity">
+                                <option value="High"   <?php if(($student['severity_level']??'')=='High')   echo 'selected'; ?>>High</option>
                                 <option value="Medium" <?php if(($student['severity_level']??'')=='Medium') echo 'selected'; ?>>Medium</option>
-                                <option value="Low" <?php if(($student['severity_level']??'')=='Low') echo 'selected'; ?>>Low</option>
+                                <option value="Low"    <?php if(($student['severity_level']??'')=='Low')    echo 'selected'; ?>>Low</option>
                             </select>
                         </div>
+
                     </div>
                 </div>
 
-                <div class="text-right mt-6">
-                    <button class="btn btn-primary">
-                        Save Changes
+                <!-- ── SAVE FOOTER ── -->
+                <div style="display:flex;justify-content:flex-end;padding-top:1rem;border-top:1px solid var(--c-border);">
+                    <button type="submit" class="btn btn-primary" id="profile-save-btn">
+                        <i class="fa-solid fa-floppy-disk"></i> Save Changes
                     </button>
                 </div>
             </form>
@@ -329,5 +414,33 @@ require_once 'includes/header.php';
 </div>
 
 <script src="js/departments.js"></script>
+<script>
+// Photo action menu toggle (social media style)
+function togglePhotoMenu(e) {
+    e.stopPropagation();
+    var menu = document.getElementById('photo-action-menu');
+    if (!menu) return;
+    var isOpen = menu.style.display === 'flex' || menu.style.display === 'block';
+    menu.style.display = isOpen ? 'none' : 'block';
+}
+
+// Close menu when clicking anywhere else on the page
+document.addEventListener('click', function(e) {
+    var menu    = document.getElementById('photo-action-menu');
+    var trigger = document.getElementById('photo-menu-trigger');
+    if (!menu || !trigger) return;
+    if (!menu.contains(e.target) && e.target !== trigger && !trigger.contains(e.target)) {
+        menu.style.display = 'none';
+    }
+});
+
+// Close menu on Escape key
+document.addEventListener('keydown', function(e) {
+    if (e.key === 'Escape') {
+        var menu = document.getElementById('photo-action-menu');
+        if (menu) menu.style.display = 'none';
+    }
+});
+</script>
 </body>
 </html>

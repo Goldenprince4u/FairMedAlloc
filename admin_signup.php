@@ -135,7 +135,18 @@ require_once 'includes/header.php';
 
                 <div class="form-group mb-8">
                     <label class="text-sm fw-700 mb-2">Password</label>
-                    <input type="password" name="password" placeholder="Create a strong password" required class="input-auth" minlength="8" pattern="(?=.*\d)(?=.*[a-z])(?=.*[A-Z]).{8,}" title="Must contain at least one number and one uppercase and lowercase letter, and at least 8 or more characters">
+                    <div class="input-group" style="position:relative;">
+                        <input type="password" id="admin-signup-password" name="password"
+                               placeholder="Create a strong password" required class="input-auth"
+                               minlength="8" pattern="(?=.*\d)(?=.*[a-z])(?=.*[A-Z]).{8,}"
+                               title="Must contain at least one number and one uppercase and lowercase letter, and at least 8 or more characters"
+                               style="padding-right:2.75rem;">
+                        <i class="fa-solid fa-eye"
+                           id="toggleAdminSignupPassword"
+                           style="position:absolute;right:14px;top:50%;transform:translateY(-50%);cursor:pointer;font-size:0.85rem;color:var(--c-text-muted);"
+                           onclick="toggleAdminSignupPw()"
+                           title="Toggle password visibility"></i>
+                    </div>
                 </div>
 
                 <div class="text-center">
@@ -149,5 +160,18 @@ require_once 'includes/header.php';
         </div>
     </div>
 </div>
+<script>
+function toggleAdminSignupPw() {
+    var input = document.getElementById('admin-signup-password');
+    var icon  = document.getElementById('toggleAdminSignupPassword');
+    if (!input) return;
+    var isHidden = input.type === 'password';
+    input.type = isHidden ? 'text' : 'password';
+    if (icon) {
+        icon.classList.toggle('fa-eye',       !isHidden);
+        icon.classList.toggle('fa-eye-slash',  isHidden);
+    }
+}
+</script>
 </body>
 </html>

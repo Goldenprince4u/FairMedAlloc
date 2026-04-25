@@ -104,7 +104,7 @@ require_once 'includes/header.php';
     </div>
 
     <div class="auth-right">
-        <div class="auth-box glass-card">
+        <div class="auth-box">
             
             <h2 class="mb-2" style="font-size: 2rem; color: var(--c-primary);">Reset Password</h2>
             
@@ -120,12 +120,30 @@ require_once 'includes/header.php';
                     <?php csrf_field(); ?>
                     <div class="form-group">
                         <label>New Password</label>
-                        <input type="password" name="password" placeholder="******" required class="input w-full">
+                        <div class="input-group" style="position:relative;">
+                            <input type="password" id="reset-password" name="password"
+                                   placeholder="••••••••" required class="input w-full"
+                                   style="padding-right:2.75rem;">
+                            <i class="fa-solid fa-eye"
+                               id="toggleResetPassword"
+                               style="position:absolute;right:14px;top:50%;transform:translateY(-50%);cursor:pointer;font-size:0.85rem;color:var(--c-text-muted);"
+                               onclick="toggleResetPw('reset-password','toggleResetPassword')"
+                               title="Toggle password visibility"></i>
+                        </div>
                     </div>
-                    
+
                     <div class="form-group mb-6">
                         <label>Confirm Password</label>
-                        <input type="password" name="confirm_password" placeholder="******" required class="input w-full">
+                        <div class="input-group" style="position:relative;">
+                            <input type="password" id="reset-confirm" name="confirm_password"
+                                   placeholder="••••••••" required class="input w-full"
+                                   style="padding-right:2.75rem;">
+                            <i class="fa-solid fa-eye"
+                               id="toggleResetConfirm"
+                               style="position:absolute;right:14px;top:50%;transform:translateY(-50%);cursor:pointer;font-size:0.85rem;color:var(--c-text-muted);"
+                               onclick="toggleResetPw('reset-confirm','toggleResetConfirm')"
+                               title="Toggle password visibility"></i>
+                        </div>
                     </div>
 
                     <button class="btn btn-primary w-full" style="width: 100%;">
@@ -143,5 +161,18 @@ require_once 'includes/header.php';
         </div>
     </div>
 </div>
+<script>
+function toggleResetPw(inputId, iconId) {
+    var input = document.getElementById(inputId);
+    var icon  = document.getElementById(iconId);
+    if (!input) return;
+    var isHidden = input.type === 'password';
+    input.type = isHidden ? 'text' : 'password';
+    if (icon) {
+        icon.classList.toggle('fa-eye',       !isHidden);
+        icon.classList.toggle('fa-eye-slash',  isHidden);
+    }
+}
+</script>
 </body>
 </html>

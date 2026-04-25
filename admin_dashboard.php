@@ -31,6 +31,15 @@ $total_alloc    = (int)$stats['total_alloc'];
 $medical_cases  = (int)$stats['medical_cases'];
 $available_beds = max(0, (int)$stats['total_capacity'] - $total_alloc);
 
+// Refresh admin display name from DB on every load so nav always shows the latest
+$admin_name_q = $conn->prepare("SELECT full_name FROM users WHERE user_id = ?");
+$admin_name_q->bind_param("i", $_SESSION['user_id']);
+$admin_name_q->execute();
+$admin_name_row = $admin_name_q->get_result()->fetch_assoc();
+if (!empty($admin_name_row['full_name'])) {
+    $_SESSION['full_name'] = $admin_name_row['full_name'];
+}
+
 $page_title = "Command Center | FairMedAlloc";
 require_once 'includes/header.php';
 ?>
@@ -40,16 +49,16 @@ require_once 'includes/header.php';
 
     <main class="main-content">
         <!-- Page Header -->
-        <div class="flex justify-between items-center mb-8">
-            <div>
-                <h1 class="serif mb-1" style="font-size: 2rem;">System Overview</h1>
+        <div class="page-header">
+            <div class="page-header-info">
+                <h1>System Overview</h1>
                 <p class="text-muted">Real-time usage statistics and management controls.</p>
             </div>
             <div class="flex gap-3">
-                <a href="admin_reports.php" class="btn btn-outline">
+                <a href="admin_reports.php" class="btn btn-outline" id="dash-reports-btn">
                     <i class="fa-solid fa-chart-pie"></i> Reports
                 </a>
-                <a href="run_allocation.php" class="btn btn-primary">
+                <a href="run_allocation.php" class="btn btn-primary" id="dash-run-btn">
                     <i class="fa-solid fa-wand-magic-sparkles"></i> Run Algorithm
                 </a>
             </div>
@@ -91,10 +100,14 @@ require_once 'includes/header.php';
         </div>
 
         <!-- Management Modules -->
-        <h3 class="serif mb-4" style="font-size: 1.2rem;">Management Modules</h3>
+        <div style="margin-bottom:0.75rem;">
+            <h2 style="font-size:1rem;font-weight:700;color:var(--c-text-head);margin-bottom:1.25rem;padding-bottom:0.75rem;border-bottom:1px solid var(--c-border);">
+                Management Modules
+            </h2>
+        </div>
         <div class="grid grid-cols-2 mb-8">
 
-            <div class="glass-card flex items-start gap-4">
+            <div class="card flex items-start gap-4" style="padding:1.75rem;">
                 <div class="stat-icon" style="background:rgba(59,130,246,0.1); color:var(--c-info);"><i class="fa-solid fa-table-list"></i></div>
                 <div>
                     <h4 class="mb-2">Allocation Matrix</h4>
@@ -103,7 +116,7 @@ require_once 'includes/header.php';
                 </div>
             </div>
 
-            <div class="glass-card flex items-start gap-4">
+            <div class="card flex items-start gap-4" style="padding:1.75rem;">
                 <div class="stat-icon" style="background: rgba(245,158,11,0.1); color: var(--c-warning);"><i class="fa-solid fa-chart-pie"></i></div>
                 <div>
                     <h4 class="mb-2">System Reports</h4>
@@ -112,7 +125,7 @@ require_once 'includes/header.php';
                 </div>
             </div>
 
-            <div class="glass-card flex items-start gap-4">
+            <div class="card flex items-start gap-4" style="padding:1.75rem;">
                 <div class="stat-icon" style="background: rgba(16,185,129,0.1); color: var(--c-success);"><i class="fa-solid fa-wand-magic-sparkles"></i></div>
                 <div>
                     <h4 class="mb-2">Run Allocation</h4>
@@ -121,7 +134,7 @@ require_once 'includes/header.php';
                 </div>
             </div>
 
-            <div class="glass-card flex items-start gap-4">
+            <div class="card flex items-start gap-4" style="padding:1.75rem;">
                 <div class="stat-icon" style="background: rgba(0,33,71,0.08); color: var(--c-primary);"><i class="fa-solid fa-gears"></i></div>
                 <div>
                     <h4 class="mb-2">System Settings</h4>
@@ -131,8 +144,8 @@ require_once 'includes/header.php';
             </div>
         </div>
 
-        <div class="mt-6 pt-4 text-muted text-sm border-t" style="border-color: var(--c-border);">
-            <i class="fa-solid fa-circle-info mr-1"></i>
+        <div class="mt-6 pt-4 text-muted" style="font-size:0.8rem;border-top:1px solid var(--c-border);display:flex;align-items:center;gap:0.5rem;">
+            <i class="fa-solid fa-circle-info"></i>
             System Version 1.0.0 &bull; Licensed to Redeemer's University &bull; Session: <?php
             $sess = $conn->query("SELECT setting_value FROM settings WHERE setting_key='current_session'");
             echo htmlspecialchars($sess ? ($sess->fetch_assoc()['setting_value'] ?? '—') : '—');

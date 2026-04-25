@@ -31,9 +31,9 @@ class AllocationEngine {
                     JOIN departments d ON p.department_id = d.department_id
                     JOIN faculties f ON d.faculty_id = f.faculty_id
                     LEFT JOIN medical_records m ON p.user_id = m.student_id 
-                    JOIN payments py ON p.user_id = py.student_id
+                    LEFT JOIN payments py ON p.user_id = py.student_id
                     WHERE p.allocation_status = 'Unallocated' 
-                    AND py.status = 'paid'
+                    AND (p.is_paid = 1 OR py.status = 'paid')
                     ORDER BY m.urgency_score DESC";
             
             $result = $this->conn->query($sql);

@@ -152,9 +152,9 @@ require_once 'includes/header.php';
     <div class="auth-right">
         <div class="auth-box animate-fade-in">
             <div class="mb-8">
-                <span class="badge badge-info mb-4">NEW ACCOUNT</span>
-                <h2 class="mb-2 text-primary serif">Create Profile</h2>
-                <p class="text-muted text-lg">Fill in your academic details to get started.</p>
+                <span class="badge badge-primary mb-4" style="font-size:0.68rem;letter-spacing:0.1em;">NEW ACCOUNT</span>
+                <h2 style="font-size:1.75rem;margin-bottom:0.35rem;color:var(--c-text-head);">Create Profile</h2>
+                <p class="text-muted" style="font-size:0.9rem;">Fill in your academic details to get started.</p>
             </div>
 
             <?php if($msg): ?>
@@ -269,20 +269,32 @@ require_once 'includes/header.php';
 
                 <div class="form-group mb-8">
                     <label class="text-sm fw-700 mb-2">Password</label>
-                    <input type="password" name="password" placeholder="Create a strong password" required class="input-auth" minlength="8" pattern="(?=.*\d)(?=.*[a-z])(?=.*[A-Z]).{8,}" title="Must contain at least one number and one uppercase and lowercase letter, and at least 8 or more characters">
+                    <div class="input-group" style="position:relative;">
+                        <input type="password" id="signup-password" name="password"
+                               placeholder="Create a strong password" required class="input-auth"
+                               minlength="8" pattern="(?=.*\d)(?=.*[a-z])(?=.*[A-Z]).{8,}"
+                               title="Must contain at least one number and one uppercase and lowercase letter, and at least 8 or more characters"
+                               style="padding-right:2.75rem;">
+                        <i class="fa-solid fa-eye"
+                           id="toggleSignupPassword"
+                           style="position:absolute;right:14px;top:50%;transform:translateY(-50%);cursor:pointer;font-size:0.85rem;color:var(--c-text-muted);"
+                           onclick="toggleSignupPw()"
+                           title="Toggle password visibility"></i>
+                    </div>
                     <div class="text-xs text-muted mt-2">For security, please ensure your password is at least 8 characters long and includes a mix of letters and numbers.</div>
                 </div>
 
-                <div class="text-center">
-                    <button class="btn btn-primary mb-4">Register Account</button>
+                <div style="margin-top:1.5rem;">
+                    <button type="submit" class="btn btn-primary w-full" id="signup-submit-btn" style="padding:0.8rem;">
+                        <i class="fa-solid fa-user-plus"></i> Create Account
+                    </button>
                 </div>
                 
-                <div class="text-center text-sm">
-                    Already have an account? <a href="login.php" class="text-primary fw-700">Sign In</a>
+                <div class="text-center mt-4" style="font-size:0.84rem;">
+                    Already have an account? <a href="login.php" class="text-primary fw-700">Sign In &rarr;</a>
                 </div>
-                <!-- Admin specific note -->
-                <div class="text-center text-sm mt-6 pt-4 text-muted" style="border-top: 1px solid var(--c-border);">
-                    Staff Member? <a href="admin_signup.php" class="text-primary fw-700">Admin Registration</a>
+                <div class="text-center mt-6 pt-4 text-muted" style="border-top:1px solid var(--c-border);font-size:0.84rem;">
+                    Staff Member? <a href="admin_signup.php" class="text-primary fw-700">Admin Registration &rarr;</a>
                 </div>
             </form>
         </div>
@@ -290,5 +302,18 @@ require_once 'includes/header.php';
 </div>
 
 <script src="js/departments.js"></script>
+<script>
+function toggleSignupPw() {
+    var input = document.getElementById('signup-password');
+    var icon  = document.getElementById('toggleSignupPassword');
+    if (!input) return;
+    var isHidden = input.type === 'password';
+    input.type = isHidden ? 'text' : 'password';
+    if (icon) {
+        icon.classList.toggle('fa-eye',       !isHidden);
+        icon.classList.toggle('fa-eye-slash',  isHidden);
+    }
+}
+</script>
 </body>
 </html>

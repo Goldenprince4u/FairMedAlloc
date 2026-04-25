@@ -1,15 +1,17 @@
 <?php
 /**
- * admin_profile.php â€” Administrator Profile & Security Settings
- * ===============================================================
+ * admin_profile.php — Administrator Profile & Security Settings
+ * ==============================================================
  * Allows the currently logged-in admin to:
- *   1. Update their profile picture (validated for type and MIME, not just extension).
- *   2. Change their password (requires current password verification + complexity check).
+ *   1. Update their display name (how they appear in the UI).
+ *   2. Update their profile picture (type + MIME validated).
+ *   3. Remove their profile picture.
+ *   4. Change their password (requires current password + complexity check).
  *
  * Security measures applied:
  *   - Session-based admin auth guard.
  *   - CSRF token validation on every POST.
- *   - File type validated by extension AND MIME (prevents disguised executable uploads).
+ *   - File type validated by extension AND MIME.
  *   - Password change requires proof of current password.
  *   - New password enforces complexity: 8+ chars, upper, lower, digit.
  *   - All output escaped with htmlspecialchars().
@@ -19,7 +21,9 @@ require_once 'db_config.php';
 require_once 'includes/security_helper.php';
 
 // --- Auth Guard: Admin Only ---
-if (!isset($_SESSION['logged_in']) || ($_SESSION['role'] ?? '') !== 'admin') { header("Location: admin_login.php"); exit(); }
+if (!isset($_SESSION['logged_in']) || ($_SESSION['role'] ?? '') !== 'admin') {
+    header("Location: admin_login.php"); exit();
+}
 $user_id = $_SESSION['user_id'];
 
 $msg = '';
@@ -28,8 +32,28 @@ $msg_type = '';
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     check_csrf();
 
-    // === SECTION 1: Profile Picture Upload ===
-    if (isset($_FILES['profile_pic']) && $_FILES['profile_pic']['error'] === 0) {
+    // === ACTION: Remove profile photo ===
+    if (!empty($_POST['remove_photo'])) {
+        $del = $conn->prepare("SELECT profile_pic FROM users WHERE user_id = ?");
+        $del->bind_param("i", $user_id);
+        $del->execute();
+        $current_pic = $del->get_result()->fetch_assoc()['profile_pic'] ?? '';
+
+        if ($current_pic && $current_pic !== 'default.png') {
+            $file_path = __DIR__ . '/uploads/profile_pics/' . basename($current_pic);
+            if (file_exists($file_path)) unlink($file_path);
+        }
+
+        $clr = $conn->prepare("UPDATE users SET profile_pic = NULL WHERE user_id = ?");
+        $clr->bind_param("i", $user_id);
+        $clr->execute();
+        $_SESSION['profile_pic'] = null;
+
+        $msg      = "Profile photo removed successfully.";
+        $msg_type = "success";
+
+    // === ACTION: Upload new profile picture ===
+    } elseif (isset($_FILES['profile_pic']) && $_FILES['profile_pic']['error'] === 0) {
         $allowed_ext   = ['jpg', 'jpeg', 'png', 'gif'];
         $allowed_mimes = ['image/jpeg', 'image/png', 'image/gif'];
         $ext  = strtolower(pathinfo($_FILES['profile_pic']['name'], PATHINFO_EXTENSION));
@@ -38,12 +62,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $msg      = "Invalid file type. Only JPG, PNG, GIF allowed.";
             $msg_type = "error";
         } elseif ($_FILES['profile_pic']['size'] > 2 * 1024 * 1024) {
-            // Cap at 2MB â€” prevents storing oversized images in the uploads directory
-            $msg      = "Image too large. Maximum file size is 2MB.";
+            $msg      = "Image too large. Maximum file size is 2 MB.";
             $msg_type = "error";
         } else {
-            // Validate actual MIME type, not just the extension.
-            // Uses OOP finfo class (PHP 8.5+): auto-closes on scope exit â€” no finfo_close() needed.
             $finfo = new finfo(FILEINFO_MIME_TYPE);
             $mime  = $finfo->file($_FILES['profile_pic']['tmp_name']);
 
@@ -51,13 +72,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $msg      = "Invalid image content. Allowed: JPEG, PNG, GIF.";
                 $msg_type = "error";
             } else {
-                // Create upload directory if it doesn't exist
                 $upload_dir = __DIR__ . '/uploads/profile_pics/';
-                if (!is_dir($upload_dir)) {
-                    mkdir($upload_dir, 0755, true);
-                }
+                if (!is_dir($upload_dir)) mkdir($upload_dir, 0755, true);
 
-                // Unique filename prevents overwriting and path collisions
                 $new_name = "admin_{$user_id}_" . time() . ".$ext";
                 $dest     = $upload_dir . $new_name;
 
@@ -65,35 +82,52 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $pic_stmt = $conn->prepare("UPDATE users SET profile_pic = ? WHERE user_id = ?");
                     $pic_stmt->bind_param("si", $new_name, $user_id);
                     $pic_stmt->execute();
-                    // Update session immediately so the navbar avatar reflects the change
                     $_SESSION['profile_pic'] = $new_name;
                     $msg      = "Profile photo updated successfully.";
                     $msg_type = "success";
                 } else {
-                    $msg      = "Upload failed: could not move the file to the destination.";
+                    $msg      = "Upload failed: could not move the file.";
                     $msg_type = "error";
                 }
             }
         }
-    }
 
-    // === SECTION 2: Password Update ===
-    if (!empty($_POST['new_pass'])) {
+    // === ACTION: Update display name ===
+    } elseif (!empty($_POST['display_name'])) {
+        $display_name = trim(sanitize_input($_POST['display_name']));
+        if (strlen($display_name) < 2) {
+            $msg      = "Display name must be at least 2 characters.";
+            $msg_type = "error";
+        } else {
+            $dn = $conn->prepare("UPDATE users SET full_name = ? WHERE user_id = ?");
+            $dn->bind_param("si", $display_name, $user_id);
+            if ($dn->execute()) {
+                // Update the session key the nav/dashboard reads from
+                $_SESSION['full_name'] = $display_name;
+                $msg      = "Display name updated successfully.";
+                $msg_type = "success";
+            } else {
+                $msg      = "Failed to update display name.";
+                $msg_type = "error";
+            }
+        }
+
+    // === ACTION: Password Update ===
+    } elseif (!empty($_POST['new_pass'])) {
         $current = $_POST['current_pass'];
         $new     = $_POST['new_pass'];
         $confirm = $_POST['confirm_pass'];
 
-        // Fetch the current hash to verify the old password
         $stmt = $conn->prepare("SELECT password_hash FROM users WHERE user_id = ?");
         $stmt->bind_param("i", $user_id);
         $stmt->execute();
         $res = $stmt->get_result()->fetch_assoc();
 
         if (!password_verify($current, $res['password_hash'])) {
-            $msg = "Current password is incorrect.";
+            $msg      = "Current password is incorrect.";
             $msg_type = "error";
         } elseif ($new !== $confirm) {
-            $msg = "New passwords do not match.";
+            $msg      = "New passwords do not match.";
             $msg_type = "error";
         } elseif (
             strlen($new) < 8 ||
@@ -101,23 +135,31 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             !preg_match('/[a-z]/', $new) ||
             !preg_match('/[0-9]/', $new)
         ) {
-            // Enforce complexity: 8+ chars, at least one uppercase, lowercase, and digit
-            $msg = "New password must be at least 8 characters and include uppercase, lowercase, and numbers.";
+            $msg      = "Password must be 8+ characters and include uppercase, lowercase, and a number.";
             $msg_type = "error";
         } else {
             $new_hash = password_hash($new, PASSWORD_DEFAULT);
             $update   = $conn->prepare("UPDATE users SET password_hash = ? WHERE user_id = ?");
             $update->bind_param("si", $new_hash, $user_id);
             if ($update->execute()) {
-                $msg = "Password updated successfully.";
+                $msg      = "Password updated successfully.";
                 $msg_type = "success";
             } else {
-                $msg = "Database error updating password.";
+                $msg      = "Database error updating password.";
                 $msg_type = "error";
             }
         }
     }
 }
+
+// Fetch current admin data
+$admin_data = $conn->prepare("SELECT full_name, profile_pic FROM users WHERE user_id = ?");
+$admin_data->bind_param("i", $user_id);
+$admin_data->execute();
+$admin = $admin_data->get_result()->fetch_assoc();
+
+$display_name = $admin['full_name'] ?? $_SESSION['username'];
+$profile_pic  = $admin['profile_pic'] ?? $_SESSION['profile_pic'] ?? null;
 
 $page_title = "Admin Profile | FairMedAlloc";
 require_once 'includes/header.php';
@@ -127,91 +169,178 @@ require_once 'includes/header.php';
     <?php require_once 'includes/nav.php'; ?>
 
     <main class="main-content">
-        <div class="flex justify-between items-center mb-8">
-            <div>
-                <h1 class="serif mb-1 text-3xl">Admin Profile</h1>
-                <p class="text-muted">Manage your administrator credentials and security.</p>
+        <!-- Page Header -->
+        <div class="page-header">
+            <div class="page-header-info">
+                <h1>Admin Profile</h1>
+                <p class="text-muted">Manage your display name, photo, and security credentials.</p>
             </div>
         </div>
 
         <?php if($msg): ?>
-            <!-- SECURITY: htmlspecialchars() prevents XSS in $msg -->
-            <div class="mb-6 p-4 rounded <?php echo $msg_type == 'success' ? 'bg-green-50 text-green-700 border border-green-200' : 'bg-red-50 text-red-700 border border-red-200'; ?>">
+            <div class="alert <?php echo $msg_type === 'success' ? 'alert-success' : 'alert-danger'; ?> mb-6">
+                <i class="fa-solid <?php echo $msg_type === 'success' ? 'fa-check-circle' : 'fa-circle-exclamation'; ?>"></i>
                 <?php echo htmlspecialchars($msg); ?>
             </div>
         <?php endif; ?>
 
         <div class="grid-profile">
-            
-            <!-- Profile Card -->
-            <div class="card text-center p-8">
-                <div class="relative inline-block mb-6 group">
-                    <img src="uploads/profile_pics/<?php echo htmlspecialchars(basename($_SESSION['profile_pic'] ?? 'default.png')); ?>" 
-                         class="avatar-lg bg-white">
-                    
-                    <form method="post" enctype="multipart/form-data" id="picForm">
+
+            <!-- ── LEFT: Profile Card ─────────────────────────────── -->
+            <div class="card text-center" style="padding:2rem 1.5rem;">
+
+                <!-- Avatar + camera menu -->
+                <div style="position:relative;display:inline-block;margin-bottom:1.25rem;">
+                    <img src="uploads/profile_pics/<?php echo htmlspecialchars(basename($profile_pic ?: 'default.png')); ?>"
+                         class="avatar-lg"
+                         id="admin-pic-preview"
+                         alt="Admin photo">
+
+                    <!-- Camera trigger -->
+                    <button type="button" id="admin-photo-trigger"
+                            style="position:absolute;bottom:6px;right:6px;width:34px;height:34px;background:var(--c-primary);border-radius:50%;display:flex;align-items:center;justify-content:center;cursor:pointer;border:3px solid #fff;padding:0;box-shadow:0 2px 6px rgba(0,0,0,0.25);"
+                            title="Change photo"
+                            onclick="toggleAdminPhotoMenu(event)">
+                        <i class="fa-solid fa-camera" style="color:white;font-size:0.72rem;"></i>
+                    </button>
+
+                    <!-- Photo action dropdown -->
+                    <div id="admin-photo-menu"
+                         style="display:none;position:absolute;bottom:48px;right:-8px;background:#fff;border:1px solid var(--c-border);border-radius:6px;box-shadow:0 4px 16px rgba(0,0,0,0.18);min-width:155px;z-index:50;overflow:hidden;text-align:left;">
+
+                        <!-- Change photo -->
+                        <form method="post" enctype="multipart/form-data" id="admin-pic-form">
+                            <?php csrf_field(); ?>
+                            <label for="admin-pic-upload"
+                                   style="display:flex;align-items:center;gap:0.625rem;padding:0.625rem 0.875rem;font-size:0.82rem;font-weight:600;color:var(--c-text-head);cursor:pointer;transition:background 0.15s;"
+                                   onmouseover="this.style.background='var(--c-bg-surface-2)'"
+                                   onmouseout="this.style.background=''"
+                                   onclick="document.getElementById('admin-photo-menu').style.display='none'">
+                                <i class="fa-solid fa-camera" style="color:var(--c-primary);width:14px;"></i>
+                                Change Photo
+                                <input type="file" id="admin-pic-upload" name="profile_pic"
+                                       class="hidden" accept="image/jpeg,image/png,image/gif"
+                                       onchange="document.getElementById('admin-pic-form').submit()">
+                            </label>
+                        </form>
+
+                        <?php if (!empty($profile_pic) && $profile_pic !== 'default.png'): ?>
+                        <div style="height:1px;background:var(--c-border);"></div>
+                        <!-- Remove photo -->
+                        <button type="button"
+                                style="display:flex;align-items:center;gap:0.625rem;width:100%;padding:0.625rem 0.875rem;font-size:0.82rem;font-weight:600;color:var(--c-danger);background:none;border:none;cursor:pointer;font-family:inherit;transition:background 0.15s;"
+                                onmouseover="this.style.background='rgba(220,38,38,0.06)'"
+                                onmouseout="this.style.background=''"
+                                onclick="if(confirm('Remove your profile photo? This cannot be undone.')) document.getElementById('admin-remove-form').submit();">
+                            <i class="fa-solid fa-trash-can" style="width:14px;"></i>
+                            Remove Photo
+                        </button>
+                        <?php endif; ?>
+                    </div>
+
+                    <!-- Hidden remove form -->
+                    <?php if (!empty($profile_pic) && $profile_pic !== 'default.png'): ?>
+                    <form method="post" id="admin-remove-form" style="display:none;">
                         <?php csrf_field(); ?>
-                        <label class="absolute bottom-0 right-0 bg-primary text-white p-2 rounded-full cursor-pointer hover:bg-blue-800 transition-colors shadow-md w-9 h-9 flex items-center justify-center" title="Change Photo">
-                            <i class="fa-solid fa-camera"></i>
-                            <input type="file" name="profile_pic" class="hidden" onchange="document.getElementById('picForm').submit()">
-                        </label>
+                        <input type="hidden" name="remove_photo" value="1">
                     </form>
+                    <?php endif; ?>
                 </div>
-                
-                <h2 class="serif text-2xl mb-2"><?php echo htmlspecialchars($_SESSION['username']); ?></h2>
-                <div class="badge badge-info mb-6">Administrator</div>
-                
-                <div class="text-left border-t border-gray-100 pt-6">
-                    <div class="text-sm text-muted mb-2 uppercase tracking-wider font-bold">Role Capabilities</div>
-                    <ul class="text-sm" style="list-style: none;">
-                        <li class="flex items-center gap-2 mb-2"><i class="fa-solid fa-check text-green-500" style="color: var(--c-success);"></i> Full System Access</li>
-                        <li class="flex items-center gap-2 mb-2"><i class="fa-solid fa-check text-green-500" style="color: var(--c-success);"></i> User Management</li>
-                        <li class="flex items-center gap-2"><i class="fa-solid fa-check text-green-500" style="color: var(--c-success);"></i> Allocation Control</li>
+
+                <!-- Display name -->
+                <h2 style="font-size:1.2rem;margin-bottom:0.25rem;"><?php echo htmlspecialchars($display_name); ?></h2>
+                <div class="badge badge-primary mb-4" style="background:rgba(0,33,71,0.08);color:var(--c-primary);">Administrator</div>
+
+                <!-- Role capabilities -->
+                <div style="text-align:left;border-top:1px solid var(--c-border);padding-top:1.25rem;margin-top:0.75rem;">
+                    <div style="font-size:0.7rem;color:var(--c-text-muted);text-transform:uppercase;letter-spacing:0.08em;font-weight:700;margin-bottom:0.75rem;">Role Capabilities</div>
+                    <ul style="list-style:none;display:flex;flex-direction:column;gap:0.5rem;">
+                        <li style="display:flex;align-items:center;gap:0.5rem;font-size:0.85rem;"><i class="fa-solid fa-check" style="color:var(--c-success);width:14px;"></i> Full System Access</li>
+                        <li style="display:flex;align-items:center;gap:0.5rem;font-size:0.85rem;"><i class="fa-solid fa-check" style="color:var(--c-success);width:14px;"></i> User Management</li>
+                        <li style="display:flex;align-items:center;gap:0.5rem;font-size:0.85rem;"><i class="fa-solid fa-check" style="color:var(--c-success);width:14px;"></i> Allocation Control</li>
                     </ul>
                 </div>
             </div>
 
-            <!-- Security Settings -->
-            <div class="card p-8">
-                <div class="flex items-center gap-4 mb-8 pb-4 border-b border-gray-100">
-                    <div class="w-12 h-12 rounded-full flex items-center justify-center text-primary text-xl bg-blue-50">
-                        <i class="fa-solid fa-shield-halved"></i>
-                    </div>
-                    <div>
-                        <h3 class="serif text-xl mb-1">Security Settings</h3>
-                        <p class="text-sm text-muted">Update your password to keep the account secure.</p>
-                    </div>
+            <!-- ── RIGHT: Settings Panel ──────────────────────────── -->
+            <div class="card" style="padding:2rem;">
+
+                <!-- Display Name -->
+                <div class="form-section-title" style="margin-bottom:1.25rem;">
+                    <span class="form-section-icon" style="background:rgba(0,33,71,0.08);color:var(--c-primary);"><i class="fa-solid fa-user-pen"></i></span>
+                    Display Name
                 </div>
-
-                <form method="post" class="max-w-[600px]">
+                <form method="post" id="admin-name-form" style="margin-bottom:2rem;padding-bottom:2rem;border-bottom:1px solid var(--c-border);">
                     <?php csrf_field(); ?>
-                    <div class="form-group mb-6">
-                        <label class="block mb-2 font-bold">Current Password</label>
-                        <div class="relative">
-                            <span class="absolute left-3 top-3 text-gray-400 opacity-50"><i class="fa-solid fa-lock"></i></span>
-                            <input type="password" name="current_pass" placeholder="Enter current password" class="pl-10">
-                        </div>
+                    <div class="form-group">
+                        <label for="admin-display-name">How you want to appear in the system</label>
+                        <input type="text" id="admin-display-name" name="display_name"
+                               value="<?php echo htmlspecialchars($display_name); ?>"
+                               placeholder="e.g. Dr. Adeyemi or Systems Admin"
+                               maxlength="80">
                     </div>
-                    
-                    <div class="grid grid-cols-2 gap-4 mb-6">
-                        <div class="form-group">
-                            <label class="block mb-2 font-bold">New Password</label>
-                            <input type="password" name="new_pass" placeholder="New password">
-                        </div>
-                        <div class="form-group">
-                            <label class="block mb-2 font-bold">Confirm Password</label>
-                            <input type="password" name="confirm_pass" placeholder="Confirm new password">
-                        </div>
+                    <div style="display:flex;justify-content:flex-end;">
+                        <button type="submit" class="btn btn-secondary" id="admin-save-name-btn">
+                            <i class="fa-solid fa-floppy-disk"></i> Save Name
+                        </button>
                     </div>
-                    
-                    <div class="alert alert-info mb-6 flex gap-3">
-                         <i class="fa-solid fa-circle-info mt-1"></i>
-                         <p>For security, please ensure your password is at least 8 characters long and includes a mix of letters and numbers.</p>
+                </form>
+
+                <!-- Security / Password -->
+                <div class="form-section-title" style="margin-bottom:1.25rem;">
+                    <span class="form-section-icon" style="background:rgba(0,33,71,0.08);color:var(--c-primary);"><i class="fa-solid fa-shield-halved"></i></span>
+                    Security Settings
+                </div>
+                <form method="post" id="admin-pw-form">
+                    <?php csrf_field(); ?>
+                    <div class="form-group">
+                        <label for="admin-current-pass">Current Password</label>
+                        <div class="input-group" style="position:relative;">
+                            <span class="input-icon"><i class="fa-solid fa-lock"></i></span>
+                            <input type="password" id="admin-current-pass" name="current_pass"
+                                   placeholder="Enter current password"
+                                   style="padding-left:2.5rem;padding-right:2.75rem;">
+                            <i class="fa-solid fa-eye"
+                               id="toggleCurrentPass"
+                               style="position:absolute;right:14px;top:50%;transform:translateY(-50%);cursor:pointer;font-size:0.85rem;color:var(--c-text-muted);"
+                               onclick="toggleAdminPw('admin-current-pass','toggleCurrentPass')"
+                               title="Toggle password visibility"></i>
+                        </div>
                     </div>
 
-                    <div class="text-right">
-                        <button type="submit" class="btn btn-primary">
-                            Update Security Credentials
+                    <div class="grid" style="grid-template-columns:1fr 1fr;gap:1rem;">
+                        <div class="form-group">
+                            <label for="admin-new-pass">New Password</label>
+                            <div style="position:relative;">
+                                <input type="password" id="admin-new-pass" name="new_pass" placeholder="New password" style="padding-right:2.75rem;">
+                                <i class="fa-solid fa-eye"
+                                   id="toggleNewPass"
+                                   style="position:absolute;right:14px;top:50%;transform:translateY(-50%);cursor:pointer;font-size:0.85rem;color:var(--c-text-muted);"
+                                   onclick="toggleAdminPw('admin-new-pass','toggleNewPass')"
+                                   title="Toggle password visibility"></i>
+                            </div>
+                        </div>
+                        <div class="form-group">
+                            <label for="admin-confirm-pass">Confirm Password</label>
+                            <div style="position:relative;">
+                                <input type="password" id="admin-confirm-pass" name="confirm_pass" placeholder="Confirm new password" style="padding-right:2.75rem;">
+                                <i class="fa-solid fa-eye"
+                                   id="toggleConfirmPass"
+                                   style="position:absolute;right:14px;top:50%;transform:translateY(-50%);cursor:pointer;font-size:0.85rem;color:var(--c-text-muted);"
+                                   onclick="toggleAdminPw('admin-confirm-pass','toggleConfirmPass')"
+                                   title="Toggle password visibility"></i>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="alert alert-info" style="font-size:0.82rem;padding:0.625rem 0.875rem;">
+                        <i class="fa-solid fa-circle-info"></i>
+                        <span>8+ characters with at least one uppercase letter, lowercase letter, and digit.</span>
+                    </div>
+
+                    <div style="display:flex;justify-content:flex-end;margin-top:1.25rem;padding-top:1.25rem;border-top:1px solid var(--c-border);">
+                        <button type="submit" class="btn btn-primary" id="admin-save-pw-btn">
+                            <i class="fa-solid fa-floppy-disk"></i> Update Password
                         </button>
                     </div>
                 </form>
@@ -220,5 +349,43 @@ require_once 'includes/header.php';
         </div>
     </main>
 </div>
+
+<script>
+function toggleAdminPhotoMenu(e) {
+    e.stopPropagation();
+    var menu = document.getElementById('admin-photo-menu');
+    if (!menu) return;
+    menu.style.display = (menu.style.display === 'block') ? 'none' : 'block';
+}
+
+document.addEventListener('click', function(e) {
+    var menu    = document.getElementById('admin-photo-menu');
+    var trigger = document.getElementById('admin-photo-trigger');
+    if (!menu || !trigger) return;
+    if (!menu.contains(e.target) && e.target !== trigger && !trigger.contains(e.target)) {
+        menu.style.display = 'none';
+    }
+});
+
+document.addEventListener('keydown', function(e) {
+    if (e.key === 'Escape') {
+        var menu = document.getElementById('admin-photo-menu');
+        if (menu) menu.style.display = 'none';
+    }
+});
+
+// Password visibility toggle (shared helper)
+function toggleAdminPw(inputId, iconId) {
+    var input = document.getElementById(inputId);
+    var icon  = document.getElementById(iconId);
+    if (!input) return;
+    var isHidden = input.type === 'password';
+    input.type   = isHidden ? 'text' : 'password';
+    if (icon) {
+        icon.classList.toggle('fa-eye',      !isHidden);
+        icon.classList.toggle('fa-eye-slash', isHidden);
+    }
+}
+</script>
 </body>
 </html>

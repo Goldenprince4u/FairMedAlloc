@@ -38,11 +38,16 @@ require_once 'includes/header.php';
     <?php require_once 'includes/nav.php'; ?>
 
     <main class="main-content">
-        <h1 class="serif mb-1 text-3xl">My Dashboard</h1>
-        <p class="text-muted mb-8">Welcome, <?php echo htmlspecialchars($student['full_name'] ?? $_SESSION['username']); ?></p>
+        <!-- Page Header -->
+        <div class="page-header">
+            <div class="page-header-info">
+                <h1>My Dashboard</h1>
+                <p class="text-muted">Welcome, <?php echo htmlspecialchars($student['full_name'] ?? $_SESSION['username']); ?></p>
+            </div>
+        </div>
 
         <!-- Allocation Status Card -->
-        <div class="glass-card mb-8 p-0 overflow-hidden relative"> <!-- Used glass-card -->
+        <div class="card mb-8 p-0 overflow-hidden relative">
             <?php if ($has_paid): ?>
                 <?php if ($alloc): ?>
                     <div class="absolute left-0 top-0 bottom-0 w-2 bg-success"></div>
@@ -142,7 +147,7 @@ require_once 'includes/header.php';
         <div class="grid grid-dashboard-custom">
             
             <!-- My Profile Preview -->
-            <div class="glass-card">
+            <div class="card" style="padding:1.75rem;">
                 <div class="flex justify-between items-center mb-6">
                     <h3 class="serif text-xl mb-0">My Profile</h3>
                     <a href="profile.php" class="text-sm text-primary fw-700"><i class="fa-solid fa-pen"></i> Edit</a>
@@ -177,7 +182,7 @@ require_once 'includes/header.php';
             </div>
 
             <!-- Notices -->
-            <div class="glass-card">
+            <div class="card" style="padding:1.75rem;">
                 <h3 class="serif text-xl mb-6">Notices</h3>
 
                 <!-- Dynamic Notifications -->

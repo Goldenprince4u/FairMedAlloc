@@ -58,6 +58,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
                     $error = "Access Denied: Admin privileges required.";
                 } else {
                     // Populate session to establish the authenticated admin state.
+                    session_regenerate_id(true);
                     $_SESSION['logged_in'] = true;
                     $_SESSION['user_id'] = $user['user_id'];
                     $_SESSION['role'] = $user['role'];
@@ -104,62 +105,108 @@ $page_title = "Admin Login | FairMedAlloc";
 require_once 'includes/header.php';
 ?>
 
+
 <div class="auth-container">
-    <!-- Left: Brand Panel -->
+
+    <!-- ── Left: Brand Panel ── -->
     <div class="auth-left">
         <div class="brand-content">
+
             <img src="assets/logo.jpeg"
-                 alt="Redeemer's University"
-                 style="width:80px;height:80px;border-radius:50%;object-fit:cover;margin-bottom:1.2rem;border:3px solid rgba(255,255,255,0.3);box-shadow:0 0 30px rgba(255,255,255,0.15);">
+                 alt="Redeemer's University Logo"
+                 style="width:72px;height:72px;border-radius:50%;object-fit:cover;margin-bottom:1.5rem;border:3px solid rgba(201,168,76,0.5);">
+
             <h1 class="auth-headline">System<br>Administration</h1>
             <p class="auth-subtitle">Redeemer's University</p>
 
             <div class="brand-border">
                 <p>Secure access to the FairMedAlloc Management Console. Strictly for authorized personnel.</p>
+                <ul class="auth-feature-list">
+                    <li><i class="fa-solid fa-check"></i> System Management</li>
+                    <li><i class="fa-solid fa-check"></i> Allocation Control</li>
+                    <li><i class="fa-solid fa-check"></i> Reports &amp; Analytics</li>
+                    <li><i class="fa-solid fa-check"></i> Data Import &amp; Settings</li>
+                </ul>
             </div>
+
+            <p style="margin-top:3rem;font-size:0.72rem;color:rgba(255,255,255,0.3);letter-spacing:0.05em;">
+                A Final Year Computer Science Research Project
+            </p>
         </div>
     </div>
 
+    <!-- ── Right: Form Panel ── -->
     <div class="auth-right">
         <div class="auth-box animate-fade-in">
+
+            <!-- Header -->
             <div class="mb-8">
-                <span class="badge badge-warning mb-4"><i class="fa-solid fa-lock mr-2"></i>ADMIN PORTAL</span>
-                <h2 class="mb-2 text-primary serif text-4xl">Admin Login</h2>
-                <p class="text-muted text-lg">Enter your administrative credentials.</p>
+                <span class="badge badge-primary mb-4" style="font-size:0.68rem;letter-spacing:0.1em;background:rgba(0,33,71,0.08);color:var(--c-primary);">
+                    <i class="fa-solid fa-lock" style="font-size:0.6rem;"></i> ADMINISTRATOR PORTAL
+                </span>
+                <h2 style="font-size:1.75rem;margin-bottom:0.35rem;color:var(--c-text-head);">Admin Login</h2>
+                <p class="text-muted" style="font-size:0.9rem;">Enter your administrative credentials to proceed.</p>
             </div>
 
+            <!-- Timeout notice -->
             <?php if ($timeout_notice): ?>
-                <div class="alert" style="background:rgba(245,158,11,0.12);border-left:3px solid var(--c-warning);color:var(--c-warning);padding:.9rem 1rem;border-radius:var(--radius);margin-bottom:1rem;font-size:.9rem;">
-                    <i class="fa-solid fa-clock mr-2"></i><?php echo htmlspecialchars($timeout_notice); ?>
+                <div class="alert alert-warning mb-4">
+                    <i class="fa-solid fa-clock"></i>
+                    <?php echo htmlspecialchars($timeout_notice); ?>
                 </div>
             <?php endif; ?>
+
+            <!-- Error -->
             <?php if ($error): ?>
-                <!-- SECURITY: htmlspecialchars() prevents XSS from any user-controlled data in $error -->
-                <div class="alert alert-danger"><?php echo htmlspecialchars($error); ?></div>
+                <div class="alert alert-danger mb-4">
+                    <i class="fa-solid fa-circle-exclamation"></i>
+                    <?php echo htmlspecialchars($error); ?>
+                </div>
             <?php endif; ?>
 
-            <form method="post">
+            <!-- Admin Login Form -->
+            <form method="post" id="admin-login-form">
                 <?php csrf_field(); ?>
 
                 <div class="form-group">
-                    <label class="text-sm fw-700 mb-2">Username</label>
-                    <input type="text" name="username" placeholder="admin" required class="input-auth">
+                    <label for="admin-username">Username</label>
+                    <div class="input-group">
+                        <span class="input-icon"><i class="fa-solid fa-user-shield"></i></span>
+                        <input type="text"
+                               id="admin-username"
+                               name="username"
+                               placeholder="admin"
+                               required
+                               class="input-auth"
+                               style="padding-left:2.5rem;"
+                               autocomplete="username">
+                    </div>
                 </div>
 
                 <div class="form-group">
-                    <label class="text-sm fw-700 mb-2">Password</label>
-                    <div style="position: relative;">
-                        <input type="password" id="passwordInput" name="password" placeholder="••••••••" required class="input-auth" style="padding-right: 40px;">
-                        <i class="fa-solid fa-eye text-muted" id="togglePassword"
-                           style="position: absolute; right: 15px; top: 50%; transform: translateY(-50%); cursor: pointer;"
-                           onclick="togglePasswordVisibility()"></i>
+                    <label for="admin-password">Password</label>
+                    <div class="input-group">
+                        <span class="input-icon"><i class="fa-solid fa-lock"></i></span>
+                        <input type="password"
+                               id="admin-password"
+                               name="password"
+                               placeholder="••••••••"
+                               required
+                               class="input-auth"
+                               style="padding-left:2.5rem;padding-right:2.75rem;"
+                               autocomplete="current-password">
+                        <i class="fa-solid fa-eye text-muted"
+                           id="toggleAdminPassword"
+                           style="position:absolute;right:14px;top:50%;transform:translateY(-50%);cursor:pointer;font-size:0.85rem;"
+                           onclick="toggleAdminPw()"
+                           title="Toggle password visibility"></i>
                     </div>
                 </div>
 
                 <script>
-                function togglePasswordVisibility() {
-                    const pw   = document.getElementById('passwordInput');
-                    const icon = document.getElementById('togglePassword');
+                function toggleAdminPw() {
+                    const pw   = document.getElementById('admin-password');
+                    const icon = document.getElementById('toggleAdminPassword');
                     const isHidden = pw.type === 'password';
                     pw.type = isHidden ? 'text' : 'password';
                     icon.classList.toggle('fa-eye',       !isHidden);
@@ -167,19 +214,22 @@ require_once 'includes/header.php';
                 }
                 </script>
 
-                <button class="btn btn-warning w-full mb-4" style="color: var(--c-primary-dark);"><i class="fa-solid fa-right-to-bracket mr-2"></i> Sign in</button>
+                <button type="submit" class="btn btn-primary w-full mt-2" id="admin-login-submit" style="padding:0.8rem;">
+                    <i class="fa-solid fa-right-to-bracket"></i> Sign In
+                </button>
 
-                <div class="text-center text-muted text-sm mb-6">
+                <div class="text-center mt-4" style="font-size:0.84rem;">
                     <a href="forgot_password.php" class="text-muted">Forgot Password?</a>
                 </div>
 
-                <div class="text-center text-sm pt-4 text-muted" style="border-top: 1px solid var(--c-border);">
-                    Student Portal? <a href="login.php" class="text-primary fw-700">Student Login</a>
+                <div class="text-center mt-6 pt-4 text-muted" style="border-top:1px solid var(--c-border);font-size:0.84rem;">
+                    Student portal? <a href="login.php" class="text-primary fw-700">Student Login &rarr;</a>
                 </div>
             </form>
+
         </div>
     </div>
 </div>
-</body>
 
+</body>
 </html>

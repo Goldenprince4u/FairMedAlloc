@@ -77,12 +77,12 @@ require_once 'includes/header.php';
 
     <main class="main-content">
         <!-- Page Header -->
-        <div class="flex justify-between items-center mb-8">
-            <div>
-                <h1 class="serif mb-1" style="font-size:2rem;">Reports &amp; Analytics</h1>
+        <div class="page-header">
+            <div class="page-header-info">
+                <h1>Reports &amp; Analytics</h1>
                 <p class="text-muted">System-wide allocation statistics and medical data insights.</p>
             </div>
-            <a href="admin_dashboard.php" class="btn btn-outline">
+            <a href="admin_dashboard.php" class="btn btn-outline" id="reports-back-btn">
                 <i class="fa-solid fa-arrow-left"></i> Back to Dashboard
             </a>
         </div>
@@ -131,7 +131,7 @@ require_once 'includes/header.php';
         <div class="grid grid-cols-2 mb-8">
 
             <!-- Allocation Progress Doughnut -->
-            <div class="card" style="padding:1.5rem;">
+            <div class="card" style="padding:1.75rem;">
                 <h3 class="serif mb-4" style="font-size:1.1rem;">Allocation Progress</h3>
                 <div style="max-width:260px;margin:0 auto;">
                     <canvas id="allocChart"></canvas>
@@ -144,7 +144,7 @@ require_once 'includes/header.php';
             </div>
 
             <!-- Gender & Severity Side Charts -->
-            <div class="card" style="padding:1.5rem;">
+            <div class="card" style="padding:1.75rem;">
                 <h3 class="serif mb-4" style="font-size:1.1rem;">Gender &amp; Medical Severity</h3>
                 <canvas id="genderChart" style="max-height:140px;margin-bottom:1.5rem;"></canvas>
                 <canvas id="severityChart" style="max-height:140px;"></canvas>
@@ -152,7 +152,7 @@ require_once 'includes/header.php';
         </div>
 
         <!-- ── Medical Condition Distribution ─────────────────────────────── -->
-        <div class="card mb-8" style="padding:1.5rem;">
+        <div class="card mb-8" style="padding:1.75rem;">
             <h3 class="serif mb-4" style="font-size:1.1rem;">Medical Condition Distribution</h3>
             <?php if (empty($conditions)): ?>
                 <p class="text-muted">No medical condition data yet.</p>
@@ -162,7 +162,7 @@ require_once 'includes/header.php';
         </div>
 
         <!-- ── Hostel Occupancy Table ─────────────────────────────────────── -->
-        <div class="card mb-8" style="padding:1.5rem;">
+        <div class="card mb-8" style="padding:1.75rem;">
             <h3 class="serif mb-4" style="font-size:1.1rem;">Hostel Occupancy Breakdown</h3>
             <div style="overflow-x:auto;">
                 <table class="data-table" style="width:100%;border-collapse:collapse;">

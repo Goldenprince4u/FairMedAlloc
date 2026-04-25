@@ -9,42 +9,108 @@ body {
     background: white;
     width: 210mm;
     min-height: 297mm;
-    /* A4 */
     margin: 0 auto;
-    padding: 40px;
+    padding: 0;
     text-align: left;
-    box-shadow: 0 0 10px rgba(0, 0, 0, 0.5);
+    box-shadow: 0 0 14px rgba(0,0,0,0.5);
     position: relative;
+    overflow: hidden;
 }
 
+/* ── Watermark logo behind content ── */
+.slip-container::before {
+    content: '';
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    width: 340px;
+    height: 340px;
+    background-image: url('../assets/logo.jpeg');
+    background-size: contain;
+    background-repeat: no-repeat;
+    background-position: center;
+    opacity: 0.14;
+    z-index: 0;
+    pointer-events: none;
+}
+
+/* Everything inside must sit above the watermark */
+.slip-inner {
+    position: relative;
+    z-index: 1;
+    padding: 0;
+}
+
+/* ── Header: full-width navy band, centred ── */
 .header {
+    background: #002147;
+    padding: 24px 40px 18px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 10px;
     text-align: center;
-    border-bottom: 2px solid #1e3a8a;
-    padding-bottom: 20px;
-    margin-bottom: 30px;
+    margin-bottom: 0;
+}
+
+.header-logo {
+    width: 68px;
+    height: 68px;
+    border-radius: 50%;
+    object-fit: cover;
+    border: 3px solid rgba(255,255,255,0.3);
+    flex-shrink: 0;
+}
+
+.header-text {
+    text-align: center;
 }
 
 .uni-name {
-    font-family: 'Merriweather', serif;
-    font-size: 24px;
-    color: #1e3a8a;
-    font-weight: bold;
+    font-size: 18px;
+    color: #ffffff;
+    font-weight: 800;
     text-transform: uppercase;
+    letter-spacing: 0.06em;
+    line-height: 1.2;
+    margin-bottom: 2px;
 }
 
 .sub-head {
-    color: #555;
-    font-size: 14px;
-    margin-top: 5px;
+    color: rgba(255,255,255,0.6);
+    font-size: 11px;
+    margin-top: 2px;
+    letter-spacing: 0.04em;
+}
+
+.slip-title-bar {
+    background: #C9A84C;
+    color: #002147;
+    text-align: center;
+    font-size: 11px;
+    font-weight: 800;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    padding: 7px 40px;
+    margin-bottom: 0;
+}
+
+/* ── Body content area ── */
+.slip-body {
+    padding: 30px 40px 24px;
 }
 
 .photo-box {
     position: absolute;
-    top: 40px;
+    top: 110px;
     right: 40px;
-    width: 120px;
-    height: 120px;
-    border: 1px solid #ccc;
+    width: 110px;
+    height: 110px;
+    border: 2px solid #002147;
+    border-radius: 4px;
+    overflow: hidden;
+    z-index: 2;
 }
 
 .photo-box img {
@@ -53,34 +119,41 @@ body {
     object-fit: cover;
 }
 
+/* ── Data rows ── */
 .content {
-    margin-top: 40px;
+    margin-top: 10px;
+    margin-right: 130px; /* clear the photo */
 }
 
 .row {
     display: flex;
-    margin-bottom: 15px;
+    margin-bottom: 10px;
     border-bottom: 1px solid #eee;
-    padding-bottom: 5px;
+    padding-bottom: 8px;
+    align-items: baseline;
 }
 
 .label {
-    width: 150px;
-    font-weight: 600;
-    color: #555;
+    width: 140px;
+    font-weight: 700;
+    font-size: 11px;
+    color: #64748b;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    flex-shrink: 0;
 }
 
 .value {
     flex: 1;
-    font-weight: 500;
-    font-family: monospace;
-    font-size: 16px;
+    font-weight: 600;
+    font-size: 14px;
+    color: #1e293b;
 }
 
+/* ── Allocation box ── */
 .alloc-box {
-    margin-top: 40px;
-    border: 2px solid #1e3a8a;
-    padding: 0;
+    margin-top: 28px;
+    border: 2px solid #002147;
     background: #fff;
     text-align: center;
     border-radius: 4px;
@@ -88,77 +161,97 @@ body {
 }
 
 .alloc-header {
-    background: #1e3a8a;
+    background: #002147;
     color: white;
-    padding: 10px;
-    font-size: 14px;
+    padding: 9px;
+    font-size: 11px;
     text-transform: uppercase;
-    letter-spacing: 1px;
-    font-weight: bold;
+    letter-spacing: 0.08em;
+    font-weight: 800;
 }
 
 .alloc-hostel {
-    font-size: 24px;
-    font-weight: bold;
-    margin: 15px 0 5px 0;
-    color: #333;
-    font-family: 'Merriweather', serif;
+    font-size: 22px;
+    font-weight: 800;
+    margin: 14px 0 4px;
+    color: #002147;
+    letter-spacing: -0.02em;
 }
 
 .alloc-grid {
     display: flex;
     border-top: 1px solid #ddd;
-    margin-top: 15px;
+    margin-top: 14px;
 }
 
 .alloc-item {
     flex: 1;
-    padding: 15px;
+    padding: 14px;
     border-right: 1px solid #ddd;
     background: #f8fafc;
 }
 
-.alloc-item:last-child {
-    border-right: none;
-}
+.alloc-item:last-child { border-right: none; }
 
 .alloc-label {
-    font-size: 10px;
+    font-size: 9px;
     text-transform: uppercase;
     color: #64748b;
-    font-weight: 700;
+    font-weight: 800;
     margin-bottom: 5px;
-    letter-spacing: 0.5px;
+    letter-spacing: 0.06em;
 }
 
 .alloc-value {
-    font-size: 22px;
+    font-size: 28px;
     font-weight: 800;
-    color: #1e3a8a;
-    font-family: 'Inter', sans-serif;
+    color: #002147;
 }
 
-.footer {
-    margin-top: 80px;
-    text-align: center;
-    font-size: 12px;
-    color: #999;
-    border-top: 1px solid #eee;
-    padding-top: 20px;
-}
-
+/* ── Stamp ── */
 .stamp {
-    margin-top: 50px;
-    border: 3px double #c2410c;
-    color: #c2410c;
-    padding: 10px;
+    margin-top: 40px;
+    border: 3px double #002147;
+    color: #002147;
+    padding: 8px 16px;
     display: inline-block;
     transform: rotate(-5deg);
-    font-weight: bold;
+    font-weight: 800;
     text-transform: uppercase;
-    font-size: 18px;
-    opacity: 0.8;
+    font-size: 16px;
+    opacity: 0.75;
+    letter-spacing: 0.08em;
 }
+
+/* ── Footer ── */
+.footer {
+    margin-top: 50px;
+    text-align: center;
+    font-size: 11px;
+    color: #94a3b8;
+    border-top: 1px solid #e2e8f0;
+    padding: 14px 40px 24px;
+}
+
+/* ── Print button (screen only) ── */
+.btn-print {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    background: #002147;
+    color: white;
+    border: none;
+    padding: 10px 20px;
+    border-radius: 6px;
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+    margin-bottom: 20px;
+    font-family: 'Inter', sans-serif;
+    transition: background 0.2s;
+}
+
+.btn-print:hover { background: #0d3b6e; }
 
 @media print {
     body {
@@ -174,29 +267,37 @@ body {
     .btn-print {
         display: none;
     }
+
+    .slip-container::before {
+        opacity: 0.04;
+        -webkit-print-color-adjust: exact;
+        print-color-adjust: exact;
+    }
+
+    .header {
+        -webkit-print-color-adjust: exact;
+        print-color-adjust: exact;
+    }
+
+    .slip-title-bar {
+        -webkit-print-color-adjust: exact;
+        print-color-adjust: exact;
+    }
 }
 
-/*
- * Force light-mode for the print slip page:
- * This document must always look professional on screen & paper,
- * regardless of the user's dark mode preference.
- */
-[data-theme="dark"] body {
-    background: #525659;
-    color: #000;
-}
-
+/* Force light-mode regardless of OS/browser dark-mode */
+[data-theme="dark"] body          { background: #525659; color: #000; }
 [data-theme="dark"] .slip-container { background: white; color: #000; }
-[data-theme="dark"] .uni-name       { color: #1e3a8a; }
-[data-theme="dark"] .sub-head       { color: #555; }
-[data-theme="dark"] .alloc-box      { background: #fff; border-color: #1e3a8a; }
-[data-theme="dark"] .alloc-header   { background: #1e3a8a; color: white; }
-[data-theme="dark"] .alloc-hostel   { color: #333; }
+[data-theme="dark"] .uni-name       { color: #ffffff; }
+[data-theme="dark"] .sub-head       { color: rgba(255,255,255,0.6); }
+[data-theme="dark"] .alloc-box      { background: #fff; border-color: #002147; }
+[data-theme="dark"] .alloc-header   { background: #002147; color: white; }
+[data-theme="dark"] .alloc-hostel   { color: #002147; }
 [data-theme="dark"] .alloc-item     { background: #f8fafc; }
 [data-theme="dark"] .alloc-label    { color: #64748b; }
-[data-theme="dark"] .alloc-value    { color: #1e3a8a; }
-[data-theme="dark"] .label          { color: #555; }
-[data-theme="dark"] .value          { color: #000; }
-[data-theme="dark"] .footer         { color: #999; border-top-color: #eee; }
+[data-theme="dark"] .alloc-value    { color: #002147; }
+[data-theme="dark"] .label          { color: #64748b; }
+[data-theme="dark"] .value          { color: #1e293b; }
+[data-theme="dark"] .footer         { color: #94a3b8; border-top-color: #e2e8f0; }
 [data-theme="dark"] .row            { border-bottom-color: #eee; }
-[data-theme="dark"] .stamp          { color: #c2410c; border-color: #c2410c; }
+[data-theme="dark"] .stamp          { color: #002147; border-color: #002147; }

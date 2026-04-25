@@ -68,7 +68,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_FILES['csv_file'])) {
         // Prepare reusable statements once for performance across many rows
         $stmt_check       = $conn->prepare("SELECT user_id FROM users WHERE username = ?");
         $stmt_user        = $conn->prepare("INSERT INTO users (username, full_name, password_hash, role) VALUES (?, ?, ?, 'student')");
-        $stmt_profile     = $conn->prepare("INSERT INTO student_profiles (user_id, level, department_id, gender) VALUES (?, ?, ?, ?)");
+        $stmt_profile     = $conn->prepare("INSERT INTO student_profiles (user_id, level, department_id, gender, is_paid) VALUES (?, ?, ?, ?, ?)");
         $stmt_dept_lookup = $conn->prepare("SELECT department_id FROM departments WHERE name LIKE ? LIMIT 1");
 
         // ── PHASE 1: Create user & profile records ──────────────────────────────
@@ -79,8 +79,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_FILES['csv_file'])) {
         $pending_medical = []; // ['id'=>uid, 'condition'=>..., 'severity'=>..., 'mobility'=>..., 'academic_level'=>...]
 
         while (($row = fgetcsv($file)) !== false) {
-            // Skip rows that don't have the minimum 7 required columns
-            if (count($row) < 7) continue;
+            // Skip rows that don't have the minimum 10 required columns (with Paid Status at the end)
+            if (count($row) < 10) continue;
 
             $matric    = trim($row[0]);
             $name      = trim($row[1]);
@@ -88,6 +88,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_FILES['csv_file'])) {
             $dept      = trim($row[4]);
             $gender    = trim($row[5]);
             $condition = trim($row[6]); // Raw ENUM value — do NOT HTML-encode
+            $is_paid   = (int)trim($row[9]) === 1 ? 1 : 0;
 
             if (empty($condition)) continue;
 
@@ -117,7 +118,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_FILES['csv_file'])) {
                     $dept_id = $res_dept->fetch_assoc()['department_id'];
                 }
 
-                $stmt_profile->bind_param("iiis", $uid, $level, $dept_id, $gender);
+                $stmt_profile->bind_param("iiisi", $uid, $level, $dept_id, $gender, $is_paid);
                 $stmt_profile->execute();
 
                 // Queue student for batch ML scoring (medical data only if condition is not None)
@@ -199,36 +200,87 @@ require_once 'includes/header.php';
     <?php require_once 'includes/nav.php'; ?>
 
     <main class="main-content">
-        <h1>Data Import</h1>
-        <p class="text-muted mb-8">Bulk student registration via CSV.</p>
+
+        <!-- Page Header -->
+        <div class="page-header">
+            <div class="page-header-info">
+                <h1>Data Import</h1>
+                <p class="text-muted">Bulk student registration via structured CSV file.</p>
+            </div>
+            <a href="admin_dashboard.php" class="btn btn-outline" id="import-back-btn">
+                <i class="fa-solid fa-arrow-left"></i> Dashboard
+            </a>
+        </div>
 
         <?php if($msg): ?>
             <div class="alert alert-<?php echo $msg_type === 'success' ? 'success' : 'danger'; ?> mb-6">
-                <i class="fa-solid <?php echo $msg_type === 'success' ? 'fa-check-circle' : 'fa-circle-exclamation'; ?> mr-2"></i>
+                <i class="fa-solid <?php echo $msg_type === 'success' ? 'fa-check-circle' : 'fa-circle-exclamation'; ?>"></i>
                 <?php echo htmlspecialchars($msg); ?>
             </div>
         <?php endif; ?>
 
+        <div style="display:grid;grid-template-columns:1fr 380px;gap:1.5rem;align-items:start;">
 
-        <div class="card upload-zone">
-            <i class="fa-solid fa-cloud-arrow-up text-4xl text-muted mb-4 text-5xl"></i>
-            <h3 class="mb-2">Drag Configuration File Here</h3>
-            <p class="text-muted mb-6">or click to browse local storage</p>
+            <!-- Upload Zone -->
+            <div class="card upload-zone" id="upload-drop-zone">
+                <i class="fa-solid fa-cloud-arrow-up" style="font-size:2.5rem;color:var(--c-text-muted);margin-bottom:1rem;"></i>
+                <h3 style="margin-bottom:0.5rem;">Upload Student CSV File</h3>
+                <p class="text-muted" style="margin-bottom:1.75rem;font-size:0.9rem;">Drag &amp; drop your CSV file here, or click to browse.</p>
 
-            <form method="post" enctype="multipart/form-data">
-                <?php csrf_field(); ?>
-                <input type="file" name="csv_file" id="fileIn" class="hidden" onchange="this.form.submit()">
-                <label for="fileIn" class="btn btn-primary">
-                    Select CSV File
-                </label>
-            </form>
-            
-            <div class="mt-8 text-xs text-muted">
-                <strong>Required:</strong> Matric No, Full Name, Level, Faculty, Department, Gender, Medical Condition<br>
-                <strong>Optional:</strong> Severity (Low/Medium/High), Mobility (Normal/Wheelchair User/Crutches/Walker)
+                <form method="post" enctype="multipart/form-data" id="csv-upload-form">
+                    <?php csrf_field(); ?>
+                    <input type="file" name="csv_file" id="csv-file-input" class="hidden" accept=".csv,text/csv" onchange="this.form.submit()">
+                    <label for="csv-file-input" class="btn btn-primary" id="csv-browse-btn" style="cursor:pointer;">
+                        <i class="fa-solid fa-folder-open"></i> Browse File
+                    </label>
+                </form>
+
+                <p class="text-muted" style="margin-top:1rem;font-size:0.75rem;">Max file size: 5MB &bull; Format: CSV &bull; UTF-8 encoding</p>
             </div>
+
+            <!-- Format Guide -->
+            <div class="card" style="padding:1.75rem;">
+                <div class="form-section-title" style="margin-bottom:1rem;">
+                    <span class="form-section-icon" style="background:rgba(37,99,235,0.08);color:var(--c-info);"><i class="fa-solid fa-table"></i></span>
+                    CSV Format Guide
+                </div>
+                <p class="text-muted" style="font-size:0.8rem;margin-bottom:1rem;">Columns must be in this exact order:</p>
+
+                <div style="display:flex;flex-direction:column;gap:0.5rem;">
+                    <?php
+                    $cols = [
+                        ['A', 'Matric No',    'RUN/CMP/22/001',     'required'],
+                        ['B', 'Full Name',    'John Doe',           'required'],
+                        ['C', 'Level',        '200',                'required'],
+                        ['D', 'Faculty',      'Sciences',           'required'],
+                        ['E', 'Department',   'Computer Science',   'required'],
+                        ['F', 'Gender',       'Male / Female',      'required'],
+                        ['G', 'Condition',    'Sickle Cell / None', 'required'],
+                        ['H', 'Severity',     'Low / Medium / High','optional'],
+                        ['I', 'Mobility',     'Normal / Wheelchair','optional'],
+                        ['J', 'Paid Status',  '1 or 0',             'required'],
+                    ];
+                    foreach ($cols as [$col, $name, $example, $req]): ?>
+                        <div style="display:flex;align-items:center;gap:0.625rem;padding:0.5rem 0;border-bottom:1px solid var(--c-border);">
+                            <span style="width:22px;height:22px;background:var(--c-primary);color:#fff;border-radius:4px;font-size:0.65rem;font-weight:700;display:flex;align-items:center;justify-content:center;flex-shrink:0;"><?php echo $col; ?></span>
+                            <div style="flex:1;min-width:0;">
+                                <div style="font-size:0.8rem;font-weight:600;color:var(--c-text-head);"><?php echo $name; ?></div>
+                                <div style="font-size:0.72rem;color:var(--c-text-muted);"><?php echo $example; ?></div>
+                            </div>
+                            <span class="badge <?php echo $req === 'required' ? 'badge-danger' : 'badge-success'; ?>" style="font-size:0.6rem;"><?php echo strtoupper($req); ?></span>
+                        </div>
+                    <?php endforeach; ?>
+                </div>
+
+                <div class="alert alert-info" style="margin-top:1.25rem;font-size:0.8rem;">
+                    <i class="fa-solid fa-info-circle"></i>
+                    Row 1 must be a header row — it will be automatically skipped.
+                </div>
+            </div>
+
         </div>
     </main>
 </div>
 </body>
 </html>
+

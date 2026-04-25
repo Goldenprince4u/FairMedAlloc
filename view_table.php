@@ -72,16 +72,17 @@ require_once 'includes/header.php';
     <?php require_once 'includes/nav.php'; ?>
 
     <main class="main-content">
-        <div class="flex justify-between items-center mb-8">
-            <div>
-                <h1 class="serif mb-1 text-3xl">Allocation Matrix</h1>
-                <p class="text-muted">Master list of student data and allocation decisions.</p>
+        <!-- Page Header -->
+        <div class="page-header">
+            <div class="page-header-info">
+                <h1>Allocation Matrix</h1>
+                <p class="text-muted">Master list of all student records and allocation decisions.</p>
             </div>
-            
-            <div class="flex gap-3">
-                <div class="relative">
-                    <i class="fa-solid fa-search absolute" style="left: 0.75rem; top: 50%; transform: translateY(-50%); color: var(--c-text-light);"></i>
-                    <input type="text" id="searchInput" placeholder="Search by name, matric, hostel..." class="input" style="padding-left: 2.5rem; width: 280px;">
+            <div style="display:flex;gap:0.75rem;align-items:center;">
+                <div style="position:relative;">
+                    <i class="fa-solid fa-search" style="position:absolute;left:0.75rem;top:50%;transform:translateY(-50%);color:var(--c-text-light);font-size:0.8rem;"></i>
+                    <input type="text" id="searchInput" placeholder="Search name, matric, hostel…"
+                           style="padding-left:2.25rem;width:260px;" class="input">
                 </div>
                 <button id="exportBtn" class="btn btn-primary">
                     <i class="fa-solid fa-download"></i> Export CSV
@@ -192,11 +193,16 @@ require_once 'includes/header.php';
     </main>
 </div>
 
-<!-- Manual Allocation Modal -->
-<div id="assignModal" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.55); z-index:50; align-items:center; justify-content:center;">
-    <div class="card p-6 w-full" style="max-width:480px; background:var(--c-bg-surface); box-shadow: var(--shadow-lg);">
-        <h3 class="text-xl fw-700 mb-4">Manual Room Allocation</h3>
-        <p class="text-sm text-muted mb-4">Assigning room for: <strong id="assignStudentName">...</strong></p>
+    <!-- Manual Allocation Modal -->
+    <div id="assignModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:50;align-items:center;justify-content:center;">
+        <div class="card" style="max-width:480px;width:100%;background:var(--c-bg-surface);box-shadow:var(--shadow-lg);padding:2rem;">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1.25rem;padding-bottom:1rem;border-bottom:1px solid var(--c-border);">
+                <h3 style="margin:0;font-size:1rem;font-weight:700;">Manual Room Allocation</h3>
+                <button type="button" id="closeModalBtn" style="background:none;border:none;cursor:pointer;color:var(--c-text-muted);font-size:1.1rem;padding:0.25rem;" aria-label="Close modal">
+                    <i class="fa-solid fa-xmark"></i>
+                </button>
+            </div>
+            <p style="font-size:0.875rem;color:var(--c-text-muted);margin-bottom:1.25rem;">Assigning room for: <strong id="assignStudentName" style="color:var(--c-text-head);">...</strong></p>
         
         <form id="assignForm">
             <input type="hidden" id="assignStudentId" name="student_id">

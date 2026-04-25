@@ -102,7 +102,7 @@ require_once 'includes/header.php';
     </div>
 
     <div class="auth-right">
-        <div class="auth-box glass-card">
+        <div class="auth-box">
             <a href="login.php" class="mb-6 inline-block text-muted" style="font-size: 0.85rem;"><i class="fa-solid fa-arrow-left"></i> Back to Login</a>
             
             <h2 class="mb-2" style="font-size: 2rem; color: var(--c-primary);">Forgot Password?</h2>
