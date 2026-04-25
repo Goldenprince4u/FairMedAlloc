@@ -78,87 +78,99 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
     }
 }
 
-$page_title = "Admin Registration | FairMedAlloc";
+$page_title = "Create Admin | FairMedAlloc";
 require_once 'includes/header.php';
 ?>
 
-<div class="auth-container">
-    <!-- Left: Brand Panel -->
-    <div class="auth-left">
-        <div class="brand-content">
-            <h1 class="auth-headline">Staff<br>Onboarding</h1>
-            <p class="auth-subtitle">Redeemer's University</p>
+<div class="app-shell">
+    <?php require_once 'includes/nav.php'; ?>
 
-            <div class="brand-border">
-                <p>Create an administrative account to access the FairMedAlloc Management Console.</p>
-                <ul class="auth-feature-list">
-                    <li><i class="fa-solid fa-check"></i> System Configuration</li>
-                    <li><i class="fa-solid fa-check"></i> Trigger Allocation AI</li>
-                    <li><i class="fa-solid fa-check"></i> Reporting &amp; Analytics</li>
-                </ul>
+    <main class="main-content">
+        <div class="page-header">
+            <div class="page-header-info">
+                <h1>Create Admin</h1>
+                <p class="text-muted">Create additional administrator accounts from an active admin session.</p>
             </div>
+            <a href="admin_dashboard.php" class="btn btn-outline">
+                <i class="fa-solid fa-arrow-left"></i> Dashboard
+            </a>
         </div>
-    </div>
 
-    <!-- Right: Form -->
-    <div class="auth-right">
-        <div class="auth-box animate-fade-in max-w-[500px]">
-            <div class="mb-8">
-                <span class="badge badge-warning mb-4"><i class="fa-solid fa-user-tie mr-2"></i>STAFF ACCOUNT</span>
-                <h2 class="mb-2 text-primary serif text-4xl">Admin Setup</h2>
-                <p class="text-muted text-lg">Enter your details to register as an administrator.</p>
+        <?php if($msg): ?>
+            <div class="alert alert-<?php echo $msg_type === 'error' ? 'danger' : 'success'; ?> mb-6">
+                <i class="fa-solid <?php echo $msg_type === 'error' ? 'fa-circle-exclamation' : 'fa-check-circle'; ?>"></i>
+                <?php echo htmlspecialchars($msg); ?>
+            </div>
+        <?php endif; ?>
+
+        <div class="grid" style="grid-template-columns:minmax(0, 560px) minmax(260px, 320px);gap:1.5rem;align-items:start;">
+            <div class="card" style="padding:2rem;">
+                <div style="display:flex;align-items:center;gap:0.75rem;margin-bottom:1.5rem;">
+                    <span class="badge badge-warning"><i class="fa-solid fa-user-shield"></i> INTERNAL ACCESS</span>
+                </div>
+
+                <form method="post">
+                    <?php csrf_field(); ?>
+
+                    <div class="form-group mb-4">
+                        <label for="admin-full-name">Full Name</label>
+                        <input type="text" id="admin-full-name" name="full_name" placeholder="John Doe" required class="input-auth">
+                    </div>
+
+                    <div class="form-group mb-4">
+                        <label for="admin-username">Username</label>
+                        <input type="text" id="admin-username" name="username" placeholder="admin_johndoe" required class="input-auth">
+                    </div>
+
+                    <div class="form-group mb-4">
+                        <label for="admin-email">Email Address</label>
+                        <input type="email" id="admin-email" name="email" placeholder="johndoe@fairmed.edu.ng" required class="input-auth">
+                    </div>
+
+                    <div class="form-group mb-6">
+                        <label for="admin-signup-password">Temporary Password</label>
+                        <div class="input-group" style="position:relative;">
+                            <input type="password" id="admin-signup-password" name="password"
+                                   placeholder="Create a strong password" required class="input-auth"
+                                   minlength="8" pattern="(?=.*\d)(?=.*[a-z])(?=.*[A-Z]).{8,}"
+                                   title="Must contain at least one number and one uppercase and lowercase letter, and at least 8 or more characters"
+                                   style="padding-right:2.75rem;">
+                            <i class="fa-solid fa-eye"
+                               id="toggleAdminSignupPassword"
+                               style="position:absolute;right:14px;top:50%;transform:translateY(-50%);cursor:pointer;font-size:0.85rem;color:var(--c-text-muted);"
+                               onclick="toggleAdminSignupPw()"
+                               title="Toggle password visibility"></i>
+                        </div>
+                        <div class="text-xs text-muted mt-2">Share this password securely and ask the new admin to change it after first sign-in.</div>
+                    </div>
+
+                    <div style="display:flex;justify-content:flex-end;">
+                        <button class="btn btn-primary">
+                            <i class="fa-solid fa-user-plus"></i> Create Admin Account
+                        </button>
+                    </div>
+                </form>
             </div>
 
-            <?php if($msg): ?>
-                <div class="alert <?php echo $msg_type == 'error' ? 'alert-danger' : 'alert-success'; ?>">
-                    <?php echo htmlspecialchars($msg); ?>
-                </div>
-            <?php endif; ?>
-
-            <form method="post">
-                <?php csrf_field(); ?>
-
-                <div class="form-group mb-4">
-                    <label class="text-sm fw-700 mb-2">Full Name</label>
-                    <input type="text" name="full_name" placeholder="John Doe" required class="input-auth">
-                </div>
-
-                <div class="form-group mb-4">
-                    <label class="text-sm fw-700 mb-2">Username</label>
-                    <input type="text" name="username" placeholder="admin_johndoe" required class="input-auth">
-                </div>
-
-                <div class="form-group mb-4">
-                    <label class="text-sm fw-700 mb-2">Email Address</label>
-                    <input type="email" name="email" required class="input-auth">
-                </div>
-
-                <div class="form-group mb-8">
-                    <label class="text-sm fw-700 mb-2">Password</label>
-                    <div class="input-group" style="position:relative;">
-                        <input type="password" id="admin-signup-password" name="password"
-                               placeholder="Create a strong password" required class="input-auth"
-                               minlength="8" pattern="(?=.*\d)(?=.*[a-z])(?=.*[A-Z]).{8,}"
-                               title="Must contain at least one number and one uppercase and lowercase letter, and at least 8 or more characters"
-                               style="padding-right:2.75rem;">
-                        <i class="fa-solid fa-eye"
-                           id="toggleAdminSignupPassword"
-                           style="position:absolute;right:14px;top:50%;transform:translateY(-50%);cursor:pointer;font-size:0.85rem;color:var(--c-text-muted);"
-                           onclick="toggleAdminSignupPw()"
-                           title="Toggle password visibility"></i>
+            <div class="card" style="padding:1.75rem;">
+                <h3 style="font-size:1rem;margin-bottom:1rem;">Access Notes</h3>
+                <div style="display:flex;flex-direction:column;gap:0.875rem;">
+                    <div class="text-sm text-body">
+                        <strong class="text-head">Session-only action.</strong><br>
+                        This page is available only to a logged-in admin.
+                    </div>
+                    <div class="text-sm text-body">
+                        <strong class="text-head">No session switch.</strong><br>
+                        Creating a new admin does not log out the current admin or replace the active session.
+                    </div>
+                    <div class="text-sm text-body">
+                        <strong class="text-head">Shared responsibility.</strong><br>
+                        New admins can access allocation, reports, imports, and settings immediately after signing in.
                     </div>
                 </div>
-
-                <div class="text-center">
-                    <button class="btn btn-warning text-dark w-full mb-4" style="color: var(--c-primary-dark);">Create Admin Account</button>
-                </div>
-                
-                <div class="text-center text-sm pt-4 text-muted" style="border-top: 1px solid var(--c-border);">
-                    Already an admin? <a href="admin_login.php" class="text-primary fw-700">Admin Login</a>
-                </div>
-            </form>
+            </div>
         </div>
-    </div>
+    </main>
 </div>
 <script>
 function toggleAdminSignupPw() {

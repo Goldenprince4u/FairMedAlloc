@@ -2,8 +2,8 @@
 /**
  * FairMedAlloc - Payment Simulation API
  * =====================================
- * This endpoint simulates the process of a student paying their school fees.
- * Real production would integrate Paystack or Flutterwave here.
+ * This endpoint simulates the process of a student paying school fees on the portal.
+ * In the project, this mirrors the university portal flow through a pay simulator.
  */
 session_start();
 require_once '../db_config.php';
@@ -64,11 +64,11 @@ if ($stmt->execute()) {
     //
     // The payment is now confirmed immediately. The student's profile remains
     // 'Unallocated' and will be processed during the next admin-triggered
-    // allocation cycle (via run_allocation.php). The notification system
+    // batch allocation cycle (via run_allocation.php). The notification system
     // will inform the student when a room is assigned.
     echo json_encode([
         'status'  => 'success',
-        'message' => 'Payment of &#8358;50,000 confirmed! Your room will be allocated in the next allocation cycle. You will be notified when a room is assigned.'
+        'message' => 'Portal payment of &#8358;50,000 confirmed through the pay simulator. Your room will be considered in the next admin batch, and you will be notified when a room is assigned.'
     ]);
 } else {
     echo json_encode(['status' => 'error', 'message' => 'Database error. Please try again.']);

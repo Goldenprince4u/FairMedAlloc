@@ -47,7 +47,7 @@ require_once 'includes/header.php';
                 </div>
                 <p class="text-muted" style="font-size:0.875rem;margin-bottom:1rem;">This process will:</p>
                 <ul class="list-instructions">
-                    <li>Fetch all unallocated students who have paid fees.</li>
+                    <li>Fetch eligible students imported through Data Import and students whose portal payment has been confirmed through the pay simulator.</li>
                     <li>Recalculate urgency scores via the XGBoost model.</li>
                     <li>Prioritize high-risk students for proximal hostels.</li>
                     <li>Run the OR-Tools CP-SAT solver to assign rooms.</li>
@@ -101,7 +101,7 @@ function startAllocation() {
     // Disable button and show starting state
     if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Running...'; }
     logEl.innerHTML = '<div style="color:var(--c-warning);margin-bottom:0.5rem;">&#9654; Initializing Allocation Engine...</div>';
-    logEl.innerHTML += '<div style="margin-bottom:0.5rem;">&#9654; Fetching paid, unallocated students...</div>';
+    logEl.innerHTML += '<div style="margin-bottom:0.5rem;">&#9654; Fetching imported students and portal-paid students eligible for this batch...</div>';
     logEl.innerHTML += '<div style="margin-bottom:0.5rem;">&#9654; Invoking XGBoost urgency scorer (predict.py)...</div>';
     logEl.innerHTML += '<div style="margin-bottom:0.5rem;">&#9654; Running OR-Tools CP-SAT solver (allocate.py)...</div>';
     logEl.innerHTML += '<div style="margin-bottom:0.5rem;opacity:0.6;font-style:italic;">Please wait — this may take up to 60 seconds...</div>';

@@ -13,6 +13,11 @@ if (!isset($_SESSION['logged_in']) || ($_SESSION['role'] ?? '') !== 'admin') {
     exit();
 }
 
+$medium_urgency_threshold = 40;
+$threshold_result = $conn->query("SELECT setting_value FROM settings WHERE setting_key = 'urgency_threshold_proximal'");
+$threshold_row = $threshold_result ? $threshold_result->fetch_assoc() : null;
+$high_urgency_threshold = (float)($threshold_row['setting_value'] ?? 75);
+
 // Pagination Setup
 $page = isset($_GET['page']) ? (int)$_GET['page'] : 1;
 $limit = 50;
@@ -118,11 +123,11 @@ require_once 'includes/header.php';
                                         <?php 
                                         $score = (float)($row['urgency_score'] ?? 0);
                                         $severity = $row['severity_level'] ?? 'Low';
-                                        if ($score > 70 || $severity === 'High'): ?>
+                                        if ($score >= $high_urgency_threshold): ?>
                                             <span class="badge badge-danger">
                                                 <i class="fa-solid fa-heart-pulse"></i> HIGH (<?php echo number_format($score, 1); ?>)
                                             </span>
-                                        <?php elseif ($score > 40 || $severity === 'Medium'): ?>
+                                        <?php elseif ($score >= $medium_urgency_threshold): ?>
                                             <span class="badge badge-warning" style="color:var(--c-primary-dark);">
                                                 <i class="fa-solid fa-triangle-exclamation"></i> MEDIUM (<?php echo number_format($score, 1); ?>)
                                             </span>
@@ -198,7 +203,7 @@ require_once 'includes/header.php';
         <div class="card" style="max-width:480px;width:100%;background:var(--c-bg-surface);box-shadow:var(--shadow-lg);padding:2rem;">
             <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1.25rem;padding-bottom:1rem;border-bottom:1px solid var(--c-border);">
                 <h3 style="margin:0;font-size:1rem;font-weight:700;">Manual Room Allocation</h3>
-                <button type="button" id="closeModalBtn" style="background:none;border:none;cursor:pointer;color:var(--c-text-muted);font-size:1.1rem;padding:0.25rem;" aria-label="Close modal">
+                <button type="button" id="closeModalIconBtn" style="background:none;border:none;cursor:pointer;color:var(--c-text-muted);font-size:1.1rem;padding:0.25rem;" aria-label="Close modal">
                     <i class="fa-solid fa-xmark"></i>
                 </button>
             </div>
@@ -210,7 +215,7 @@ require_once 'includes/header.php';
             
             <div class="mb-4">
                 <label class="block text-sm font-bold mb-2">Select Hostel</label>
-                <select id="assignHostel" class="input w-full" required>
+                <select id="assignHostel" name="hostel_id" class="input w-full" required>
                     <option value="">-- Choose Hostel --</option>
                     <?php 
                     $last_gender = '';
@@ -232,14 +237,14 @@ require_once 'includes/header.php';
             
             <div class="mb-6">
                 <label class="block text-sm font-bold mb-2">Select Room</label>
-                <select id="assignRoom" class="input w-full" disabled required>
+                <select id="assignRoom" name="room_id" class="input w-full" disabled required>
                     <option value="">-- Select Hostel First --</option>
                 </select>
                 <div id="roomAvailInfo" class="text-xs text-muted mt-1" style="display:none;"></div>
             </div>
             
             <div class="flex justify-end gap-3">
-                <button type="button" id="closeModalBtn" class="btn btn-outline">Cancel</button>
+                <button type="button" id="closeModalCancelBtn" class="btn btn-outline">Cancel</button>
                 <button type="submit" class="btn btn-primary">Assign Room</button>
             </div>
         </form>

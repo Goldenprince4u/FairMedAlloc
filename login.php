@@ -21,6 +21,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
     check_csrf();
     $username = trim($_POST['username']);
     $password = trim($_POST['password']);
+    $generic_login_error = "Unable to sign in right now. Check your credentials or try again later.";
 
     $stmt = $conn->prepare("SELECT user_id, username, password_hash, role, login_attempts, lock_until, profile_pic, full_name FROM users WHERE username = ?");
     $stmt->bind_param("s", $username);
@@ -30,16 +31,15 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
     if ($res->num_rows === 1) {
         $user = $res->fetch_assoc();
         if ($user['lock_until'] && strtotime($user['lock_until']) > time()) {
-            $remaining = ceil((strtotime($user['lock_until']) - time()) / 60);
-            $error = "Account locked due to too many failed attempts. Try again in {$remaining} minutes.";
+            $error = $generic_login_error;
         } else {
             if (password_verify($password, $user['password_hash'])) {
-                $reset_stmt = $conn->prepare("UPDATE users SET login_attempts = 0, lock_until = NULL, last_login = NOW() WHERE user_id = ?");
-                $reset_stmt->bind_param("i", $user['user_id']);
-                $reset_stmt->execute();
                 if ($user['role'] !== 'student') {
-                    $error = "Invalid portal for your role. Please use the Administrator Login.";
+                    $error = $generic_login_error;
                 } else {
+                    $reset_stmt = $conn->prepare("UPDATE users SET login_attempts = 0, lock_until = NULL, last_login = NOW() WHERE user_id = ?");
+                    $reset_stmt->bind_param("i", $user['user_id']);
+                    $reset_stmt->execute();
                     session_regenerate_id(true);
                     $_SESSION['logged_in']   = true;
                     $_SESSION['user_id']     = $user['user_id'];
@@ -56,17 +56,17 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
                     $lock_stmt = $conn->prepare("UPDATE users SET login_attempts = ?, lock_until = DATE_ADD(NOW(), INTERVAL 15 MINUTE) WHERE user_id = ?");
                     $lock_stmt->bind_param("ii", $attempts, $user['user_id']);
                     $lock_stmt->execute();
-                    $error = "Too many failed attempts. Account locked for 15 minutes.";
+                    $error = $generic_login_error;
                 } else {
                     $inc_stmt = $conn->prepare("UPDATE users SET login_attempts = ? WHERE user_id = ?");
                     $inc_stmt->bind_param("ii", $attempts, $user['user_id']);
                     $inc_stmt->execute();
-                    $error = "Invalid credentials provided. ({$attempts}/5 attempts)";
+                    $error = $generic_login_error;
                 }
             }
         }
     } else {
-        $error = "Invalid credentials provided.";
+        $error = $generic_login_error;
     }
 }
 

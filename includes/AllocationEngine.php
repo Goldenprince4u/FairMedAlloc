@@ -22,7 +22,8 @@ class AllocationEngine {
             // 1. Sync Occupancy (Safety Check)
             $this->syncRoomOccupancy();
 
-            // 2. Fetch ONLY NEW students (Not yet allocated) AND who have PAID
+            // 2. Fetch ONLY NEW students (Not yet allocated) AND who have paid
+            //    either through imported portal status or a recorded simulator payment.
             $sql = "SELECT p.user_id as id, p.gender, f.name as faculty, p.has_special_needs, p.allocation_status, 
                            COALESCE(m.urgency_score, 0) as score, 
                            COALESCE(m.severity_level, 0) as severity, 
@@ -30,10 +31,17 @@ class AllocationEngine {
                     FROM student_profiles p 
                     JOIN departments d ON p.department_id = d.department_id
                     JOIN faculties f ON d.faculty_id = f.faculty_id
-                    LEFT JOIN medical_records m ON p.user_id = m.student_id 
-                    LEFT JOIN payments py ON p.user_id = py.student_id
+                    LEFT JOIN medical_records m ON p.user_id = m.student_id
                     WHERE p.allocation_status = 'Unallocated' 
-                    AND (p.is_paid = 1 OR py.status = 'paid')
+                    AND (
+                        p.is_paid = 1
+                        OR EXISTS (
+                            SELECT 1
+                            FROM payments py
+                            WHERE py.student_id = p.user_id
+                              AND py.status = 'paid'
+                        )
+                    )
                     ORDER BY m.urgency_score DESC";
             
             $result = $this->conn->query($sql);
@@ -41,7 +49,8 @@ class AllocationEngine {
             $allocated_count = 0;
 
             if (empty($students)) {
-                 return ['status' => 'success', 'allocated' => 0, 'total' => 0];
+                $this->conn->commit();
+                return ['status' => 'success', 'allocated' => 0, 'total' => 0];
             }
 
             // 3. Score overriding (ML Model prediction step is skipped here because it's already recorded in urgency_score column, 
@@ -84,6 +93,7 @@ class AllocationEngine {
             $threshold_res = $this->conn->query("SELECT setting_value FROM settings WHERE setting_key = 'urgency_threshold_proximal'");
             $threshold_row = $threshold_res->fetch_assoc();
             $prox_threshold = (float)($threshold_row['setting_value'] ?? 75);
+            $medium_threshold = 40.0;
 
             // 4. Fetch Available Rooms for OR-Tools
             // NOTE: Exclude postgrad (is_postgrad=1) and foundation (is_foundation=1) rooms
@@ -116,9 +126,16 @@ class AllocationEngine {
             $output_csv_file = sys_get_temp_dir() . DIRECTORY_SEPARATOR . 'fairmed_output_' . uniqid() . '.csv';
 
             $fp_students = fopen($students_csv_file, 'w');
-            fputcsv($fp_students, ['id', 'gender', 'faculty', 'score', 'mobility', 'severity']);
+            fputcsv($fp_students, ['id', 'gender', 'faculty', 'score', 'mobility', 'severity', 'urgency_band']);
             foreach ($students as $s) {
-                fputcsv($fp_students, [$s['id'], $s['gender'], $s['faculty'], $s['score'], $s['mobility'], $s['severity']]);
+                $urgency_band = 'Low';
+                if ((float)$s['score'] >= $prox_threshold) {
+                    $urgency_band = 'High';
+                } elseif ((float)$s['score'] >= $medium_threshold) {
+                    $urgency_band = 'Medium';
+                }
+
+                fputcsv($fp_students, [$s['id'], $s['gender'], $s['faculty'], $s['score'], $s['mobility'], $s['severity'], $urgency_band]);
             }
             fclose($fp_students);
 

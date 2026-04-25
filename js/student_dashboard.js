@@ -2,11 +2,11 @@
  * student_dashboard.js
  * ====================
  * Frontend interactions for the student panel, primarily handling
- * the simulated school fee payment processes.
+ * the portal pay-simulator payment process.
  */
 
 document.addEventListener('DOMContentLoaded', () => {
-    // Bind the Pay Fees action to the payment button
+    // Bind the portal payment action to the payment button
     const payBtn = document.getElementById('payBtn');
     if (payBtn) {
         payBtn.addEventListener('click', payFees);
@@ -14,8 +14,7 @@ document.addEventListener('DOMContentLoaded', () => {
 });
 
 /**
- * Triggers the AJAX payment simulation to the backend.
- * Upon successful payment, it alerts the backend to instantly attempt to allocate a room.
+ * Triggers the AJAX portal payment simulator request to the backend.
  */
 function payFees() {
     const btn  = document.getElementById('payBtn');
@@ -49,13 +48,13 @@ function payFees() {
                 showPayMsg(data.message || 'Payment successful! Refreshing...', true, msg);
                 setTimeout(() => window.location.reload(), 2200);
             } else {
-                btn.innerHTML = '<i class="fa-solid fa-credit-card mr-2"></i> Pay School Fees (&#x20A6;50,000)';
+                btn.innerHTML = '<i class="fa-solid fa-credit-card mr-2"></i> Pay on Portal (Simulator) - &#x20A6;50,000';
                 btn.disabled  = false;
                 showPayMsg(data.message || 'Payment failed. Please try again.', false, msg);
             }
         })
         .catch(() => {
-            btn.innerHTML = '<i class="fa-solid fa-credit-card mr-2"></i> Pay School Fees (&#x20A6;50,000)';
+            btn.innerHTML = '<i class="fa-solid fa-credit-card mr-2"></i> Pay on Portal (Simulator) - &#x20A6;50,000';
             btn.disabled  = false;
             showPayMsg('Network error. Check your connection and try again.', false, msg);
         });

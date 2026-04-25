@@ -18,15 +18,22 @@ if (isset($names[1])) {
 
 // Count unread notifications for badge
 $unread_count = 0;
-if ($role === 'student' && isset($_SESSION['user_id'])) {
+if (
+    $role === 'student' &&
+    isset($_SESSION['user_id']) &&
+    isset($conn) &&
+    $conn instanceof mysqli
+) {
     $uid_nav = (int)$_SESSION['user_id'];
     $notif_stmt = $conn->prepare("SELECT COUNT(*) as cnt FROM notifications WHERE user_id = ? AND is_read = 0");
-    $notif_stmt->bind_param("i", $uid_nav);
-    $notif_stmt->execute();
-    $notif_res = $notif_stmt->get_result();
-    $unread_count = (int)$notif_res->fetch_assoc()['cnt'];
-    $notif_res->free();
-    $notif_stmt->close();
+    if ($notif_stmt) {
+        $notif_stmt->bind_param("i", $uid_nav);
+        $notif_stmt->execute();
+        $notif_res = $notif_stmt->get_result();
+        $unread_count = (int)($notif_res->fetch_assoc()['cnt'] ?? 0);
+        $notif_res->free();
+        $notif_stmt->close();
+    }
 }
 ?>
 
@@ -75,6 +82,12 @@ if ($role === 'student' && isset($_SESSION['user_id'])) {
             <span class="nav-section-title">Configuration</span>
             <a href="settings.php" class="nav-item <?php echo active('settings.php'); ?>">
                 <i class="fa-solid fa-gears"></i> System Settings
+            </a>
+            <a href="admin_signup.php" class="nav-item <?php echo active('admin_signup.php'); ?>">
+                <i class="fa-solid fa-user-plus"></i> Create Admin
+            </a>
+            <a href="admin_reset_password.php" class="nav-item <?php echo active('admin_reset_password.php'); ?>">
+                <i class="fa-solid fa-key"></i> Reset Password
             </a>
             <a href="upload_data.php" class="nav-item <?php echo active('upload_data.php'); ?>">
                 <i class="fa-solid fa-cloud-arrow-up"></i> Data Import

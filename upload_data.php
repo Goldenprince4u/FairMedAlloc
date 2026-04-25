@@ -8,7 +8,7 @@
  *   [0] Matric No  [1] Full Name  [2] Level  [3] Faculty
  *   [4] Department [5] Gender     [6] Medical Condition
  *   [7] Severity (optional)       [8] Mobility (optional)
- *   [9] Paid Status (optional, defaults to 0)
+ *   [9] Paid Status (optional, mirrors the university portal export)
  *
  * Security measures applied:
  *   - Session-based admin auth guard.
@@ -188,7 +188,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_FILES['csv_file'])) {
             $stmt_med->execute();
         }
 
-        $msg      = "Processed: {$count} students registered. Duplicates skipped: {$duplicates}.";
+        $msg      = "Processed: {$count} students registered. Duplicates skipped: {$duplicates}. Imported payment status was preserved, and eligible students will be considered in the next admin batch.";
         $msg_type = 'success';
     } // end mime check
 } // end POST
@@ -226,7 +226,7 @@ require_once 'includes/header.php';
             <div class="card upload-zone" id="upload-drop-zone">
                 <i class="fa-solid fa-cloud-arrow-up" style="font-size:2.5rem;color:var(--c-text-muted);margin-bottom:1rem;"></i>
                 <h3 style="margin-bottom:0.5rem;">Upload Student CSV File</h3>
-                <p class="text-muted" style="margin-bottom:1.75rem;font-size:0.9rem;">Drag &amp; drop your CSV file here, or click to browse.</p>
+                <p class="text-muted" style="margin-bottom:1.75rem;font-size:0.9rem;">Drag &amp; drop your CSV file here, or click to browse. Imported payment status and student records will be picked up during the next admin allocation batch.</p>
 
                 <form method="post" enctype="multipart/form-data" id="csv-upload-form">
                     <?php csrf_field(); ?>
@@ -259,7 +259,7 @@ require_once 'includes/header.php';
                         ['G', 'Condition',    'Sickle Cell / None', 'required'],
                         ['H', 'Severity',     'Low / Medium / High','optional'],
                         ['I', 'Mobility',     'Normal / Wheelchair','optional'],
-                        ['J', 'Paid Status',  '1 or 0',             'optional'],
+                        ['J', 'Paid Status', '1 or 0', 'optional'],
                     ];
                     foreach ($cols as [$col, $name, $example, $req]): ?>
                         <div style="display:flex;align-items:center;gap:0.625rem;padding:0.5rem 0;border-bottom:1px solid var(--c-border);">

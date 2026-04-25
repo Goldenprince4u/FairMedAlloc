@@ -293,9 +293,6 @@ require_once 'includes/header.php';
                 <div class="text-center mt-4" style="font-size:0.84rem;">
                     Already have an account? <a href="login.php" class="text-primary fw-700">Sign In &rarr;</a>
                 </div>
-                <div class="text-center mt-6 pt-4 text-muted" style="border-top:1px solid var(--c-border);font-size:0.84rem;">
-                    Staff Member? <a href="admin_signup.php" class="text-primary fw-700">Admin Registration &rarr;</a>
-                </div>
             </form>
         </div>
     </div>

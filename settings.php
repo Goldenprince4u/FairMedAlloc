@@ -5,8 +5,7 @@
  * Admin-only page for managing global allocation parameters:
  *   - Current academic session label (displayed on allocation letters).
  *   - Allocation status: 'open' allows the algorithm to run; 'locked' freezes it.
- *   - Urgency threshold for proximal hostel placement (default: 75).
- *   - Urgency threshold for ground-floor room assignment (default: 85).
+ *   - High-urgency threshold for clinic-proximal hard placement (default: 75).
  *
  * Security measures applied:
  *   - Session-based admin auth guard.
@@ -37,22 +36,21 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     // Sanitize and cast all incoming values
     $session      = sanitize_input($_POST['academic_session'] ?? '');
     $threshold    = (int)($_POST['threshold'] ?? 0);
-    $gf_threshold = (int)($_POST['gf_threshold'] ?? 85);
     // FIX: Whitelist-validate alloc_status — previously any string could be stored
     $raw_status   = sanitize_input($_POST['alloc_status'] ?? 'open');
     $alloc_status = in_array($raw_status, ['open', 'locked']) ? $raw_status : 'open';
 
     // --- Server-side Validation ---
     // Threshold values must be percentages (0–100).
-    if ($threshold < 0 || $threshold > 100 || $gf_threshold < 0 || $gf_threshold > 100) {
-        $msg = "Threshold values must be between 0 and 100.";
+    if ($threshold < 41 || $threshold > 100) {
+        $msg = "High-urgency threshold must be between 41 and 100.";
         $msg_type = "error";
     } elseif (empty($session)) {
         $msg = "Academic session cannot be empty.";
         $msg_type = "error";
     } else {
-        // Persist to DB using a single prepared statement reused for all four keys.
-        // This avoids 4 separate prepare() calls for a simple key=value pattern.
+        // Persist to DB using a single prepared statement reused for all keys.
+        // This avoids repeated prepare() calls for a simple key=value pattern.
         $upd = $conn->prepare("UPDATE settings SET setting_value = ? WHERE setting_key = ?");
 
         // Update: current academic session
@@ -60,16 +58,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $upd->bind_param("ss", $session, $key);
         $upd->execute();
 
-        // Update: proximal hostel urgency threshold
+        // Update: clinic-proximal high-urgency threshold
         $t_str = (string)$threshold;
         $key   = 'urgency_threshold_proximal';
         $upd->bind_param("ss", $t_str, $key);
-        $upd->execute();
-
-        // Update: ground floor urgency threshold
-        $gf_str = (string)$gf_threshold;
-        $key    = 'urgency_threshold_ground_floor';
-        $upd->bind_param("ss", $gf_str, $key);
         $upd->execute();
 
         // Update: allocation status (open | locked)
@@ -96,7 +88,6 @@ while ($row = $res->fetch_assoc()) {
 
 $cur_session    = $settings['current_session'] ?? '2025/2026';
 $cur_threshold  = $settings['urgency_threshold_proximal'] ?? '75';
-$cur_gf         = $settings['urgency_threshold_ground_floor'] ?? '85';
 $cur_status     = $settings['allocation_status'] ?? 'open';
 
 $page_title = "Settings | FairMedAlloc";
@@ -164,26 +155,14 @@ require_once 'includes/header.php';
                         </div>
 
                         <div class="form-group">
-                            <label for="setting-threshold">Proximal Hostel Urgency Threshold</label>
+                            <label for="setting-threshold">Clinic-Proximal High Urgency Threshold</label>
                             <input type="number"
                                    id="setting-threshold"
                                    name="threshold"
                                    value="<?php echo htmlspecialchars($cur_threshold); ?>"
-                                   min="0" max="100">
+                                   min="41" max="100">
                             <div class="text-xs text-muted mt-2">
-                                Students scoring <strong>above</strong> this value are placed in proximal (clinic-adjacent) hostels.
-                            </div>
-                        </div>
-
-                        <div class="form-group">
-                            <label for="setting-gf-threshold">Ground Floor Urgency Threshold</label>
-                            <input type="number"
-                                   id="setting-gf-threshold"
-                                   name="gf_threshold"
-                                   value="<?php echo htmlspecialchars($cur_gf); ?>"
-                                   min="0" max="100">
-                            <div class="text-xs text-muted mt-2">
-                                Students above this threshold are assigned ground-floor rooms (for wheelchair/mobility users).
+                                This value defines the lower bound for the <strong>High</strong> urgency band. Scores from 40 up to one point below this value remain <strong>Medium</strong>, and scores below 40 remain <strong>Low</strong>; they are not ignored.
                             </div>
                         </div>
 
@@ -194,30 +173,6 @@ require_once 'includes/header.php';
                             <i class="fa-solid fa-floppy-disk"></i> Save Settings
                         </button>
                     </div>
-                </form>
-            </div>
-        </div>
-
-        <!-- Danger Zone -->
-        <div class="card" style="max-width:860px;border-left:4px solid var(--c-danger);">
-            <div style="padding:1.75rem 2rem;">
-                <h3 style="color:var(--c-danger);margin-bottom:0.5rem;font-size:1rem;display:flex;align-items:center;gap:0.625rem;">
-                    <i class="fa-solid fa-triangle-exclamation"></i> Danger Zone
-                </h3>
-                <p class="text-muted" style="font-size:0.875rem;margin-bottom:1.25rem;">
-                    The following actions are irreversible. Proceed with extreme caution.
-                </p>
-                <form method="post" id="danger-zone-form"
-                      onsubmit="return confirm('Are you sure you want to unlock the allocation? This will allow re-running the algorithm and may overwrite existing placements.');">
-                    <?php csrf_field(); ?>
-                    <input type="hidden" name="academic_session" value="<?php echo htmlspecialchars($cur_session); ?>">
-                    <input type="hidden" name="threshold"        value="<?php echo htmlspecialchars($cur_threshold); ?>">
-                    <input type="hidden" name="gf_threshold"     value="<?php echo htmlspecialchars($cur_gf); ?>">
-                    <input type="hidden" name="alloc_status"     value="open">
-                    <button type="submit" class="btn btn-sm" id="unlock-alloc-btn"
-                            style="background:var(--c-danger);color:white;border-color:var(--c-danger);">
-                        <i class="fa-solid fa-lock-open"></i> Unlock Allocation Session
-                    </button>
                 </form>
             </div>
         </div>

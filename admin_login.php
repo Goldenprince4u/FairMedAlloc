@@ -29,6 +29,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
     // Use raw trimmed values â€” NOT htmlspecialchars â€” for DB comparison
     $username = trim($_POST['username']);
     $password = trim($_POST['password']);
+    $generic_login_error = "Unable to sign in right now. Check your credentials or try again later.";
 
     // Fetch user record including lockout state
     $stmt = $conn->prepare("SELECT user_id, username, password_hash, role, login_attempts, lock_until, profile_pic, full_name FROM users WHERE username = ?");
@@ -42,21 +43,20 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
         // --- 1. Brute-Force Lockout Check ---
         // Block login if a temporary lockout is currently active.
         if ($user['lock_until'] && strtotime($user['lock_until']) > time()) {
-            $remaining = ceil((strtotime($user['lock_until']) - time()) / 60);
-            $error = "Account locked due to too many failed attempts. Try again in {$remaining} minutes.";
+            $error = $generic_login_error;
         } else {
             // --- 2. Password Verification ---
             if (password_verify($password, $user['password_hash'])) {
-                // Success: reset lockout counter and record login timestamp
-                $stmt_reset = $conn->prepare("UPDATE users SET login_attempts = 0, lock_until = NULL, last_login = NOW() WHERE user_id = ?");
-                $stmt_reset->bind_param("i", $user['user_id']);
-                $stmt_reset->execute();
-
                 // --- 3. Role Guard ---
                 // This portal is exclusively for admin/medical_officer roles.
                 if ($user['role'] !== 'admin') {
-                    $error = "Access Denied: Admin privileges required.";
+                    $error = $generic_login_error;
                 } else {
+                    // Success: reset lockout counter and record login timestamp
+                    $stmt_reset = $conn->prepare("UPDATE users SET login_attempts = 0, lock_until = NULL, last_login = NOW() WHERE user_id = ?");
+                    $stmt_reset->bind_param("i", $user['user_id']);
+                    $stmt_reset->execute();
+
                     // Populate session to establish the authenticated admin state.
                     session_regenerate_id(true);
                     $_SESSION['logged_in'] = true;
@@ -81,7 +81,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
                     $stmt_lock = $conn->prepare("UPDATE users SET login_attempts = ?, lock_until = DATE_ADD(NOW(), INTERVAL 15 MINUTE) WHERE user_id = ?");
                     $stmt_lock->bind_param("ii", $attempts, $user['user_id']);
                     $stmt_lock->execute();
-                    $error = "Too many failed attempts. Account locked for 15 minutes.";
+                    $error = $generic_login_error;
 
                     // Extra audit log for admin lockouts (security signal)
                     if ($user['role'] === 'admin') {
@@ -91,13 +91,13 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
                     $stmt_inc = $conn->prepare("UPDATE users SET login_attempts = ? WHERE user_id = ?");
                     $stmt_inc->bind_param("ii", $attempts, $user['user_id']);
                     $stmt_inc->execute();
-                    $error = "Invalid credentials provided. ({$attempts}/5 attempts)";
+                    $error = $generic_login_error;
                 }
             }
         }
     } else {
         // Generic message to prevent username enumeration
-        $error = "Invalid credentials provided.";
+        $error = $generic_login_error;
     }
 }
 

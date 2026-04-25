@@ -6,6 +6,8 @@
 session_start();
 if (!isset($_SESSION['logged_in'])) { header('Location: login.php'); exit(); }
 
+require_once 'db_config.php';
+
 $page_title = "Help Center | FairMedAlloc";
 require_once 'includes/header.php';
 $role = $_SESSION['role'] ?? 'student';
@@ -39,7 +41,7 @@ $role = $_SESSION['role'] ?? 'student';
                         <details class="faq-item" id="faq-admin-run">
                             <summary>How do I run the allocation algorithm?</summary>
                             <div class="faq-answer">
-                                Navigate to <strong>Run Allocation</strong> in the sidebar. Ensure current data has been uploaded and the session is set to <em>Open</em>. Click <strong>"Start Allocation Engine"</strong>. The system will score all eligible students and re-assign rooms based on urgency scores.
+                                Navigate to <strong>Run Allocation</strong> in the sidebar. Ensure the student batch has been uploaded through <strong>Data Import</strong> and the session is set to <em>Open</em>. Click <strong>"Start Allocation Engine"</strong>. The system will process eligible imported students together with students whose portal payment has been confirmed through the pay simulator.
                             </div>
                         </details>
 
@@ -61,7 +63,14 @@ $role = $_SESSION['role'] ?? 'student';
                         <details class="faq-item" id="faq-admin-csv">
                             <summary>How do I import student records via CSV?</summary>
                             <div class="faq-answer">
-                                Go to <strong>Data Import</strong>. Download the CSV template, fill it with student records, and upload the file. The system validates each row and reports any errors before committing to the database.
+                                Go to <strong>Data Import</strong>. Download the CSV template, fill it with student records, and upload the file. The system validates each row, preserves imported payment status from the university export, stores the student batch, and includes eligible records the next time the admin runs allocation.
+                            </div>
+                        </details>
+
+                        <details class="faq-item" id="faq-admin-reset">
+                            <summary>How do I reset a user's password?</summary>
+                            <div class="faq-answer">
+                                Open <strong>Reset Password</strong> from the sidebar, enter the user's matric number or username, and issue a temporary password. Share it directly with the user and ask them to change it after signing in.
                             </div>
                         </details>
 
@@ -77,7 +86,7 @@ $role = $_SESSION['role'] ?? 'student';
                         <details class="faq-item" id="faq-student-pending">
                             <summary>My allocation shows "Pending". Why?</summary>
                             <div class="faq-answer">
-                                The allocation process runs in batches. If you recently registered or updated your profile, please wait for the next administrative allocation cycle. Ensure you have also completed your school fee payment.
+                                The allocation process runs in admin-managed batches. If you recently registered or updated your profile, please wait for the next allocation batch. Ensure you have also completed your portal payment through the pay simulator.
                             </div>
                         </details>
 
@@ -98,7 +107,14 @@ $role = $_SESSION['role'] ?? 'student';
                         <details class="faq-item" id="faq-student-noalloc">
                             <summary>I paid my fees but have no allocation. What do I do?</summary>
                             <div class="faq-answer">
-                                First, ensure your profile is complete (level, department, gender, medical status). If all is correct, the admin may not have run the allocation engine yet. Contact the Student Affairs Division with your payment receipt.
+                                First, confirm that your payment was captured either from the university portal export or through the pay simulator and that your profile is complete (level, department, gender, medical status). If all is correct, the admin may not have run the next allocation batch yet. Contact the Student Affairs Division with your payment reference if the delay persists.
+                            </div>
+                        </details>
+
+                        <details class="faq-item" id="faq-student-reset">
+                            <summary>I forgot my password. What should I do?</summary>
+                            <div class="faq-answer">
+                                Password recovery is currently handled by the administration team. Contact the Student Affairs Division or system administrator with your matric number so an admin can issue you a temporary password.
                             </div>
                         </details>
 
@@ -187,6 +203,12 @@ $role = $_SESSION['role'] ?? 'student';
                             </a>
                             <a href="run_allocation.php" class="text-primary" style="font-size:0.875rem;display:flex;align-items:center;gap:0.5rem;padding:0.5rem 0;">
                                 <i class="fa-solid fa-wand-magic-sparkles" style="width:16px;text-align:center;font-size:0.8rem;"></i> Run Allocation
+                            </a>
+                            <a href="admin_signup.php" class="text-primary" style="font-size:0.875rem;display:flex;align-items:center;gap:0.5rem;padding:0.5rem 0;">
+                                <i class="fa-solid fa-user-plus" style="width:16px;text-align:center;font-size:0.8rem;"></i> Create Admin
+                            </a>
+                            <a href="admin_reset_password.php" class="text-primary" style="font-size:0.875rem;display:flex;align-items:center;gap:0.5rem;padding:0.5rem 0;">
+                                <i class="fa-solid fa-key" style="width:16px;text-align:center;font-size:0.8rem;"></i> Reset Password
                             </a>
                         <?php endif; ?>
                     </div>

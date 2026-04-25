@@ -49,7 +49,9 @@ class Student {
      */
     public function hasPaid() {
         $profile = $this->getProfile();
-        if (!empty($profile['is_paid'])) return true;
+        if (!empty($profile['is_paid'])) {
+            return true;
+        }
 
         $stmt = $this->conn->prepare("SELECT status FROM payments WHERE student_id = ? AND status = 'paid' LIMIT 1");
         $stmt->bind_param("i", $this->user_id);

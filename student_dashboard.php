@@ -100,7 +100,7 @@ require_once 'includes/header.php';
                                     <i class="fa-solid fa-clock text-warning text-xl mt-1"></i>
                                     <div>
                                         <div class="fw-700 text-warning text-lg mb-2">Allocation Pending</div>
-                                        <p class="text-muted">Payment verified. Your room allocation is being processed.</p>
+                                        <p class="text-muted">Your portal payment has been confirmed. Your room allocation will be considered in the next admin batch.</p>
                                     </div>
                                 </div>
                             </div>
@@ -123,7 +123,7 @@ require_once 'includes/header.php';
                         <i class="fa-solid fa-circle-exclamation text-danger text-xl mt-1"></i>
                         <div>
                             <div class="fw-700 text-danger text-lg mb-2">Action Required</div>
-                            <p class="text-muted">You must pay your school fees before a room can be allocated to you.</p>
+                            <p class="text-muted">You must complete your school fee payment on the portal using the pay simulator before a room can be allocated to you.</p>
                         </div>
                     </div>
 
@@ -134,7 +134,7 @@ require_once 'includes/header.php';
                     <?php require_once 'includes/security_helper.php'; csrf_field(); ?>
 
                     <button id="payBtn" class="btn btn-primary">
-                        <i class="fa-solid fa-credit-card mr-2"></i> Pay School Fees (&#8358;50,000)
+                        <i class="fa-solid fa-credit-card mr-2"></i> Pay on Portal (Simulator) - &#8358;50,000
                     </button>
                     <div id="payMsg" class="mt-4 hidden"></div>
                 </div>
