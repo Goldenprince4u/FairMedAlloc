@@ -6,6 +6,7 @@
  *   - Current academic session label (displayed on allocation letters).
  *   - Allocation status: 'open' allows the algorithm to run; 'locked' freezes it.
  *   - High-urgency threshold for clinic-proximal hard placement (default: 75).
+ *   - Medium-urgency threshold for softer proximity prioritization (default: 40).
  *
  * Security measures applied:
  *   - Session-based admin auth guard.
@@ -36,14 +37,21 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     // Sanitize and cast all incoming values
     $session      = sanitize_input($_POST['academic_session'] ?? '');
     $threshold    = (int)($_POST['threshold'] ?? 0);
+    $medium_threshold = (int)($_POST['medium_threshold'] ?? 0);
     // FIX: Whitelist-validate alloc_status — previously any string could be stored
     $raw_status   = sanitize_input($_POST['alloc_status'] ?? 'open');
     $alloc_status = in_array($raw_status, ['open', 'locked']) ? $raw_status : 'open';
 
     // --- Server-side Validation ---
     // Threshold values must be percentages (0–100).
-    if ($threshold < 41 || $threshold > 100) {
+    if ($medium_threshold < 0 || $medium_threshold > 99) {
+        $msg = "Medium-urgency threshold must be between 0 and 99.";
+        $msg_type = "error";
+    } elseif ($threshold < 41 || $threshold > 100) {
         $msg = "High-urgency threshold must be between 41 and 100.";
+        $msg_type = "error";
+    } elseif ($medium_threshold >= $threshold) {
+        $msg = "Medium-urgency threshold must stay below the high-urgency threshold.";
         $msg_type = "error";
     } elseif (empty($session)) {
         $msg = "Academic session cannot be empty.";
@@ -51,28 +59,34 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     } else {
         // Persist to DB using a single prepared statement reused for all keys.
         // This avoids repeated prepare() calls for a simple key=value pattern.
-        $upd = $conn->prepare("UPDATE settings SET setting_value = ? WHERE setting_key = ?");
+        $upd = $conn->prepare("INSERT INTO settings (setting_key, setting_value) VALUES (?, ?) ON DUPLICATE KEY UPDATE setting_value = VALUES(setting_value)");
 
         // Update: current academic session
         $key = 'current_session';
-        $upd->bind_param("ss", $session, $key);
+        $upd->bind_param("ss", $key, $session);
         $upd->execute();
 
         // Update: clinic-proximal high-urgency threshold
         $t_str = (string)$threshold;
         $key   = 'urgency_threshold_proximal';
-        $upd->bind_param("ss", $t_str, $key);
+        $upd->bind_param("ss", $key, $t_str);
+        $upd->execute();
+
+        // Update: medium-urgency threshold
+        $medium_str = (string)$medium_threshold;
+        $key = 'urgency_threshold_medium';
+        $upd->bind_param("ss", $key, $medium_str);
         $upd->execute();
 
         // Update: allocation status (open | locked)
         $key = 'allocation_status';
-        $upd->bind_param("ss", $alloc_status, $key);
+        $upd->bind_param("ss", $key, $alloc_status);
         $upd->execute();
 
         $upd->close();
 
         // Audit log the settings change for accountability
-        log_admin_action($conn, $_SESSION['user_id'], "Updated system settings: session={$session}, threshold={$threshold}");
+        log_admin_action($conn, $_SESSION['user_id'], "Updated system settings: session={$session}, high_threshold={$threshold}, medium_threshold={$medium_threshold}");
 
         $msg = "System configuration updated successfully.";
         $msg_type = "success";
@@ -88,6 +102,7 @@ while ($row = $res->fetch_assoc()) {
 
 $cur_session    = $settings['current_session'] ?? '2025/2026';
 $cur_threshold  = $settings['urgency_threshold_proximal'] ?? '75';
+$cur_medium_threshold = $settings['urgency_threshold_medium'] ?? '40';
 $cur_status     = $settings['allocation_status'] ?? 'open';
 
 $page_title = "Settings | FairMedAlloc";
@@ -162,7 +177,19 @@ require_once 'includes/header.php';
                                    value="<?php echo htmlspecialchars($cur_threshold); ?>"
                                    min="41" max="100">
                             <div class="text-xs text-muted mt-2">
-                                This value defines the lower bound for the <strong>High</strong> urgency band. Scores from 40 up to one point below this value remain <strong>Medium</strong>, and scores below 40 remain <strong>Low</strong>; they are not ignored.
+                                This value defines the lower bound for the <strong>High</strong> urgency band. Scores from the medium threshold up to one point below this value remain <strong>Medium</strong>, and anything below the medium threshold remains <strong>Low</strong>.
+                            </div>
+                        </div>
+
+                        <div class="form-group">
+                            <label for="setting-medium-threshold">Medium Urgency Threshold</label>
+                            <input type="number"
+                                   id="setting-medium-threshold"
+                                   name="medium_threshold"
+                                   value="<?php echo htmlspecialchars($cur_medium_threshold); ?>"
+                                   min="0" max="99">
+                            <div class="text-xs text-muted mt-2">
+                                Scores at or above this value enter the <strong>Medium</strong> band, unless they already meet the higher clinic-proximal threshold.
                             </div>
                         </div>
 

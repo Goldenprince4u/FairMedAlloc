@@ -6,6 +6,7 @@
 session_start();
 require_once 'db_config.php';
 require_once 'includes/security_helper.php';
+require_once 'includes/UrgencyScoreService.php';
 
 if (!isset($_SESSION['logged_in']) || ($_SESSION['role'] ?? '') !== 'student') { 
     header("Location: login.php"); 
@@ -16,48 +17,30 @@ $user_id = $_SESSION['user_id'];
 $msg = '';
 $msg_type = '';
 
+function getStoredMedicalSnapshot(mysqli $conn, int $user_id): ?array {
+    $stmt = $conn->prepare("SELECT condition_category, mobility_status, severity_level, urgency_score FROM medical_records WHERE student_id = ? LIMIT 1");
+    if (!$stmt) {
+        return null;
+    }
+
+    $stmt->bind_param("i", $user_id);
+    $stmt->execute();
+    $row = $stmt->get_result()->fetch_assoc();
+    $stmt->close();
+
+    return $row ?: null;
+}
+
 /**
- * Calculate urgency score using the same weighted logic as ml_models/predict.py fallback.
- * This ensures profile updates stay consistent with the allocation engine's scoring.
+ * PHP fallback for cases where the XGBoost model cannot score a record.
  */
 function calculateUrgencyScore(string $condition, string $mobility, string $severity_str, int $has_special_needs): float {
-    $score = 10.0;
-
-    // Severity multiplier
-    $sev_map = ['Low' => 1, 'Medium' => 2, 'High' => 3];
-    $severity = $sev_map[$severity_str] ?? 1;
-
-    // Condition weights — must mirror predict.py weights dict exactly
-    $weights = [
-        'Sickle Cell'        => 90.0,
-        'Epilepsy'           => 90.0,
-        'Diabetes'           => 90.0,
-        'Cardiac'            => 90.0,
-        'Cardiovascular'     => 90.0,
-        'Neurological'       => 70.0,
-        'Orthopaedic'        => 65.0,
-        'Physical Disability'=> 65.0,
-        'Visual Impairment'  => 60.0,
-        'Asthma'             => 50.0,
-        'Respiratory'        => 50.0,
-        'Ulcer'              => 30.0,
-        'Other'              => 20.0,
-        'Mobility'           => 0.0,
-    ];
-
-    $score += $weights[$condition] ?? 0.0;
-
-    // Mobility boost (takes precedence via max() to prevent double-counting)
-    $mobility_score = 0.0;
-    if (in_array($mobility, ['Wheelchair User', 'Crutches/Walker', 'Artificial Limb'])) {
-        $mobility_score = $has_special_needs ? 90.0 : 75.0;
-    }
-    $score = max($score, $mobility_score);
-
-    // Severity bump (mirrors predict.py: severity * 5)
-    $score += ($severity * 5.0);
-
-    return min((float)$score, 100.0);
+    return UrgencyScoreService::calculateFallbackScore([
+        'condition' => $condition,
+        'mobility' => $mobility,
+        'severity' => $severity_str,
+        'has_special_needs' => $has_special_needs,
+    ]);
 }
 
 // ── ACTION: Remove profile photo ─────────────────────────────────────────────
@@ -112,11 +95,24 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && empty($_POST['remove_photo'])) {
             $msg_type = "error";
         } else {
             $upload_dir = __DIR__ . "/uploads/profile_pics/";
-            if (!file_exists($upload_dir)) mkdir($upload_dir, 0777, true);
+            if (!file_exists($upload_dir)) mkdir($upload_dir, 0755, true);
 
             $new_name = "u{$user_id}_" . time() . "." . $ext;
 
             if (move_uploaded_file($_FILES['profile_pic']['tmp_name'], $upload_dir . $new_name)) {
+                // Fetch and delete the old profile picture from disk
+                $old_pic_stmt = $conn->prepare("SELECT profile_pic FROM users WHERE user_id = ?");
+                $old_pic_stmt->bind_param("i", $user_id);
+                $old_pic_stmt->execute();
+                $old_pic = $old_pic_stmt->get_result()->fetch_assoc()['profile_pic'] ?? '';
+                
+                if ($old_pic && $old_pic !== 'default.png') {
+                    $old_file_path = $upload_dir . basename($old_pic);
+                    if (file_exists($old_file_path)) {
+                        unlink($old_file_path);
+                    }
+                }
+
                 $pic_stmt = $conn->prepare("UPDATE users SET profile_pic = ? WHERE user_id = ?");
                 $pic_stmt->bind_param("si", $new_name, $user_id);
                 $pic_stmt->execute();
@@ -126,13 +122,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && empty($_POST['remove_photo'])) {
     }
 
     // Academic & Medical Data
-    $name    = sanitize_input($_POST['full_name']         ?? '');
-    $lvl     = (int)($_POST['level']                     ?? 0);
-    $dept_id = (int)($_POST['department']                ?? 0);
-    $cond    = sanitize_input($_POST['medical_condition'] ?? 'None');
-    $mob     = sanitize_input($_POST['mobility_status']   ?? 'Normal Mobility');
+    $name    = sanitize_input($_POST['full_name'] ?? '');
+    $lvl     = (int)($_POST['level'] ?? 0);
+    $dept_id = (int)($_POST['department'] ?? 0);
     $needs   = isset($_POST['has_special_needs']) ? 1 : 0;
-    $sev     = sanitize_input($_POST['severity_level']    ?? 'Low');
+    $medicalSnapshot = getStoredMedicalSnapshot($conn, $user_id);
+    $cond    = $medicalSnapshot['condition_category'] ?? 'None / Healthy';
+    $mob     = (string)($medicalSnapshot['mobility_status'] ?? 0);
+    $sev     = $medicalSnapshot['severity_level'] ?? 'Low';
 
     $stmt = $conn->prepare("UPDATE student_profiles SET level=?, department_id=?, has_special_needs=? WHERE user_id=?");
     $stmt->bind_param("iiii", $lvl, $dept_id, $needs, $user_id);
@@ -142,22 +139,30 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && empty($_POST['remove_photo'])) {
         $stmt_u->bind_param("si", $name, $user_id);
         $stmt_u->execute();
 
-        // Compute urgency score using the same weighted logic as predict.py fallback
-        $score = calculateUrgencyScore($cond, $mob, $sev, $needs);
+        $scorePayload = [
+            'id' => $user_id,
+            'condition' => $cond,
+            'mobility' => $mob,
+            'severity' => $sev,
+            'academic_level' => $lvl,
+            'has_special_needs' => $needs,
+            'is_requested' => $needs,
+        ];
 
-        $check_stmt = $conn->prepare("SELECT record_id FROM medical_records WHERE student_id = ?");
-        $check_stmt->bind_param("i", $user_id);
-        $check_stmt->execute();
-        $check = $check_stmt->get_result();
+        try {
+            $scoreService = new UrgencyScoreService();
+            $scoreResult = $scoreService->scoreStudent($scorePayload);
+            $score = (float)$scoreResult['score'];
+        } catch (Exception $e) {
+            error_log('[FairMedAlloc] Profile scoring fell back to PHP rules: ' . $e->getMessage());
+            $score = calculateUrgencyScore($cond, $mob, $sev, $needs);
+        }
 
-        if ($check->num_rows > 0) {
+        if ($medicalSnapshot !== null) {
             $m_stmt = $conn->prepare("UPDATE medical_records SET condition_category=?, mobility_status=?, severity_level=?, urgency_score=? WHERE student_id=?");
             $m_stmt->bind_param("sssdi", $cond, $mob, $sev, $score, $user_id);
-        } else {
-            $m_stmt = $conn->prepare("INSERT INTO medical_records (student_id, condition_category, mobility_status, severity_level, urgency_score) VALUES (?, ?, ?, ?, ?)");
-            $m_stmt->bind_param("isssd", $user_id, $cond, $mob, $sev, $score);
+            $m_stmt->execute();
         }
-        $m_stmt->execute();
 
         $msg      = "Profile updated successfully.";
         $msg_type = "success";
@@ -179,6 +184,14 @@ $stmt = $conn->prepare("SELECT p.*, m.condition_category, m.mobility_status, m.s
 $stmt->bind_param("i", $user_id);
 $stmt->execute();
 $student = $stmt->get_result()->fetch_assoc();
+$display_condition = $student['condition_category'] ?? 'None / Healthy';
+$display_mobility_map = [
+    0 => 'Normal Mobility',
+    1 => 'Artificial Limb',
+    2 => 'Crutches / Walker',
+    3 => 'Wheelchair User',
+];
+$display_mobility = $display_mobility_map[(int)($student['mobility_status'] ?? 0)] ?? 'Normal Mobility';
 
 $page_title = "My Profile | FairMedAlloc";
 require_once 'includes/header.php';
@@ -363,40 +376,27 @@ require_once 'includes/header.php';
                     <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:0.875rem;">
 
                         <div class="form-group" style="margin-bottom:0;">
-                            <label>Medical Condition</label>
-                            <select name="medical_condition" id="profile-condition">
-                                <option value="None"                <?php if(($student['condition_category']??'')=='None')               echo 'selected'; ?>>None / Healthy</option>
-                                <option value="Asthma"              <?php if(($student['condition_category']??'')=='Asthma')             echo 'selected'; ?>>Asthma</option>
-                                <option value="Epilepsy"            <?php if(($student['condition_category']??'')=='Epilepsy')           echo 'selected'; ?>>Epilepsy</option>
-                                <option value="Ulcer"               <?php if(($student['condition_category']??'')=='Ulcer')              echo 'selected'; ?>>Ulcer</option>
-                                <option value="Sickle Cell"         <?php if(($student['condition_category']??'')=='Sickle Cell')        echo 'selected'; ?>>Sickle Cell Disease</option>
-                                <option value="Visual Impairment"   <?php if(($student['condition_category']??'')=='Visual Impairment')  echo 'selected'; ?>>Visual Impairment</option>
-                                <option value="Physical Disability"  <?php if(($student['condition_category']??'')=='Physical Disability') echo 'selected'; ?>>Physical Disability</option>
-                                <option value="Cardiovascular"      <?php if(($student['condition_category']??'')=='Cardiovascular')     echo 'selected'; ?>>Cardiovascular</option>
-                                <option value="Neurological"        <?php if(($student['condition_category']??'')=='Neurological')       echo 'selected'; ?>>Neurological</option>
-                                <option value="Respiratory"         <?php if(($student['condition_category']??'')=='Respiratory')        echo 'selected'; ?>>Respiratory</option>
-                                <option value="Mobility"            <?php if(($student['condition_category']??'')=='Mobility')           echo 'selected'; ?>>Mobility</option>
-                                <option value="Other"               <?php if(($student['condition_category']??'')=='Other')              echo 'selected'; ?>>Other</option>
-                            </select>
+                            <label>Medical Condition <span style="font-size:0.72rem;color:var(--c-text-muted);font-weight:400;">(locked)</span></label>
+                            <input type="text"
+                                   id="profile-condition"
+                                   value="<?php echo htmlspecialchars($display_condition); ?>"
+                                   disabled
+                                   style="opacity:0.6;cursor:not-allowed;background:var(--c-bg-surface-2);">
                         </div>
 
                         <div class="form-group" style="margin-bottom:0;">
-                            <label>Mobility Status</label>
-                            <select name="mobility_status" id="profile-mobility">
-                                <option value="Normal Mobility"  <?php if(($student['mobility_status']??'')=='Normal Mobility')  echo 'selected'; ?>>Normal Mobility</option>
-                                <option value="Wheelchair User"  <?php if(($student['mobility_status']??'')=='Wheelchair User')  echo 'selected'; ?>>Wheelchair User</option>
-                                <option value="Crutches/Walker"  <?php if(($student['mobility_status']??'')=='Crutches/Walker')  echo 'selected'; ?>>Crutches / Walker</option>
-                                <option value="Artificial Limb"  <?php if(($student['mobility_status']??'')=='Artificial Limb')  echo 'selected'; ?>>Artificial Limb</option>
-                            </select>
+                            <label>Mobility Status <span style="font-size:0.72rem;color:var(--c-text-muted);font-weight:400;">(locked)</span></label>
+                            <input type="text"
+                                   id="profile-mobility"
+                                   value="<?php echo htmlspecialchars($display_mobility); ?>"
+                                   disabled
+                                   style="opacity:0.6;cursor:not-allowed;background:var(--c-bg-surface-2);">
                         </div>
 
-                        <div class="form-group" style="margin-bottom:0;">
-                            <label>Severity Level</label>
-                            <select name="severity_level" id="profile-severity">
-                                <option value="High"   <?php if(($student['severity_level']??'')=='High')   echo 'selected'; ?>>High</option>
-                                <option value="Medium" <?php if(($student['severity_level']??'')=='Medium') echo 'selected'; ?>>Medium</option>
-                                <option value="Low"    <?php if(($student['severity_level']??'')=='Low')    echo 'selected'; ?>>Low</option>
-                            </select>
+                        <div class="form-group" style="margin-bottom:0;grid-column:1 / -1;">
+                            <div class="text-xs text-muted" style="padding-top:0.25rem;">
+                                Medical condition and mobility status are locked after submission. Contact Student Affairs or the medical team if a verified update is required.
+                            </div>
                         </div>
 
                     </div>

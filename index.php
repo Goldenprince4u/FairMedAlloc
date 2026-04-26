@@ -12,12 +12,15 @@ session_start();
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>FairMedAlloc | Redeemer's University Hostel Allocation System</title>
     <meta name="description" content="A fairness-aware, ML-driven medical hostel allocation system for Redeemer's University that prioritises students with medical conditions.">
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <script>
+        (function() {
+            var t = localStorage.getItem('fma-theme');
+            if (!t) { t = window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'; }
+            document.documentElement.setAttribute('data-theme', t);
+        })();
+    </script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <link rel="stylesheet" href="css/main.css">
-    <script src="js/theme.js"></script>
     <style>
         /* Landing-page-specific overrides */
         .lp-nav {
@@ -39,7 +42,7 @@ session_start();
             color: white;
             font-weight: 700;
             font-size: 1.1rem;
-            font-family: 'Inter', sans-serif;
+            font-family: Arial, Helvetica, sans-serif;
             text-decoration: none;
         }
         .lp-nav-brand img {
@@ -211,6 +214,33 @@ session_start();
     </style>
 </head>
 <body>
+    <button id="global-theme-toggle" class="theme-toggle-btn theme-toggle-floating" type="button" aria-label="Toggle color theme" aria-pressed="false">
+        <i class="fa-solid fa-moon" id="theme-toggle-icon"></i>
+        <span class="theme-toggle-label" id="theme-toggle-label">Dark mode</span>
+    </button>
+    <script>
+    document.addEventListener('DOMContentLoaded', function() {
+        const toggleBtn = document.getElementById('global-theme-toggle');
+        const toggleIcon = document.getElementById('theme-toggle-icon');
+        const toggleLabel = document.getElementById('theme-toggle-label');
+        const root = document.documentElement;
+
+        function updateToggleState() {
+            const isDark = root.getAttribute('data-theme') === 'dark';
+            toggleIcon.className = isDark ? 'fa-solid fa-sun' : 'fa-solid fa-moon';
+            toggleLabel.textContent = isDark ? 'Light mode' : 'Dark mode';
+            toggleBtn.setAttribute('aria-pressed', isDark ? 'true' : 'false');
+        }
+
+        updateToggleState();
+        toggleBtn.addEventListener('click', function() {
+            const nextTheme = root.getAttribute('data-theme') === 'dark' ? 'light' : 'dark';
+            root.setAttribute('data-theme', nextTheme);
+            localStorage.setItem('fma-theme', nextTheme);
+            updateToggleState();
+        });
+    });
+    </script>
 
     <!-- Navigation -->
     <nav class="lp-nav" role="navigation" aria-label="Main navigation">

@@ -13,7 +13,14 @@
 
 // Load environment variables from the .env file in the project root.
 // Use defaults only as a last resort (localhost dev fallback).
-$env = parse_ini_file(__DIR__ . '/.env');
+$env = parse_ini_file(__DIR__ . '/.env') ?: [];
+
+if (!headers_sent()) {
+    header('X-Frame-Options: SAMEORIGIN');
+    header('X-Content-Type-Options: nosniff');
+    header('Referrer-Policy: strict-origin-when-cross-origin');
+    header('Permissions-Policy: geolocation=(), camera=(), microphone=()');
+}
 
 // Define connection constants from the environment.
 define('DB_HOST', $env['DB_HOST'] ?? '127.0.0.1');
@@ -21,6 +28,11 @@ define('DB_PORT', (int)($env['DB_PORT'] ?? 3307));
 define('DB_USER', $env['DB_USER'] ?? 'root');
 define('DB_PASS', $env['DB_PASS'] ?? '');
 define('DB_NAME', $env['DB_NAME'] ?? 'fairmedalloc');
+define('ML_SERVICE_URL', rtrim($env['ML_SERVICE_URL'] ?? 'http://127.0.0.1:5051', '/'));
+define('ML_SERVICE_TIMEOUT', (float)($env['ML_SERVICE_TIMEOUT'] ?? 5));
+$pythonBin = trim((string)($env['PYTHON_BIN'] ?? ($env['FAIRMED_PYTHON_BIN'] ?? '')));
+define('PYTHON_BIN', $pythonBin);
+define('FAIRMED_PYTHON_BIN', $pythonBin);
 
 // Establish the connection using the mysqli extension (standard for PHP/XAMPP stacks).
 $conn = new mysqli(DB_HOST, DB_USER, DB_PASS, DB_NAME, DB_PORT);

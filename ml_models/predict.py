@@ -1,235 +1,470 @@
 """
-FairMedAlloc - Urgency Score Prediction
-========================================
-Predicts a student's urgency score based on their medical/mobility conditions.
-It uses a trained XGBoost ML model if available, otherwise defaults to a hard-coded
-rule-based scoring fallback to ensure the system never breaks.
+FairMedAlloc - XGBoost Urgency Prediction
+=========================================
+Loads the provided XGBoost pickle model unchanged and adapts web-app inputs to
+the fixed 9-feature vector it expects.
 
-Usage:
-    python predict.py '{"id": "1", "condition": "Asthma", "severity": 3}'
-    python predict.py input_file.json
+Primary model schema:
+    [has_asthma, has_epilepsy, has_ulcer, has_sickle_cell,
+     has_cardiac_issue, has_visual_impairment, has_physical_disability,
+     mobility_score, severity_score]
+
+The application never mutates the model. Any compatibility work happens here in
+the adapter and in the PHP application.
 """
 
-import sys
 import json
 import logging
 import os
+import sys
+import warnings
 
 logging.basicConfig(level=logging.ERROR)
+warnings.filterwarnings(
+    "ignore",
+    message=".*If you are loading a serialized model.*",
+    category=UserWarning,
+)
 
-# Setup fundamental paths for locating the ML model
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
-MODEL_PATH = os.path.join(SCRIPT_DIR, 'urgency_model.json')
-ENCODERS_PATH = os.path.join(SCRIPT_DIR, 'label_encoders.json')
+PROJECT_ROOT = os.path.dirname(SCRIPT_DIR)
+DOTENV_PATH = os.path.join(PROJECT_ROOT, ".env")
+SITE_PACKAGES_PATH = os.path.join(SCRIPT_DIR, "site-packages")
+VENDOR_PATH = os.path.join(SCRIPT_DIR, "vendor")
 
-# Global variables to cache model in memory 
+if os.path.isdir(SITE_PACKAGES_PATH) and SITE_PACKAGES_PATH not in sys.path:
+    sys.path.insert(0, SITE_PACKAGES_PATH)
+
+if os.path.isdir(VENDOR_PATH) and VENDOR_PATH not in sys.path:
+    sys.path.insert(0, VENDOR_PATH)
+
+PICKLE_FEATURE_KEYS = [
+    "has_asthma",
+    "has_epilepsy",
+    "has_ulcer",
+    "has_sickle_cell",
+    "has_cardiac_issue",
+    "has_visual_impairment",
+    "has_physical_disability",
+    "mobility_score",
+    "severity_score",
+]
+
 _model = None
-_encoders = None
 _use_ml_model = False
+_model_source = None
+_settings_cache = None
+
+
+def load_local_settings():
+    global _settings_cache
+
+    if _settings_cache is not None:
+        return _settings_cache
+
+    settings = {}
+    if os.path.exists(DOTENV_PATH):
+        try:
+            with open(DOTENV_PATH, "r", encoding="utf-8") as env_file:
+                for raw_line in env_file:
+                    line = raw_line.strip()
+                    if not line or line.startswith("#") or "=" not in line:
+                        continue
+                    key, value = line.split("=", 1)
+                    settings[key.strip()] = value.strip().strip("\"'")
+        except OSError as exc:
+            logging.error("Failed to read .env settings: %s", exc)
+
+    _settings_cache = settings
+    return settings
+
+
+def get_setting(name, default=""):
+    settings = load_local_settings()
+    env_value = os.environ.get(name)
+    if env_value not in (None, ""):
+        return env_value
+    return settings.get(name, default)
+
+
+def resolve_candidate_path(candidate):
+    if not candidate:
+        return None
+
+    candidate = str(candidate).strip().strip("\"'")
+    if not candidate:
+        return None
+
+    if not os.path.isabs(candidate):
+        project_relative = os.path.join(PROJECT_ROOT, candidate)
+        script_relative = os.path.join(SCRIPT_DIR, candidate)
+        if os.path.exists(project_relative):
+            candidate = project_relative
+        else:
+            candidate = script_relative
+
+    return candidate if os.path.exists(candidate) else None
+
+
+def get_pickle_model_path():
+    candidates = [
+        get_setting("ML_MODEL_PICKLE_PATH", ""),
+        "xgboost_hostel_model.pkl",
+    ]
+    for candidate in candidates:
+        resolved = resolve_candidate_path(candidate)
+        if resolved:
+            return resolved
+    return None
+
+
+def model_descriptor():
+    return "XGBoost .pkl Model" if _use_ml_model else "Rule-Based Fallback"
+
+
+def calculate_tier(score):
+    if score >= 70:
+        return "High"
+    if score >= 40:
+        return "Medium"
+    return "Low"
+
+
+def normalize_text(value):
+    if value is None:
+        return ""
+    return " ".join(str(value).strip().lower().split())
+
+
+def normalize_condition_value(value):
+    text = normalize_text(value)
+    aliases = {
+        "": "None",
+        "none": "None",
+        "none / healthy": "None",
+        "healthy": "None",
+        "asthma": "Asthma",
+        "respiratory": "Respiratory",
+        "epilepsy": "Epilepsy",
+        "ulcer": "Ulcer",
+        "sickle cell": "Sickle Cell",
+        "sickle cell disease": "Sickle Cell",
+        "cardiac": "Cardiac",
+        "cardiac issue": "Cardiac",
+        "cardiovascular": "Cardiovascular",
+        "visual impairment": "Visual Impairment",
+        "physical disability": "Physical Disability",
+        "orthopaedic": "Orthopaedic",
+        "orthopedic": "Orthopaedic",
+        "neurological": "Neurological",
+        "diabetes": "Diabetes",
+        "other": "Other",
+        "mobility": "Mobility",
+        "wheelchair user": "Wheelchair User",
+        "crutches/walker": "Crutches/Walker",
+        "crutches / walker": "Crutches/Walker",
+        "artificial limb": "Artificial Limb",
+    }
+    return aliases.get(text, str(value).strip() if value is not None else "None")
+
+
+def normalize_mobility_value(value):
+    if value is None:
+        return "Normal Mobility"
+
+    text = normalize_text(value)
+    aliases = {
+        "": "Normal Mobility",
+        "0": "Normal Mobility",
+        "normal": "Normal Mobility",
+        "normal mobility": "Normal Mobility",
+        "1": "Artificial Limb",
+        "artificial limb": "Artificial Limb",
+        "2": "Crutches/Walker",
+        "crutches/walker": "Crutches/Walker",
+        "crutches / walker": "Crutches/Walker",
+        "crutches": "Crutches/Walker",
+        "walker": "Crutches/Walker",
+        "3": "Wheelchair User",
+        "wheelchair user": "Wheelchair User",
+        "wheelchair": "Wheelchair User",
+    }
+    return aliases.get(text, str(value).strip())
+
+
+def normalize_severity_value(value):
+    if value is None:
+        return 1
+
+    if isinstance(value, (int, float)):
+        return max(0, min(int(value), 3))
+
+    mapping = {
+        "0": 0,
+        "low": 1,
+        "1": 1,
+        "medium": 2,
+        "2": 2,
+        "high": 3,
+        "3": 3,
+    }
+    return mapping.get(normalize_text(value), 1)
+
+
+def normalize_score_value(value, default=0):
+    try:
+        return int(float(value))
+    except (TypeError, ValueError):
+        return default
+
+
+def get_requested_mobility_flag(student):
+    value = student.get("is_requested")
+    if value is None:
+        value = student.get("is_requested_mobility")
+    if value is None:
+        value = student.get("has_special_needs")
+    return bool(value)
+
+
+def split_condition_values(raw_condition):
+    if raw_condition is None:
+        return []
+
+    if isinstance(raw_condition, (list, tuple, set)):
+        return [normalize_condition_value(item) for item in raw_condition]
+
+    normalized = normalize_condition_value(raw_condition)
+    if normalized != str(raw_condition).strip():
+        return [normalized]
+
+    text = str(raw_condition)
+    for delimiter in [",", ";", "|", "+"]:
+        if delimiter in text:
+            return [normalize_condition_value(part) for part in text.split(delimiter) if part.strip()]
+
+    return [normalize_condition_value(raw_condition)]
+
+
+def build_pickle_feature_vector(student):
+    direct_flags_present = any(key in student for key in PICKLE_FEATURE_KEYS)
+    features = {
+        "has_asthma": normalize_score_value(student.get("has_asthma"), 0),
+        "has_epilepsy": normalize_score_value(student.get("has_epilepsy"), 0),
+        "has_ulcer": normalize_score_value(student.get("has_ulcer"), 0),
+        "has_sickle_cell": normalize_score_value(student.get("has_sickle_cell"), 0),
+        "has_cardiac_issue": normalize_score_value(student.get("has_cardiac_issue"), 0),
+        "has_visual_impairment": normalize_score_value(student.get("has_visual_impairment"), 0),
+        "has_physical_disability": normalize_score_value(student.get("has_physical_disability"), 0),
+        "mobility_score": normalize_score_value(student.get("mobility_score"), -1),
+        "severity_score": normalize_score_value(student.get("severity_score"), -1),
+    }
+
+    unsupported_conditions = []
+
+    if not direct_flags_present:
+        condition_map = {
+            "Asthma": "has_asthma",
+            "Respiratory": "has_asthma",
+            "Epilepsy": "has_epilepsy",
+            "Ulcer": "has_ulcer",
+            "Sickle Cell": "has_sickle_cell",
+            "Cardiac": "has_cardiac_issue",
+            "Cardiovascular": "has_cardiac_issue",
+            "Visual Impairment": "has_visual_impairment",
+            "Physical Disability": "has_physical_disability",
+            "Orthopaedic": "has_physical_disability",
+        }
+
+        for condition in split_condition_values(student.get("condition")):
+            if condition in ("None", "Mobility"):
+                continue
+            feature_key = condition_map.get(condition)
+            if feature_key:
+                features[feature_key] = 1
+            else:
+                unsupported_conditions.append(condition)
+
+    if features["mobility_score"] < 0:
+        mobility = normalize_mobility_value(student.get("mobility"))
+        features["mobility_score"] = {
+            "Normal Mobility": 0,
+            "Artificial Limb": 1,
+            "Crutches/Walker": 2,
+            "Wheelchair User": 3,
+        }.get(mobility, 0)
+
+    if features["severity_score"] < 0:
+        features["severity_score"] = normalize_severity_value(student.get("severity"))
+
+    return [features[key] for key in PICKLE_FEATURE_KEYS], unsupported_conditions
 
 
 def load_ml_model():
-    """Attempt to load the trained XGBoost model and dictionary encoders.
-    Returns: bool indicating if loading was successful."""
-    global _model, _encoders, _use_ml_model
-    
-    # If the files don't exist, we will have to use the rule-based fallback
-    if not os.path.exists(MODEL_PATH) or not os.path.exists(ENCODERS_PATH):
+    global _model, _use_ml_model, _model_source
+
+    _model = None
+    _use_ml_model = False
+    _model_source = None
+
+    pickle_path = get_pickle_model_path()
+    if not pickle_path:
         return False
-    
+
     try:
-        import xgboost as xgb
-        _model = xgb.XGBRegressor()
-        _model.load_model(MODEL_PATH)
-        
-        # Load the JSON encoders to map text classifications to integers
-        with open(ENCODERS_PATH, 'r') as f:
-            _encoders = json.load(f)
-        
+        import joblib
+        import xgboost  # noqa: F401  # Ensure the bundled XGBoost runtime is available.
+
+        _model = joblib.load(pickle_path)
         _use_ml_model = True
+        _model_source = pickle_path
         return True
-    except Exception as e:
-        logging.error(f"Failed to load ML model: {e}")
+    except Exception as exc:
+        logging.error("Failed to load XGBoost pickle model: %s", exc)
         return False
 
 
-def encode_value(column, value):
-    """Helper method to convert categorical strings (like 'Asthma') into the numerical IDs expected by XGBoost."""
-    if _encoders and column in _encoders:
-        classes = _encoders[column]['classes']
-        value_str = str(value) if value else ('None' if column == 'condition' else 'Normal')
-        if value_str in classes:
-            return classes.index(value_str)
-        return 0
-    return 0
+def calculate_score_pickle(student):
+    feature_vector, unsupported_conditions = build_pickle_feature_vector(student)
+    if unsupported_conditions:
+        raise ValueError(
+            "Unsupported XGBoost condition(s): " + ", ".join(sorted(set(unsupported_conditions)))
+        )
 
+    import numpy as np
 
-def calculate_score_ml(student):
-    """Predict urgency score strictly utilizing the ML Regression Model."""
-    try:
-        sev_map = {'Low': 1, 'Medium': 2, 'High': 3}
-        sev_str = student.get('severity', 'Low')
-        try:
-            sev_val = sev_map.get(str(sev_str).capitalize(), 1) if isinstance(sev_str, str) else int(sev_str)
-        except ValueError:
-            sev_val = 1
-
-        # Create the feature list in the exact order the model expects
-        features = [
-            encode_value('condition', student.get('condition', 'None')),
-            encode_value('mobility', student.get('mobility', 'Normal')),
-            sev_val,
-            int(student.get('academic_level', 100)),
-            int(student.get('has_special_needs', 0))
-        ]
-        
-        prediction = _model.predict([features])[0]
-        # Restrict score to boundaries between 0.0 and 100.0
-        return max(0.0, min(float(prediction), 100.0))
-    except Exception as e:
-        # If prediction fails randomly, default back to rule-based fallback
-        logging.error(f"ML prediction failed: {e}")
-        return calculate_score_fallback(student)
+    score = _model.predict(np.array(feature_vector).reshape(1, -1))[0]
+    return max(0.0, min(float(score), 100.0))
 
 
 def calculate_score_fallback(student):
-    """Hard-coded rule-based scoring module. This is heavily engaged if the ML Model hasn't been trained yet."""
     try:
-        # If a score was explicitly passed in the student dict, honor it
-        if 'urgency_score' in student and student['urgency_score'] is not None:
-            val = float(student['urgency_score'])
+        if "urgency_score" in student and student["urgency_score"] is not None:
+            val = float(student["urgency_score"])
             if val > 0:
                 return val
 
-        condition = student.get('condition', 'None')
-        mobility = student.get('mobility', 'Normal')
-        
-        # Mapping rules: Normalize mobility items appearing as primary conditions
-        mobility_types = ['Wheelchair User', 'Crutches/Walker', 'Artificial Limb']
-        if condition in mobility_types:
+        condition = normalize_condition_value(student.get("condition", "None"))
+        mobility = normalize_mobility_value(student.get("mobility", "Normal Mobility"))
+
+        if condition in ["Wheelchair User", "Crutches/Walker", "Artificial Limb"]:
             mobility = condition
 
-        sev_map = {'Low': 1, 'Medium': 2, 'High': 3}
-        sev_str = student.get('severity', 'Low')
-        try:
-            severity = sev_map.get(str(sev_str).capitalize(), 1) if isinstance(sev_str, str) else int(sev_str)
-        except ValueError:
-            severity = 1
-        
-        # Start everyone with at least a low baseline score
+        severity = normalize_severity_value(student.get("severity", "Low"))
         score = 10.0
-        
-        # Weights matrix defining how much boost each condition gets.
-        # IMPORTANT: Keys must exactly match the values in the signup/profile HTML forms.
         weights = {
-            # Tier 1 — Chronic / Life-Threatening (90 pts)
-            'Sickle Cell':        90.0,
-            'Epilepsy':           90.0,
-            'Diabetes':           90.0,
-            'Cardiac':            90.0,   # Legacy label kept for backward compatibility
-            'Cardiovascular':     90.0,   # Form label — maps to same tier as Cardiac
-
-            # Tier 2 — Moderate Functional Impact (50–70 pts)
-            'Neurological':       70.0,
-            'Orthopaedic':        65.0,   # Legacy label
-            'Physical Disability':65.0,   # Form label — equivalent to Orthopaedic
-            'Visual Impairment':  60.0,
-            'Asthma':             50.0,
-            'Respiratory':        50.0,   # Form label — same tier as Asthma
-
-            # Tier 3 — Mild / Non-Emergency (20–30 pts)
-            'Ulcer':              30.0,
-            'Other':              20.0,
-
-            # Handled exclusively via mobility logic below (no double-counting)
-            'Mobility':           0.0,
-            'Wheelchair User':    0.0,
-            'Crutches/Walker':    0.0,
+            "Sickle Cell": 90.0,
+            "Epilepsy": 90.0,
+            "Diabetes": 90.0,
+            "Cardiac": 90.0,
+            "Cardiovascular": 90.0,
+            "Neurological": 70.0,
+            "Orthopaedic": 65.0,
+            "Physical Disability": 65.0,
+            "Visual Impairment": 60.0,
+            "Asthma": 50.0,
+            "Respiratory": 50.0,
+            "Ulcer": 30.0,
+            "Other": 20.0,
+            "Mobility": 0.0,
+            "Wheelchair User": 0.0,
+            "Crutches/Walker": 0.0,
+            "Artificial Limb": 0.0,
+            "None": 0.0,
         }
-        
         score += weights.get(condition, 0.0)
-        
-        # Mobility Logic: Delineates between Tier 1 (Requested by specialized logic) vs Tier 2
+
         mobility_score = 0.0
-        is_requested = student.get('is_requested', False)
-        
-        if mobility in ['Wheelchair User', 'Crutches/Walker', 'Artificial Limb']:
-            if is_requested:
-                mobility_score = 90.0 # Tier 1 -> Highly Urgently requires Clinic Proximal + Ground
-            else:
-                mobility_score = 75.0 # Tier 2 -> Proximal needed, maybe not heavily urgent
-        
-        # Prevent double dipping logic, take highest risk score
+        if mobility in ["Wheelchair User", "Crutches/Walker", "Artificial Limb"]:
+            mobility_score = 90.0 if get_requested_mobility_flag(student) else 75.0
+
         score = max(score, mobility_score)
-        
-        # Slight severity bumping
-        score += (severity * 5.0)
-        
+        score += severity * 5.0
         return min(float(score), 100.0)
-    except:
+    except Exception:
         return 0.0
 
 
-def calculate_score(student):
-    """Main generic routing function that calculates scores dynamically."""
-    # Pre-calculated scores act as an override
-    if 'urgency_score' in student and student['urgency_score'] is not None:
+def score_student(student):
+    if not isinstance(student, dict):
+        student = {}
+
+    if "urgency_score" in student and student["urgency_score"] is not None:
         try:
-            val = float(student['urgency_score'])
-            if val > 0:
-                return val
-        except:
+            value = float(student["urgency_score"])
+            if value > 0:
+                score = max(0.0, min(value, 100.0))
+                return {"score": score, "tier": calculate_tier(score), "strategy": "stored"}
+        except (TypeError, ValueError):
             pass
-    
-    # Forward calculation to ML or Fallback mechanism
+
     if _use_ml_model:
-        return calculate_score_ml(student)
-    return calculate_score_fallback(student)
+        try:
+            score = calculate_score_pickle(student)
+            return {"score": score, "tier": calculate_tier(score), "strategy": "xgboost_model"}
+        except Exception as exc:
+            logging.error("XGBoost prediction failed, falling back to rules: %s", exc)
+
+    score = calculate_score_fallback(student)
+    return {"score": score, "tier": calculate_tier(score), "strategy": "fallback"}
 
 
-def process_batch(data_input):
-    """Handles an entire batch (list) of dictionaries and returns an evaluated scored map."""
-    results = {}
-    
+def process_batch_verbose(data_input):
     if isinstance(data_input, dict):
         batch = [data_input]
     elif isinstance(data_input, list):
         batch = data_input
     else:
-        return {}
-        
-    for student in batch:
-        sid = student.get('id', 'unknown')
-        results[sid] = calculate_score(student)
-        
-    return results
+        batch = []
+
+    detailed = {}
+    for index, student in enumerate(batch):
+        sid = student.get("id", f"unknown_{index}") if isinstance(student, dict) else f"unknown_{index}"
+        detailed[sid] = score_student(student if isinstance(student, dict) else {})
+    return detailed
 
 
-# Load model continuously on initial Python import
+def process_batch(data_input):
+    return {sid: result["score"] for sid, result in process_batch_verbose(data_input).items()}
+
+
+def describe_mode(detailed_results=None):
+    if detailed_results and _use_ml_model:
+        strategies = {item.get("strategy") for item in detailed_results.values()}
+        if "fallback" in strategies and len(strategies) > 1:
+            return "XGBoost .pkl Model + Compatibility Fallback"
+    return model_descriptor()
+
+
 load_ml_model()
 
 
 if __name__ == "__main__":
-    # When run via the CLI (e.g. executed by PHP shell_exec)
-    mode = "ML Model" if _use_ml_model else "Rule-Based (Fallback)"
-    
+    mode = model_descriptor()
+
     if len(sys.argv) > 1:
         try:
             arg = sys.argv[1]
-            
-            # Allow reading entirely from file paths or inline JSON dicts
             if os.path.isfile(arg):
-                with open(arg, 'r') as f:
-                    input_data = json.load(f)
+                with open(arg, "r", encoding="utf-8") as input_file:
+                    input_data = json.load(input_file)
             else:
                 input_data = json.loads(arg)
-                
-            scores = process_batch(input_data)
-            # Dump JSON output to STDOUT cleanly for bridging with PHP scripts
-            print(json.dumps({"status": "success", "mode": mode, "results": scores}))
-            
-        except Exception as e:
-            # Fatal crash logging bridge
-            print(json.dumps({"status": "error", "message": str(e)}))
+
+            verbose_results = process_batch_verbose(input_data)
+            scores = {sid: payload["score"] for sid, payload in verbose_results.items()}
+            tiers = {sid: payload["tier"] for sid, payload in verbose_results.items()}
+            print(
+                json.dumps(
+                    {
+                        "status": "success",
+                        "mode": describe_mode(verbose_results),
+                        "results": scores,
+                        "tiers": tiers,
+                    }
+                )
+            )
+        except Exception as exc:
+            print(json.dumps({"status": "error", "message": str(exc)}))
     else:
         print(json.dumps({"status": "info", "mode": mode, "message": "No input provided"}))

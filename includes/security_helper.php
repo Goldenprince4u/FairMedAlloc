@@ -27,7 +27,7 @@ if (session_status() === PHP_SESSION_NONE) {
  *  2. On the next request, compare elapsed time to the threshold.
  *  3. If exceeded → wipe session → destroy → redirect to login.
  */
-defined('SESSION_TIMEOUT_SECONDS') || define('SESSION_TIMEOUT_SECONDS', 1800); // 30-minute idle window
+defined('SESSION_TIMEOUT_SECONDS') || define('SESSION_TIMEOUT_SECONDS', 900); // 15-minute idle window
 
 if (isset($_SESSION['logged_in']) && $_SESSION['logged_in'] === true) {
     $now = time();
@@ -45,7 +45,7 @@ if (isset($_SESSION['logged_in']) && $_SESSION['logged_in'] === true) {
             $is_admin = strpos($_SERVER['PHP_SELF'] ?? '', 'admin') !== false;
             $base = rtrim(dirname($_SERVER['SCRIPT_NAME']), '/\\');
             $target = $is_admin ? 'admin_login.php' : 'login.php';
-            header('Location: ' . $base . '/' . $target . '?timeout=1');
+            header('Location: ' . $base . '/' . $target);
             exit();
         }
     }

@@ -18,13 +18,6 @@
         })();
     </script>
 
-    <!-- Preconnect for performance -->
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-
-    <!-- Fonts: Manrope for stronger headings, Inter for readable body text -->
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Manrope:wght@600;700;800&display=swap" rel="stylesheet">
-
     <!-- Font Awesome Icons -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
 
@@ -33,3 +26,46 @@
 
 </head>
 <body>
+<button id="global-theme-toggle" class="theme-toggle-btn theme-toggle-floating" type="button" aria-label="Toggle color theme" aria-pressed="false">
+    <i class="fa-solid fa-moon" id="theme-toggle-icon"></i>
+    <span class="theme-toggle-label" id="theme-toggle-label">Dark mode</span>
+</button>
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const toggleBtn = document.getElementById('global-theme-toggle');
+    const toggleIcon = document.getElementById('theme-toggle-icon');
+    const toggleLabel = document.getElementById('theme-toggle-label');
+    const root = document.documentElement;
+    const sidebarFooter = document.querySelector('.sidebar-footer');
+
+    function updateIcon() {
+        if (root.getAttribute('data-theme') === 'dark') {
+            toggleIcon.className = 'fa-solid fa-sun';
+            toggleLabel.textContent = 'Light mode';
+            toggleBtn.setAttribute('aria-pressed', 'true');
+        } else {
+            toggleIcon.className = 'fa-solid fa-moon';
+            toggleLabel.textContent = 'Dark mode';
+            toggleBtn.setAttribute('aria-pressed', 'false');
+        }
+    }
+
+    if (sidebarFooter) {
+        toggleBtn.classList.remove('theme-toggle-floating');
+        toggleBtn.classList.add('theme-toggle-sidebar');
+        sidebarFooter.prepend(toggleBtn);
+    }
+
+    // Initial icon state
+    updateIcon();
+
+    toggleBtn.addEventListener('click', function() {
+        const currentTheme = root.getAttribute('data-theme');
+        const newTheme = currentTheme === 'dark' ? 'light' : 'dark';
+        
+        root.setAttribute('data-theme', newTheme);
+        localStorage.setItem('fma-theme', newTheme);
+        updateIcon();
+    });
+});
+</script>

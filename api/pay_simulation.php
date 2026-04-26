@@ -58,17 +58,16 @@ $stmt = $conn->prepare("INSERT INTO payments (student_id, amount, reference_no, 
 $stmt->bind_param("ids", $user_id, $amount, $ref);
 
 if ($stmt->execute()) {
-    // FIX: Previously, this called AllocationEngine::run() synchronously here,
-    // which could block for up to 60 seconds (OR-Tools solver timeout) — exceeding
-    // PHP's default max_execution_time (30s) and silently killing the request.
-    //
-    // The payment is now confirmed immediately. The student's profile remains
-    // 'Unallocated' and will be processed during the next admin-triggered
-    // batch allocation cycle (via run_allocation.php). The notification system
-    // will inform the student when a room is assigned.
+    require_once '../includes/AllocationEngine.php';
+    try {
+        $engine = new AllocationEngine($conn);
+        $engine->run();
+    } catch (Exception $e) {
+        error_log('Allocation engine error during pay simulation: ' . $e->getMessage());
+    }
     echo json_encode([
         'status'  => 'success',
-        'message' => 'Portal payment of &#8358;50,000 confirmed through the pay simulator. Your room will be considered in the next admin batch, and you will be notified when a room is assigned.'
+        'message' => 'Portal payment of &#8358;50,000 confirmed. Your room has been allocated automatically.'
     ]);
 } else {
     echo json_encode(['status' => 'error', 'message' => 'Database error. Please try again.']);

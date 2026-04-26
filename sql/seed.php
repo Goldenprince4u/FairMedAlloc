@@ -135,6 +135,8 @@ function insertStaticData(mysqli $conn): void
     $settings = [
         ['current_session', '2025/2026'],
         ['urgency_threshold_proximal', '75'],
+        ['urgency_threshold_medium', '40'],
+        ['allocation_algorithm_version', 'allocation_engine_v2'],
         ['allocation_status', 'open'],
     ];
 

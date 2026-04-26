@@ -7,8 +7,8 @@
  * Expected CSV column order:
  *   [0] Matric No  [1] Full Name  [2] Level  [3] Faculty
  *   [4] Department [5] Gender     [6] Medical Condition
- *   [7] Severity (optional)       [8] Mobility (optional)
- *   [9] Paid Status (optional, mirrors the university portal export)
+ *   [7] Severity                  [8] Mobility
+ *   [9] Paid Status (1 or 0)
  *
  * Security measures applied:
  *   - Session-based admin auth guard.
@@ -25,10 +25,14 @@
 session_start();
 require_once 'db_config.php';
 require_once 'includes/security_helper.php';
+require_once 'includes/UrgencyScoreService.php';
 // Auth Guard: admin only
-if (!isset($_SESSION['logged_in']) || ($_SESSION['role'] ?? '') !== 'admin') { header("Location: admin_login.php"); exit(); }
+if (!isset($_SESSION['logged_in']) || ($_SESSION['role'] ?? '') !== 'admin') {
+    header("Location: admin_login.php");
+    exit();
+}
 
-$msg      = '';
+$msg = '';
 $msg_type = 'success';
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_FILES['csv_file'])) {
@@ -37,39 +41,39 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_FILES['csv_file'])) {
 
     // Check for upload errors reported by PHP
     if ($_FILES['csv_file']['error'] !== 0) {
-        $msg      = "File upload error (PHP error code: " . (int)$_FILES['csv_file']['error'] . ")";
+        $msg = "File upload error (PHP error code: " . (int) $_FILES['csv_file']['error'] . ")";
         $msg_type = 'error';
-    // Enforce a 5MB file size limit to prevent memory exhaustion
+        // Enforce a 5MB file size limit to prevent memory exhaustion
     } elseif ($_FILES['csv_file']['size'] > 5 * 1024 * 1024) {
-        $msg      = "File too large. Maximum upload size is 5MB.";
+        $msg = "File too large. Maximum upload size is 5MB.";
         $msg_type = 'error';
-    // MIME type check — must be CSV or plain-text (some OS report CSV as text/plain)
+        // MIME type check — must be CSV or plain-text (some OS report CSV as text/plain)
     } else {
         $allowed_mimes = ['text/csv', 'text/plain', 'application/csv', 'application/vnd.ms-excel'];
-        $finfo    = finfo_open(FILEINFO_MIME_TYPE);
+        $finfo = finfo_open(FILEINFO_MIME_TYPE);
         $detected = finfo_file($finfo, $_FILES['csv_file']['tmp_name']);
         // finfo_close is deprecated in PHP 8+ and not needed
         // Also check the original filename extension as a secondary guard
         $ext = strtolower(pathinfo($_FILES['csv_file']['name'], PATHINFO_EXTENSION));
 
         if (!in_array($detected, $allowed_mimes) && $ext !== 'csv') {
-            $msg      = "Invalid file type. Please upload a valid CSV file (detected: {$detected}).";
+            $msg = "Invalid file type. Please upload a valid CSV file (detected: {$detected}).";
             $msg_type = 'error';
         }
     }
 
     if (empty($msg)) {
-        $file       = fopen($_FILES['csv_file']['tmp_name'], 'r');
-        $count      = 0;
+        $file = fopen($_FILES['csv_file']['tmp_name'], 'r');
+        $count = 0;
         $duplicates = 0;
 
         // Skip the CSV header row (column labels)
         fgetcsv($file);
 
         // Prepare reusable statements once for performance across many rows
-        $stmt_check       = $conn->prepare("SELECT user_id FROM users WHERE username = ?");
-        $stmt_user        = $conn->prepare("INSERT INTO users (username, full_name, password_hash, role) VALUES (?, ?, ?, 'student')");
-        $stmt_profile     = $conn->prepare("INSERT INTO student_profiles (user_id, level, department_id, gender, is_paid) VALUES (?, ?, ?, ?, ?)");
+        $stmt_check = $conn->prepare("SELECT user_id FROM users WHERE username = ?");
+        $stmt_user = $conn->prepare("INSERT INTO users (username, full_name, password_hash, role) VALUES (?, ?, ?, 'student')");
+        $stmt_profile = $conn->prepare("INSERT INTO student_profiles (user_id, level, department_id, gender, is_paid) VALUES (?, ?, ?, ?, ?)");
         $stmt_dept_lookup = $conn->prepare("SELECT department_id FROM departments WHERE name LIKE ? LIMIT 1");
 
         // ── PHASE 1: Create user & profile records ──────────────────────────────
@@ -80,18 +84,25 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_FILES['csv_file'])) {
         $pending_medical = []; // ['id'=>uid, 'condition'=>..., 'severity'=>..., 'mobility'=>..., 'academic_level'=>...]
 
         while (($row = fgetcsv($file)) !== false) {
-            // Accept legacy shorter rows and default omitted trailing optional columns.
-            if (count($row) < 7) continue;
+            // Require all 10 columns
+            if (count($row) < 10)
+                continue;
 
-            $matric    = trim($row[0]);
-            $name      = trim($row[1]);
-            $level     = (int)trim($row[2]);
-            $dept      = trim($row[4]);
-            $gender    = trim($row[5]);
+            $matric = trim($row[0]);
+            $name = trim($row[1]);
+            $level = (int) trim($row[2]);
+            $dept = trim($row[4]);
+            $gender = trim($row[5]);
             $condition = trim($row[6]); // Raw ENUM value — do NOT HTML-encode
-            $is_paid   = isset($row[9]) && (int)trim($row[9]) === 1 ? 1 : 0;
+            $severity = trim($row[7]);
+            $mobility = trim($row[8]);
+            $paid_str = trim($row[9]);
 
-            if (empty($condition)) continue;
+            // Skip row if any required field is empty (Paid Status can be '0')
+            if (empty($matric) || empty($name) || empty($dept) || empty($gender) || empty($condition) || empty($severity) || empty($mobility) || $paid_str === '')
+                continue;
+
+            $is_paid = (int) $paid_str === 1 ? 1 : 0;
 
             // --- Duplicate Detection ---
             $stmt_check->bind_param("s", $matric);
@@ -110,7 +121,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_FILES['csv_file'])) {
                 $uid = $conn->insert_id;
 
                 // --- Department String → ID ---
-                $dept_id     = 1;
+                $dept_id = 1;
                 $search_dept = "%" . $dept . "%";
                 $stmt_dept_lookup->bind_param("s", $search_dept);
                 $stmt_dept_lookup->execute();
@@ -123,13 +134,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_FILES['csv_file'])) {
                 $stmt_profile->execute();
 
                 // Queue student for batch ML scoring (medical data only if condition is not None)
-                if (strtolower($condition) !== 'none') {
+                $normalizedCondition = strtolower(trim($condition));
+                if (!in_array($normalizedCondition, ['none', 'none / healthy', 'healthy'], true)) {
                     $pending_medical[] = [
-                        'id'             => $uid,
-                        'condition'      => $condition,
-                        'severity'       => !empty($row[7]) ? trim($row[7]) : 'Low',  // Raw ENUM value
-                        'mobility'       => !empty($row[8]) ? trim($row[8]) : 'Normal Mobility', // Raw ENUM value
+                        'id' => $uid,
+                        'condition' => $condition,
+                        'severity' => $severity,
+                        'mobility' => $mobility,
                         'academic_level' => $level,
+                        'is_requested' => (int)(strtolower(trim($mobility)) !== 'normal mobility' && trim($mobility) !== '0'),
                     ];
                 }
                 $count++;
@@ -142,45 +155,34 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_FILES['csv_file'])) {
         // regardless of how many rows were in the CSV.
         $batch_scores = []; // [uid => score]
         if (!empty($pending_medical)) {
-            $temp_file   = sys_get_temp_dir() . DIRECTORY_SEPARATOR . 'fairmed_bulk_' . uniqid() . '.json';
-            file_put_contents($temp_file, json_encode($pending_medical));
-            $script_path = __DIR__ . '/ml_models/predict.py';
-            $command     = escapeshellcmd("python " . escapeshellarg($script_path) . " " . escapeshellarg($temp_file));
-            $output      = shell_exec($command);
-            $result      = json_decode($output, true);
-            if (file_exists($temp_file)) unlink($temp_file);
-
-            if (($result['status'] ?? '') === 'success' && isset($result['results'])) {
-                $batch_scores = $result['results'];
+            try {
+                $scoreService = new UrgencyScoreService();
+                $result = $scoreService->scoreBatch($pending_medical);
+                if (($result['status'] ?? '') === 'success' && isset($result['results'])) {
+                    $batch_scores = $result['results'];
+                }
+            } catch (Exception $e) {
+                error_log('[FairMedAlloc] Batch scoring failed during CSV import, falling back to PHP rules: ' . $e->getMessage());
             }
         }
 
         // ── PHASE 3: Insert medical records with resolved urgency scores ─────────
-        // FIX: Fallback now uses condition_weights (max 100) instead of sev_val * 15 (max 45).
-        // Ensures imported students get the same scoring quality as manually registered ones.
-        $condition_weights = [
-            'Sickle Cell'        => 90.0, 'Epilepsy'           => 90.0,
-            'Diabetes'           => 90.0, 'Cardiovascular'     => 90.0,
-            'Neurological'       => 70.0, 'Physical Disability'=> 65.0,
-            'Visual Impairment'  => 60.0, 'Asthma'             => 50.0,
-            'Respiratory'        => 50.0, 'Ulcer'              => 30.0,
-            'Other'              => 20.0,
-        ];
-        $sev_map  = ['Low' => 1, 'Medium' => 2, 'High' => 3];
         $stmt_med = $conn->prepare("INSERT INTO medical_records (student_id, condition_category, condition_details, severity_level, urgency_score, mobility_status) VALUES (?, ?, ?, ?, ?, ?)");
 
         foreach ($pending_medical as $s) {
-            $uid       = $s['id'];
+            $uid = $s['id'];
             $condition = $s['condition'];
-            $severity  = $s['severity'];
-            $mobility  = $s['mobility'];
-            $sev_val   = $sev_map[$severity] ?? 1;
-
+            $severity = $s['severity'];
+            $mobility = $s['mobility'];
             // Use ML batch score if available; otherwise apply the weighted fallback formula
             if (isset($batch_scores[$uid])) {
-                $score = (float)$batch_scores[$uid];
+                $score = (float) $batch_scores[$uid];
             } else {
-                $score = min(10.0 + ($condition_weights[$condition] ?? 20.0) + ($sev_val * 5.0), 100.0);
+                $score = UrgencyScoreService::calculateFallbackScore([
+                    'condition' => $condition,
+                    'mobility' => $mobility,
+                    'severity' => $severity,
+                ]);
             }
 
             $details = "{$condition} (Imported via CSV)";
@@ -188,7 +190,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_FILES['csv_file'])) {
             $stmt_med->execute();
         }
 
-        $msg      = "Processed: {$count} students registered. Duplicates skipped: {$duplicates}. Imported payment status was preserved, and eligible students will be considered in the next admin batch.";
+        $msg = "Processed: {$count} students registered. Duplicates skipped: {$duplicates}. Imported payment status was preserved, and eligible students will be considered in the next admin batch.";
         $msg_type = 'success';
     } // end mime check
 } // end POST
@@ -213,9 +215,10 @@ require_once 'includes/header.php';
             </a>
         </div>
 
-        <?php if($msg): ?>
+        <?php if ($msg): ?>
             <div class="alert alert-<?php echo $msg_type === 'success' ? 'success' : 'danger'; ?> mb-6">
-                <i class="fa-solid <?php echo $msg_type === 'success' ? 'fa-check-circle' : 'fa-circle-exclamation'; ?>"></i>
+                <i
+                    class="fa-solid <?php echo $msg_type === 'success' ? 'fa-check-circle' : 'fa-circle-exclamation'; ?>"></i>
                 <?php echo htmlspecialchars($msg); ?>
             </div>
         <?php endif; ?>
@@ -224,51 +227,62 @@ require_once 'includes/header.php';
 
             <!-- Upload Zone -->
             <div class="card upload-zone" id="upload-drop-zone">
-                <i class="fa-solid fa-cloud-arrow-up" style="font-size:2.5rem;color:var(--c-text-muted);margin-bottom:1rem;"></i>
+                <i class="fa-solid fa-cloud-arrow-up"
+                    style="font-size:2.5rem;color:var(--c-text-muted);margin-bottom:1rem;"></i>
                 <h3 style="margin-bottom:0.5rem;">Upload Student CSV File</h3>
-                <p class="text-muted" style="margin-bottom:1.75rem;font-size:0.9rem;">Drag &amp; drop your CSV file here, or click to browse. Imported payment status and student records will be picked up during the next admin allocation batch.</p>
+                <p class="text-muted" style="margin-bottom:1.75rem;font-size:0.9rem;">Drag &amp; drop your CSV file
+                    here, or click to browse. Imported payment status and student records will be picked up during the
+                    next admin allocation batch.</p>
 
                 <form method="post" enctype="multipart/form-data" id="csv-upload-form">
                     <?php csrf_field(); ?>
-                    <input type="file" name="csv_file" id="csv-file-input" class="hidden" accept=".csv,text/csv" onchange="this.form.submit()">
+                    <input type="file" name="csv_file" id="csv-file-input" class="hidden" accept=".csv,text/csv"
+                        onchange="this.form.submit()">
                     <label for="csv-file-input" class="btn btn-primary" id="csv-browse-btn" style="cursor:pointer;">
                         <i class="fa-solid fa-folder-open"></i> Browse File
                     </label>
                 </form>
 
-                <p class="text-muted" style="margin-top:1rem;font-size:0.75rem;">Max file size: 5MB &bull; Format: CSV &bull; UTF-8 encoding</p>
+                <p class="text-muted" style="margin-top:1rem;font-size:0.75rem;">Max file size: 5MB &bull; Format: CSV
+                    &bull; UTF-8 encoding</p>
             </div>
 
             <!-- Format Guide -->
             <div class="card" style="padding:1.75rem;">
                 <div class="form-section-title" style="margin-bottom:1rem;">
-                    <span class="form-section-icon" style="background:rgba(37,99,235,0.08);color:var(--c-info);"><i class="fa-solid fa-table"></i></span>
+                    <span class="form-section-icon" style="background:rgba(37,99,235,0.08);color:var(--c-info);"><i
+                            class="fa-solid fa-table"></i></span>
                     CSV Format Guide
                 </div>
-                <p class="text-muted" style="font-size:0.8rem;margin-bottom:1rem;">Columns must be in this exact order:</p>
+                <p class="text-muted" style="font-size:0.8rem;margin-bottom:1rem;">Columns must be in this exact order:
+                </p>
 
                 <div style="display:flex;flex-direction:column;gap:0.5rem;">
                     <?php
                     $cols = [
-                        ['A', 'Matric No',    'RUN/CMP/22/001',     'required'],
-                        ['B', 'Full Name',    'John Doe',           'required'],
-                        ['C', 'Level',        '200',                'required'],
-                        ['D', 'Faculty',      'Sciences',           'required'],
-                        ['E', 'Department',   'Computer Science',   'required'],
-                        ['F', 'Gender',       'Male / Female',      'required'],
-                        ['G', 'Condition',    'Sickle Cell / None', 'required'],
-                        ['H', 'Severity',     'Low / Medium / High','optional'],
-                        ['I', 'Mobility',     'Normal / Wheelchair','optional'],
-                        ['J', 'Paid Status', '1 or 0', 'optional'],
+                        ['A', 'Matric No', 'RUN/CMP/22/001', 'required'],
+                        ['B', 'Full Name', 'John Doe', 'required'],
+                        ['C', 'Level', '200', 'required'],
+                        ['D', 'Faculty', 'Sciences', 'required'],
+                        ['E', 'Department', 'Computer Science', 'required'],
+                        ['F', 'Gender', 'Male / Female', 'required'],
+                        ['G', 'Condition', 'Sickle Cell / None', 'required'],
+                        ['H', 'Severity', 'Low / Medium / High', 'required'],
+                        ['I', 'Mobility', 'Normal / Wheelchair', 'required'],
+                        ['J', 'Paid Status', '1 or 0', 'required'],
                     ];
                     foreach ($cols as [$col, $name, $example, $req]): ?>
-                        <div style="display:flex;align-items:center;gap:0.625rem;padding:0.5rem 0;border-bottom:1px solid var(--c-border);">
-                            <span style="width:22px;height:22px;background:var(--c-primary);color:#fff;border-radius:4px;font-size:0.65rem;font-weight:700;display:flex;align-items:center;justify-content:center;flex-shrink:0;"><?php echo $col; ?></span>
+                        <div
+                            style="display:flex;align-items:center;gap:0.625rem;padding:0.5rem 0;border-bottom:1px solid var(--c-border);">
+                            <span
+                                style="width:22px;height:22px;background:var(--c-primary);color:#fff;border-radius:4px;font-size:0.65rem;font-weight:700;display:flex;align-items:center;justify-content:center;flex-shrink:0;"><?php echo $col; ?></span>
                             <div style="flex:1;min-width:0;">
-                                <div style="font-size:0.8rem;font-weight:600;color:var(--c-text-head);"><?php echo $name; ?></div>
+                                <div style="font-size:0.8rem;font-weight:600;color:var(--c-text-head);"><?php echo $name; ?>
+                                </div>
                                 <div style="font-size:0.72rem;color:var(--c-text-muted);"><?php echo $example; ?></div>
                             </div>
-                            <span class="badge <?php echo $req === 'required' ? 'badge-danger' : 'badge-success'; ?>" style="font-size:0.6rem;"><?php echo strtoupper($req); ?></span>
+                            <span class="badge <?php echo $req === 'required' ? 'badge-danger' : 'badge-success'; ?>"
+                                style="font-size:0.6rem;"><?php echo strtoupper($req); ?></span>
                         </div>
                     <?php endforeach; ?>
                 </div>
@@ -283,5 +297,5 @@ require_once 'includes/header.php';
     </main>
 </div>
 </body>
-</html>
 
+</html>

@@ -18,6 +18,7 @@
 session_start();
 require_once 'db_config.php';
 require_once 'includes/security_helper.php';
+require_once 'includes/UrgencyScoreService.php';
 
 $msg = "";
 $msg_type = "";
@@ -80,29 +81,46 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
 
             // --- 3. Process Medical Record (conditional) ---
             // If the student reports a medical condition, store it as a pending record.
-            // This data is later used by the XGBoost ML model to calculate urgency scores.
-            $condition = trim($_POST['medical_condition']); // Raw, validated against ENUM — do NOT HTML-encode before DB insert
-            if ($condition && $condition !== 'None') {
-                $severity = trim($_POST['severity'] ?? 'Low'); // Raw, validated against ENUM — do NOT HTML-encode before DB insert
+            // This data is later used by the XGBoost model to calculate priority scores.
+            $condition = trim($_POST['medical_condition']);
+            if ($condition && $condition !== 'None / Healthy') {
+                $mobility = (int)($_POST['mobility'] ?? 0);
                 $details  = "$condition (Self-Reported)";
 
-                // Compute baseline urgency score using the same weights as predict.py fallback.
-                // This gives high-priority patients (Epilepsy, Sickle Cell, etc.) correct
-                // urgency from day one, rather than a flat severity*10 guess.
-                $condition_weights = [
-                    'Sickle Cell'        => 90.0, 'Epilepsy'           => 90.0,
-                    'Diabetes'           => 90.0, 'Cardiovascular'     => 90.0,
-                    'Neurological'       => 70.0, 'Physical Disability'=> 65.0,
-                    'Visual Impairment'  => 60.0, 'Asthma'             => 50.0,
-                    'Respiratory'        => 50.0, 'Ulcer'              => 30.0,
-                    'Other'              => 20.0,
-                ];
-                $sev_map  = ['Low' => 1, 'Medium' => 2, 'High' => 3];
-                $sev_val  = $sev_map[$severity] ?? 1;
-                $score    = min(10.0 + ($condition_weights[$condition] ?? 20.0) + ($sev_val * 5.0), 100.0);
+                $severity = 'Low';
+                if (in_array($condition, ['Sickle Cell Disease', 'Epilepsy', 'Cardiovascular', 'Asthma'])) {
+                    $severity = 'High';
+                } elseif (in_array($condition, ['Visual Impairment', 'Physical Disability'])) {
+                    $severity = 'Medium';
+                }
 
-                $stmt_med = $conn->prepare("INSERT INTO medical_records (student_id, condition_category, condition_details, severity_level, urgency_score) VALUES (?, ?, ?, ?, ?)");
-                $stmt_med->bind_param("isssd", $new_id, $condition, $details, $severity, $score);
+                if ($mobility === 3) {
+                    $severity = 'High';
+                } elseif ($mobility === 1 || $mobility === 2) {
+                    if ($severity !== 'High') $severity = 'Medium';
+                }
+
+                $scorePayload = [
+                    'id' => $new_id,
+                    'condition' => $condition,
+                    'mobility' => $mobility,
+                    'severity' => $severity,
+                    'academic_level' => $level,
+                    'has_special_needs' => (int)($mobility > 0),
+                    'is_requested' => (int)($mobility > 0),
+                ];
+
+                try {
+                    $scoreService = new UrgencyScoreService();
+                    $scoreResult = $scoreService->scoreStudent($scorePayload);
+                    $score = (float)$scoreResult['score'];
+                } catch (Exception $e) {
+                    error_log('[FairMedAlloc] Signup scoring fell back to PHP rules: ' . $e->getMessage());
+                    $score = UrgencyScoreService::calculateFallbackScore($scorePayload);
+                }
+
+                $stmt_med = $conn->prepare("INSERT INTO medical_records (student_id, condition_category, condition_details, severity_level, urgency_score, mobility_status) VALUES (?, ?, ?, ?, ?, ?)");
+                $stmt_med->bind_param("isssdi", $new_id, $condition, $details, $severity, $score, $mobility);
                 $stmt_med->execute();
             }
 
@@ -217,47 +235,41 @@ require_once 'includes/header.php';
                     </div>
                 </div>
 
-                <div class="grid grid-cols-2 gap-4 mb-4">
-                    <div class="form-group">
+                <div class="grid grid-cols-2 gap-4 mb-4">                    <div class="form-group">
                         <label class="text-sm fw-700 mb-2">Medical Condition</label>
-                        <select name="medical_condition" id="medCondition" required class="input-auth" onchange="toggleSeverity()">
+                        <select name="medical_condition" id="medCondition" required class="input-auth" onchange="toggleMobility()">
                             <option value="">Select Status...</option>
-                            <option value="None">None (Healthy)</option>
+                            <option value="None / Healthy">None / Healthy</option>
                             <option value="Asthma">Asthma</option>
-                            <option value="Ulcer">Ulcer</option>
                             <option value="Epilepsy">Epilepsy</option>
-                            <option value="Sickle Cell">Sickle Cell</option>
+                            <option value="Ulcer">Ulcer</option>
+                            <option value="Sickle Cell Disease">Sickle Cell Disease</option>
+                            <option value="Cardiovascular">Cardiovascular</option>
                             <option value="Visual Impairment">Visual Impairment</option>
                             <option value="Physical Disability">Physical Disability</option>
-                            <option value="Cardiovascular">Cardiovascular</option>
-                            <option value="Neurological">Neurological</option>
-                            <option value="Respiratory">Respiratory</option>
-                            <option value="Mobility">Mobility</option>
                             <option value="Other">Other</option>
                         </select>
                     </div>
-                        <div class="form-group" id="severityGroup" style="display:none;">
-                            <label class="text-sm fw-700 mb-2">Condition Severity</label>
-                            <select name="severity" id="severityInput" class="input-auth">
-                                <option value="High">High</option>
-                                <option value="Medium">Medium</option>
-                                <option value="Low">Low</option>
+                        <div class="form-group" id="mobilityGroup" style="display:none;">
+                            <label class="text-sm fw-700 mb-2">Mobility Status</label>
+                            <select name="mobility" id="mobilityInput" class="input-auth">
+                                <option value="0">Normal Mobility</option>
+                                <option value="1">Artificial Limb</option>
+                                <option value="2">Crutches/Walker</option>
+                                <option value="3">Wheelchair User</option>
                             </select>
                         </div>
                 </div>
 
                 <script>
-                function toggleSeverity() {
+                function toggleMobility() {
                     const cond = document.getElementById('medCondition').value;
-                    const sevGroup = document.getElementById('severityGroup');
-                    const sevInput = document.getElementById('severityInput');
-                    if (cond && cond !== 'None') {
-                        sevGroup.style.display = 'block';
-                        sevInput.required = true;
+                    const mobGroup = document.getElementById('mobilityGroup');
+                    if (cond && cond !== 'None / Healthy') {
+                        mobGroup.style.display = 'block';
                     } else {
-                        sevGroup.style.display = 'none';
-                        sevInput.required = false;
-                        sevInput.value = '';
+                        mobGroup.style.display = 'none';
+                        document.getElementById('mobilityInput').value = '0';
                     }
                 }
                 </script>

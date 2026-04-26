@@ -79,6 +79,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $dest     = $upload_dir . $new_name;
 
                 if (move_uploaded_file($_FILES['profile_pic']['tmp_name'], $dest)) {
+                    // Fetch and delete the old profile picture from disk
+                    $old_pic_stmt = $conn->prepare("SELECT profile_pic FROM users WHERE user_id = ?");
+                    $old_pic_stmt->bind_param("i", $user_id);
+                    $old_pic_stmt->execute();
+                    $old_pic = $old_pic_stmt->get_result()->fetch_assoc()['profile_pic'] ?? '';
+                    
+                    if ($old_pic && $old_pic !== 'default.png') {
+                        $old_file_path = $upload_dir . basename($old_pic);
+                        if (file_exists($old_file_path)) {
+                            unlink($old_file_path);
+                        }
+                    }
+
                     $pic_stmt = $conn->prepare("UPDATE users SET profile_pic = ? WHERE user_id = ?");
                     $pic_stmt->bind_param("si", $new_name, $user_id);
                     $pic_stmt->execute();

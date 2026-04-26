@@ -131,7 +131,7 @@ require_once 'includes/header.php';
                         <i class="fa-solid fa-info-circle mr-2"></i> Fee: &#8358;50,000
                     </div>
 
-                    <?php require_once 'includes/security_helper.php'; csrf_field(); ?>
+                    <?php csrf_field(); ?>
 
                     <button id="payBtn" class="btn btn-primary">
                         <i class="fa-solid fa-credit-card mr-2"></i> Pay on Portal (Simulator) - &#8358;50,000
@@ -171,7 +171,7 @@ require_once 'includes/header.php';
 
                             <div class="text-muted">Health:</div>
 
-                            <?php if ($student['condition_category'] && $student['condition_category'] !== 'None'): ?>
+                            <?php if (!empty($student['condition_category']) && $student['condition_category'] !== 'None / Healthy'): ?>
                                 <div class="text-danger fw-700"><?php echo htmlspecialchars($student['condition_category']); ?></div>
                             <?php else: ?>
                                 <div class="text-success fw-700">No declared conditions</div>

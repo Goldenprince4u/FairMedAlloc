@@ -8,13 +8,8 @@ require_once 'db_config.php';
 require_once 'includes/security_helper.php';
 
 $error = '';
-$timeout_notice = '';
-
 if (isset($_GET['error']) && $_GET['error'] === 'profile_missing') {
     $error = "Profile data incomplete. Please log in again to sync.";
-}
-if (isset($_GET['timeout']) && $_GET['timeout'] === '1') {
-    $timeout_notice = "Your session expired after 30 minutes of inactivity. Please log in again.";
 }
 
 if ($_SERVER["REQUEST_METHOD"] == "POST") {
@@ -114,13 +109,7 @@ require_once 'includes/header.php';
                 <p class="text-muted" style="font-size:0.9rem;">Enter your credentials to access the system.</p>
             </div>
 
-            <!-- Timeout notice -->
-            <?php if ($timeout_notice): ?>
-                <div class="alert alert-warning mb-4">
-                    <i class="fa-solid fa-clock"></i>
-                    <?php echo htmlspecialchars($timeout_notice); ?>
-                </div>
-            <?php endif; ?>
+
 
             <!-- Error -->
             <?php if ($error): ?>

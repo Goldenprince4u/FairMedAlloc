@@ -13,6 +13,8 @@ require_once '../includes/security_helper.php';
 // All responses from this file will be JSON-formatted
 header('Content-Type: application/json');
 
+const MANUAL_ALLOCATION_VERSION = 'manual_override_v1';
+
 // --- 1. Security Check ---
 // Ensure the request is coming from an authenticated administrator
 if (!isset($_SESSION['logged_in']) || ($_SESSION['role'] ?? '') !== 'admin') {
@@ -31,6 +33,10 @@ switch ($action) {
         handleRunAlgorithm($conn);
         break;
 
+    case 'rescore_all':
+        handleRescoreAll($conn);
+        break;
+
     case 'manual_assign':
         handleManualAssign($conn);
         break;
@@ -45,6 +51,10 @@ switch ($action) {
 
     case 'hostel_stats':
         handleHostelStats($conn);
+        break;
+
+    case 'ml_status':
+        handleMlStatus();
         break;
 
     default:
@@ -71,6 +81,12 @@ function handleRunAlgorithm($conn) {
     check_csrf();
 
     require_once '../includes/AllocationEngine.php';
+    if (!acquireProcessingLock($conn, 'admin_processing_lock')) {
+        http_response_code(409);
+        echo json_encode(['status' => 'error', 'message' => 'Another admin processing job is already running.']);
+        return;
+    }
+
     try {
         $engine = new AllocationEngine($conn);
         $result = $engine->run();
@@ -80,6 +96,54 @@ function handleRunAlgorithm($conn) {
         echo json_encode($result);
     } catch (Exception $e) {
         echo json_encode(['status' => 'error', 'message' => $e->getMessage()]);
+    } finally {
+        releaseProcessingLock($conn, 'admin_processing_lock');
+    }
+}
+
+function handleRescoreAll($conn) {
+    if ($_SERVER["REQUEST_METHOD"] !== "POST") {
+        http_response_code(405);
+        echo json_encode(['status' => 'error', 'message' => 'POST required']);
+        return;
+    }
+
+    check_csrf();
+
+    require_once '../includes/AllocationEngine.php';
+    if (!acquireProcessingLock($conn, 'admin_processing_lock')) {
+        http_response_code(409);
+        echo json_encode(['status' => 'error', 'message' => 'Another admin processing job is already running.']);
+        return;
+    }
+
+    try {
+        $engine = new AllocationEngine($conn);
+        $result = $engine->rescoreAllMedicalRecords();
+        if (($result['status'] ?? '') === 'success') {
+            log_admin_action($conn, (int)$_SESSION['user_id'], 'Recomputed all XGBoost urgency scores');
+        }
+        echo json_encode($result);
+    } catch (Exception $e) {
+        echo json_encode(['status' => 'error', 'message' => $e->getMessage()]);
+    } finally {
+        releaseProcessingLock($conn, 'admin_processing_lock');
+    }
+}
+
+function handleMlStatus() {
+    require_once '../includes/MlServiceClient.php';
+
+    try {
+        $client = new MlServiceClient();
+        $result = $client->health();
+        echo json_encode($result);
+    } catch (Exception $e) {
+        http_response_code(503);
+        echo json_encode([
+            'status' => 'error',
+            'message' => $e->getMessage()
+        ]);
     }
 }
 
@@ -155,8 +219,14 @@ function handleManualAssign($conn) {
             throw new Exception('The selected room is already full.');
         }
 
-        $ins_stmt = $conn->prepare("INSERT INTO allocations (student_id, room_id, bed_space, bed_label, academic_session, allocation_method) VALUES (?, ?, ?, ?, ?, 'manual')");
-        $ins_stmt->bind_param("iisss", $student_id, $room_id, $bed['bed_space'], $bed['bed_label'], $current_session);
+        if (allocationsSupportAlgorithmVersion($conn)) {
+            $algorithm_version = MANUAL_ALLOCATION_VERSION;
+            $ins_stmt = $conn->prepare("INSERT INTO allocations (student_id, room_id, bed_space, bed_label, academic_session, allocation_method, algorithm_version) VALUES (?, ?, ?, ?, ?, 'manual', ?)");
+            $ins_stmt->bind_param("iissss", $student_id, $room_id, $bed['bed_space'], $bed['bed_label'], $current_session, $algorithm_version);
+        } else {
+            $ins_stmt = $conn->prepare("INSERT INTO allocations (student_id, room_id, bed_space, bed_label, academic_session, allocation_method) VALUES (?, ?, ?, ?, ?, 'manual')");
+            $ins_stmt->bind_param("iisss", $student_id, $room_id, $bed['bed_space'], $bed['bed_label'], $current_session);
+        }
         if (!$ins_stmt->execute()) {
             throw new Exception('Unable to save the new room allocation.');
         }
@@ -348,5 +418,52 @@ function determineAvailableBedForManualAllocation($conn, int $room_id, int $capa
     }
 
     return null;
+}
+
+function acquireProcessingLock($conn, string $lock_key): bool {
+    $seed_stmt = $conn->prepare("INSERT INTO settings (setting_key, setting_value) VALUES (?, '0') ON DUPLICATE KEY UPDATE setting_key = setting_key");
+    if (!$seed_stmt) {
+        return false;
+    }
+
+    $seed_stmt->bind_param("s", $lock_key);
+    $seed_stmt->execute();
+    $seed_stmt->close();
+
+    $lock_stmt = $conn->prepare("UPDATE settings SET setting_value = '1' WHERE setting_key = ? AND setting_value = '0'");
+    if (!$lock_stmt) {
+        return false;
+    }
+
+    $lock_stmt->bind_param("s", $lock_key);
+    $lock_stmt->execute();
+    $acquired = $lock_stmt->affected_rows === 1;
+    $lock_stmt->close();
+
+    return $acquired;
+}
+
+function releaseProcessingLock($conn, string $lock_key): void {
+    $unlock_stmt = $conn->prepare("UPDATE settings SET setting_value = '0' WHERE setting_key = ?");
+    if (!$unlock_stmt) {
+        return;
+    }
+
+    $unlock_stmt->bind_param("s", $lock_key);
+    $unlock_stmt->execute();
+    $unlock_stmt->close();
+}
+
+function allocationsSupportAlgorithmVersion($conn): bool {
+    static $has_column = null;
+
+    if ($has_column !== null) {
+        return $has_column;
+    }
+
+    $result = $conn->query("SHOW COLUMNS FROM allocations LIKE 'algorithm_version'");
+    $has_column = $result && $result->num_rows > 0;
+
+    return $has_column;
 }
 ?>

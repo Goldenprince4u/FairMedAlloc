@@ -34,8 +34,7 @@ $data = $stmt->get_result()->fetch_assoc();
 if (!$data) {
     http_response_code(404);
     echo "<!DOCTYPE html><html lang='en'><head><meta charset='UTF-8'><title>No Allocation | FairMedAlloc</title>
-          <link href='https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap' rel='stylesheet'>
-          <style>*{box-sizing:border-box;margin:0;padding:0;}body{font-family:Inter,sans-serif;background:#F5F7FA;display:flex;align-items:center;justify-content:center;min-height:100vh;padding:2rem;}.box{background:#fff;border:1px solid #DDE1E7;border-radius:8px;padding:3rem 2.5rem;max-width:480px;width:100%;text-align:center;}.icon{font-size:2.5rem;color:var(--c-warning);margin-bottom:1.25rem;}.title{font-size:1.25rem;font-weight:700;color:#1e293b;margin-bottom:0.75rem;}.msg{font-size:0.9rem;color:#64748b;line-height:1.65;margin-bottom:1.75rem;}.btn{display:inline-flex;align-items:center;gap:0.5rem;background:var(--c-primary);color:#fff;padding:0.65rem 1.25rem;border-radius:6px;font-weight:600;font-size:0.875rem;text-decoration:none;}</style></head>
+          <style>*{box-sizing:border-box;margin:0;padding:0;}body{font-family:Arial,Helvetica,sans-serif;background:#F5F7FA;display:flex;align-items:center;justify-content:center;min-height:100vh;padding:2rem;}.box{background:#fff;border:1px solid #DDE1E7;border-radius:8px;padding:3rem 2.5rem;max-width:480px;width:100%;text-align:center;}.icon{font-size:2.5rem;color:var(--c-warning);margin-bottom:1.25rem;}.title{font-size:1.25rem;font-weight:700;color:#1e293b;margin-bottom:0.75rem;}.msg{font-size:0.9rem;color:#64748b;line-height:1.65;margin-bottom:1.75rem;}.btn{display:inline-flex;align-items:center;gap:0.5rem;background:var(--c-primary);color:#fff;padding:0.65rem 1.25rem;border-radius:6px;font-weight:600;font-size:0.875rem;text-decoration:none;}</style></head>
           <body><div class='box'><div class='icon'><i class='fa-solid fa-triangle-exclamation'></i></div>
           <h2 class='title'>No Allocation Found</h2>
           <p class='msg'>Your hostel allocation has not been processed yet. Ensure your school fee payment has been confirmed and your profile is complete. If this persists, contact the Student Affairs Division.</p>
@@ -50,7 +49,6 @@ if (!$data) {
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Allocation Slip — <?php echo htmlspecialchars($data['matric_no']); ?> | FairMedAlloc</title>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="css/print.css">
 </head>
 <body>

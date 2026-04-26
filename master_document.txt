@@ -1,6 +1,6 @@
 ============================================================
 FAIRMEDALLOC: FULL CODEBASE REFERENCE
-Updated : 2026-04-25 15:50:19
+Updated : 2026-04-25 22:48:27
 ============================================================
 
 
@@ -52,9 +52,9 @@ FILE: .htaccess
     Deny from all
 </FilesMatch>
 
-# --- 5. Block all Python files under ml_models/ ---
-# (These are executed server-side via shell_exec, never via HTTP)
-<FilesMatch "\.py$">
+# --- 5. Block ML model artifacts and Python files ---
+# (These are executed or consumed server-side only, never via HTTP)
+<FilesMatch "\.(json|py)$">
     Order Allow,Deny
     Deny from all
 </FilesMatch>
@@ -69,230 +69,20 @@ FILE: admin_api.php
 ============================================================
 <?php
 /**
- * Admin API Controller
- * ====================
- * Unified endpoint for administrative API actions.
- * Acts as a router directing AJAX requests to specific handler functions.
- * Expected Usage via GET parameter: ?action=run_algorithm | manual_assign | get_rooms | analytics
+ * Deprecated API tombstone
+ * ========================
+ * The live admin API moved to /api/admin_api.php.
+ * This root-level file remains only to prevent future reviewers from patching
+ * the wrong endpoint by accident.
  */
-session_start();
-require_once '../db_config.php';
-require_once '../includes/security_helper.php';
 
-// All responses from this file will be JSON-formatted
+http_response_code(410);
 header('Content-Type: application/json');
 
-// --- 1. Security Check ---
-// Ensure the request is coming from an authenticated administrator
-if (!isset($_SESSION['logged_in']) || ($_SESSION['role'] ?? '') !== 'admin') {
-    http_response_code(403);
-    echo json_encode(['status' => 'error', 'message' => 'Unauthorized']);
-    exit();
-}
-
-// Retrieve the requested action 
-$action = $_GET['action'] ?? '';
-
-// --- 2. Action Router ---
-// Direct the request to the appropriate function block below
-switch ($action) {
-    case 'run_algorithm':
-        handleRunAlgorithm($conn);
-        break;
-
-    case 'manual_assign':
-        handleManualAssign($conn);
-        break;
-
-    case 'get_rooms':
-        handleGetRooms($conn);
-        break;
-
-    case 'analytics':
-        handleAnalytics($conn);
-        break;
-
-    case 'hostel_stats':
-        handleHostelStats($conn);
-        break;
-
-    default:
-        // Reject unknown or missing actions
-        http_response_code(400);
-        echo json_encode(['status' => 'error', 'message' => 'Invalid action']);
-        break;
-}
-
-// --------------------------------------------------------------------------
-// Handlers
-// --------------------------------------------------------------------------
-
-/**
- * Invokes the core Allocation Engine to process mathematical hostel placements.
- */
-function handleRunAlgorithm($conn) {
-    require_once '../includes/AllocationEngine.php';
-    try {
-        $engine = new AllocationEngine($conn);
-        $result = $engine->run();
-        echo json_encode($result);
-    } catch (Exception $e) {
-        echo json_encode(['status' => 'error', 'message' => $e->getMessage()]);
-    }
-}
-
-/**
- * Allows administrators to manually override the algorithm and assign a specific student to a specific room.
- */
-function handleManualAssign($conn) {
-    // Only accept form-submissions (POST) for data mutations
-    if ($_SERVER["REQUEST_METHOD"] !== "POST") {
-        echo json_encode(['status' => 'error', 'message' => 'POST required']);
-        return;
-    }
-
-    // Validate CSRF token to prevent cross-site request forgery
-    check_csrf();
-
-    $student_id = (int) $_POST['student_id'];
-    $room_id    = (int) $_POST['room_id'];
-
-    if ($room_id > 0 && $student_id > 0) {
-        // Step 1: Clear old allocation if exists to prevent duplicate assignments
-        $check_stmt = $conn->prepare("SELECT room_id FROM allocations WHERE student_id = ?");
-        $check_stmt->bind_param("i", $student_id);
-        $check_stmt->execute();
-        $check = $check_stmt->get_result();
-
-        if ($check->num_rows > 0) {
-            $old_room_id = $check->fetch_assoc()['room_id'];
-            // Reduce the occupied count of the old room
-            $dec_stmt = $conn->prepare("UPDATE rooms SET occupied_count = GREATEST(0, occupied_count - 1) WHERE room_id = ?");
-            $dec_stmt->bind_param("i", $old_room_id);
-            $dec_stmt->execute();
-            // Remove the old allocation record
-            $del_stmt = $conn->prepare("DELETE FROM allocations WHERE student_id = ?");
-            $del_stmt->bind_param("i", $student_id);
-            $del_stmt->execute();
-        }
-
-        // Fetch current academic session
-        $sess_res = $conn->query("SELECT setting_value FROM settings WHERE setting_key = 'current_session'");
-        $current_session = $sess_res ? ($sess_res->fetch_assoc()['setting_value'] ?? '2025/2026') : '2025/2026';
-
-        // Step 2: Assign new room with session
-        $ins_stmt = $conn->prepare("INSERT INTO allocations (student_id, room_id, academic_session, allocation_method) VALUES (?, ?, ?, 'manual')");
-        $ins_stmt->bind_param("iis", $student_id, $room_id, $current_session);
-
-        if ($ins_stmt->execute()) {
-            // Step 3: Increase occupied count of the newly assigned room
-            $inc_stmt = $conn->prepare("UPDATE rooms SET occupied_count = occupied_count + 1 WHERE room_id = ?");
-            $inc_stmt->bind_param("i", $room_id);
-            $inc_stmt->execute();
-            // Update student profile status
-            $upd_stmt = $conn->prepare("UPDATE student_profiles SET allocation_status = 'Allocated' WHERE user_id = ?");
-            $upd_stmt->bind_param("i", $student_id);
-            $upd_stmt->execute();
-            echo json_encode(['status' => 'success']);
-        } else {
-            echo json_encode(['status' => 'error', 'message' => 'Database Error: ' . $conn->error]);
-        }
-    } else {
-        echo json_encode(['status' => 'error', 'message' => 'Invalid Data']);
-    }
-}
-
-/**
- * Fetches available (unfilled) rooms dynamically for a specific hostel.
- * Used often for dynamic dropdowns on the admin panel.
- */
-function handleGetRooms($conn) {
-    $hostel_id = (int) ($_GET['hostel_id'] ?? 0);
-    if (!$hostel_id) {
-        echo json_encode([]);
-        return;
-    }
-
-    // Only select rooms that haven't reached maximum capacity yet
-    $stmt = $conn->prepare("SELECT room_id, room_number, capacity, occupied_count FROM rooms
-            WHERE hostel_id = ? AND occupied_count < capacity
-            ORDER BY CAST(room_number AS UNSIGNED) ASC");
-    $stmt->bind_param("i", $hostel_id);
-    $stmt->execute();
-    $res = $stmt->get_result();
-    $rooms = [];
-    while ($row = $res->fetch_assoc()) {
-        $row['available'] = (int)$row['capacity'] - (int)$row['occupied_count'];
-        $rooms[] = $row;
-    }
-    echo json_encode($rooms);
-}
-
-/**
- * Aggregates various statistics to feed the Admin Dashboard charts and metrics.
- */
-function handleAnalytics($conn) {
-    // 1. Allocation Status Check (How many allocated vs pending)
-    $stats_alloc = $conn->query("
-        SELECT 
-            COUNT(CASE WHEN allocation_id IS NOT NULL THEN 1 END) as allocated,
-            COUNT(CASE WHEN allocation_id IS NULL THEN 1 END) as pending
-        FROM student_profiles p
-        LEFT JOIN allocations a ON p.user_id = a.student_id
-    ")->fetch_assoc();
-
-    // 2. Aggregate counts grouping by Medical Conditions
-    $stats_medical = $conn->query("
-        SELECT condition_category, COUNT(*) as count 
-        FROM medical_records 
-        GROUP BY condition_category
-    ")->fetch_all(MYSQLI_ASSOC);
-
-    // 3. Overview of pending vs finalized Payments
-    $stats_payment = $conn->query("
-        SELECT status, COUNT(*) as count 
-        FROM payments 
-        GROUP BY status
-    ")->fetch_all(MYSQLI_ASSOC);
-
-    // Return the aggregated metrics back to the Admin JS frontend
-    echo json_encode([
-        'status'   => 'success',
-        'allocation' => $stats_alloc,
-        'medical'    => $stats_medical,
-        'payments'   => $stats_payment
-    ]);
-}
-
-/**
- * Returns per-hostel occupancy totals (capacity, occupied, gender, name).
- * Used by the hostel occupancy table on the reports page.
- */
-function handleHostelStats($conn) {
-    $res = $conn->query("
-        SELECT
-            h.hostel_id,
-            h.name,
-            h.block_name,
-            h.gender_allowed   AS gender,
-            SUM(r.capacity)          AS capacity,
-            SUM(r.occupied_count)    AS occupied
-        FROM hostels h
-        JOIN rooms r ON r.hostel_id = h.hostel_id
-        GROUP BY h.hostel_id
-        ORDER BY h.name ASC, h.block_name ASC
-    ");
-    $rows = [];
-    if ($res) {
-        while ($row = $res->fetch_assoc()) {
-            $row['capacity'] = (int)$row['capacity'];
-            $row['occupied'] = (int)$row['occupied'];
-            $rows[] = $row;
-        }
-    }
-    echo json_encode($rows);
-}
-?>
+echo json_encode([
+    'status' => 'error',
+    'message' => 'Deprecated endpoint. Use /api/admin_api.php instead.'
+]);
 
 
 ============================================================
@@ -313,10 +103,19 @@ if (!isset($_SESSION['logged_in']) || ($_SESSION['role'] ?? '') !== 'admin') {
     exit(); 
 }
 
+$high_urgency_threshold = 75;
 $medium_urgency_threshold = 40;
-$threshold_result = $conn->query("SELECT setting_value FROM settings WHERE setting_key = 'urgency_threshold_proximal'");
-$threshold_row = $threshold_result ? $threshold_result->fetch_assoc() : null;
-$high_urgency_threshold = (int)($threshold_row['setting_value'] ?? 75);
+$threshold_rows = $conn->query("SELECT setting_key, setting_value FROM settings WHERE setting_key IN ('urgency_threshold_proximal', 'urgency_threshold_medium')");
+if ($threshold_rows) {
+    while ($threshold_row = $threshold_rows->fetch_assoc()) {
+        if (($threshold_row['setting_key'] ?? '') === 'urgency_threshold_proximal') {
+            $high_urgency_threshold = (int)$threshold_row['setting_value'];
+        }
+        if (($threshold_row['setting_key'] ?? '') === 'urgency_threshold_medium') {
+            $medium_urgency_threshold = (int)$threshold_row['setting_value'];
+        }
+    }
+}
 
 // Aggregation Stats (Optimized Single Query)
 $stats_query = "
@@ -2103,6 +1902,8 @@ require_once '../includes/security_helper.php';
 // All responses from this file will be JSON-formatted
 header('Content-Type: application/json');
 
+const MANUAL_ALLOCATION_VERSION = 'manual_override_v1';
+
 // --- 1. Security Check ---
 // Ensure the request is coming from an authenticated administrator
 if (!isset($_SESSION['logged_in']) || ($_SESSION['role'] ?? '') !== 'admin') {
@@ -2121,6 +1922,10 @@ switch ($action) {
         handleRunAlgorithm($conn);
         break;
 
+    case 'rescore_all':
+        handleRescoreAll($conn);
+        break;
+
     case 'manual_assign':
         handleManualAssign($conn);
         break;
@@ -2135,6 +1940,10 @@ switch ($action) {
 
     case 'hostel_stats':
         handleHostelStats($conn);
+        break;
+
+    case 'ml_status':
+        handleMlStatus();
         break;
 
     default:
@@ -2161,6 +1970,12 @@ function handleRunAlgorithm($conn) {
     check_csrf();
 
     require_once '../includes/AllocationEngine.php';
+    if (!acquireProcessingLock($conn, 'admin_processing_lock')) {
+        http_response_code(409);
+        echo json_encode(['status' => 'error', 'message' => 'Another admin processing job is already running.']);
+        return;
+    }
+
     try {
         $engine = new AllocationEngine($conn);
         $result = $engine->run();
@@ -2170,6 +1985,54 @@ function handleRunAlgorithm($conn) {
         echo json_encode($result);
     } catch (Exception $e) {
         echo json_encode(['status' => 'error', 'message' => $e->getMessage()]);
+    } finally {
+        releaseProcessingLock($conn, 'admin_processing_lock');
+    }
+}
+
+function handleRescoreAll($conn) {
+    if ($_SERVER["REQUEST_METHOD"] !== "POST") {
+        http_response_code(405);
+        echo json_encode(['status' => 'error', 'message' => 'POST required']);
+        return;
+    }
+
+    check_csrf();
+
+    require_once '../includes/AllocationEngine.php';
+    if (!acquireProcessingLock($conn, 'admin_processing_lock')) {
+        http_response_code(409);
+        echo json_encode(['status' => 'error', 'message' => 'Another admin processing job is already running.']);
+        return;
+    }
+
+    try {
+        $engine = new AllocationEngine($conn);
+        $result = $engine->rescoreAllMedicalRecords();
+        if (($result['status'] ?? '') === 'success') {
+            log_admin_action($conn, (int)$_SESSION['user_id'], 'Recomputed all urgency scores');
+        }
+        echo json_encode($result);
+    } catch (Exception $e) {
+        echo json_encode(['status' => 'error', 'message' => $e->getMessage()]);
+    } finally {
+        releaseProcessingLock($conn, 'admin_processing_lock');
+    }
+}
+
+function handleMlStatus() {
+    require_once '../includes/MlServiceClient.php';
+
+    try {
+        $client = new MlServiceClient();
+        $result = $client->health();
+        echo json_encode($result);
+    } catch (Exception $e) {
+        http_response_code(503);
+        echo json_encode([
+            'status' => 'error',
+            'message' => $e->getMessage()
+        ]);
     }
 }
 
@@ -2245,8 +2108,14 @@ function handleManualAssign($conn) {
             throw new Exception('The selected room is already full.');
         }
 
-        $ins_stmt = $conn->prepare("INSERT INTO allocations (student_id, room_id, bed_space, bed_label, academic_session, allocation_method) VALUES (?, ?, ?, ?, ?, 'manual')");
-        $ins_stmt->bind_param("iisss", $student_id, $room_id, $bed['bed_space'], $bed['bed_label'], $current_session);
+        if (allocationsSupportAlgorithmVersion($conn)) {
+            $algorithm_version = MANUAL_ALLOCATION_VERSION;
+            $ins_stmt = $conn->prepare("INSERT INTO allocations (student_id, room_id, bed_space, bed_label, academic_session, allocation_method, algorithm_version) VALUES (?, ?, ?, ?, ?, 'manual', ?)");
+            $ins_stmt->bind_param("iissss", $student_id, $room_id, $bed['bed_space'], $bed['bed_label'], $current_session, $algorithm_version);
+        } else {
+            $ins_stmt = $conn->prepare("INSERT INTO allocations (student_id, room_id, bed_space, bed_label, academic_session, allocation_method) VALUES (?, ?, ?, ?, ?, 'manual')");
+            $ins_stmt->bind_param("iisss", $student_id, $room_id, $bed['bed_space'], $bed['bed_label'], $current_session);
+        }
         if (!$ins_stmt->execute()) {
             throw new Exception('Unable to save the new room allocation.');
         }
@@ -2438,6 +2307,53 @@ function determineAvailableBedForManualAllocation($conn, int $room_id, int $capa
     }
 
     return null;
+}
+
+function acquireProcessingLock($conn, string $lock_key): bool {
+    $seed_stmt = $conn->prepare("INSERT INTO settings (setting_key, setting_value) VALUES (?, '0') ON DUPLICATE KEY UPDATE setting_key = setting_key");
+    if (!$seed_stmt) {
+        return false;
+    }
+
+    $seed_stmt->bind_param("s", $lock_key);
+    $seed_stmt->execute();
+    $seed_stmt->close();
+
+    $lock_stmt = $conn->prepare("UPDATE settings SET setting_value = '1' WHERE setting_key = ? AND setting_value = '0'");
+    if (!$lock_stmt) {
+        return false;
+    }
+
+    $lock_stmt->bind_param("s", $lock_key);
+    $lock_stmt->execute();
+    $acquired = $lock_stmt->affected_rows === 1;
+    $lock_stmt->close();
+
+    return $acquired;
+}
+
+function releaseProcessingLock($conn, string $lock_key): void {
+    $unlock_stmt = $conn->prepare("UPDATE settings SET setting_value = '0' WHERE setting_key = ?");
+    if (!$unlock_stmt) {
+        return;
+    }
+
+    $unlock_stmt->bind_param("s", $lock_key);
+    $unlock_stmt->execute();
+    $unlock_stmt->close();
+}
+
+function allocationsSupportAlgorithmVersion($conn): bool {
+    static $has_column = null;
+
+    if ($has_column !== null) {
+        return $has_column;
+    }
+
+    $result = $conn->query("SHOW COLUMNS FROM allocations LIKE 'algorithm_version'");
+    $has_column = $result && $result->num_rows > 0;
+
+    return $has_column;
 }
 ?>
 
@@ -4858,6 +4774,8 @@ define('DB_PORT', (int)($env['DB_PORT'] ?? 3307));
 define('DB_USER', $env['DB_USER'] ?? 'root');
 define('DB_PASS', $env['DB_PASS'] ?? '');
 define('DB_NAME', $env['DB_NAME'] ?? 'fairmedalloc');
+define('ML_SERVICE_URL', rtrim($env['ML_SERVICE_URL'] ?? 'http://127.0.0.1:5051', '/'));
+define('ML_SERVICE_TIMEOUT', (float)($env['ML_SERVICE_TIMEOUT'] ?? 5));
 
 // Establish the connection using the mysqli extension (standard for PHP/XAMPP stacks).
 $conn = new mysqli(DB_HOST, DB_USER, DB_PASS, DB_NAME, DB_PORT);
@@ -5255,7 +5173,10 @@ FILE: includes\AllocationEngine.php
  * Core logic for assigning students to hostels based on fairness constraints.
  */
 class AllocationEngine {
+    private const ALGORITHM_VERSION = 'allocation_engine_v2';
+
     private $conn;
+    private $allocationsHasAlgorithmVersion = null;
 
     public function __construct($db_connection) {
         $this->conn = $db_connection;
@@ -5274,10 +5195,13 @@ class AllocationEngine {
 
             // 2. Fetch ONLY NEW students (Not yet allocated) AND who have paid
             //    either through imported portal status or a recorded simulator payment.
-            $sql = "SELECT p.user_id as id, p.gender, f.name as faculty, p.has_special_needs, p.allocation_status, 
-                           COALESCE(m.urgency_score, 0) as score, 
-                           COALESCE(m.severity_level, 0) as severity, 
-                           COALESCE(m.mobility_status, 'Normal Mobility') as mobility 
+            $sql = "SELECT p.user_id as id, p.gender, f.name as faculty, p.level as academic_level,
+                           p.has_special_needs, p.allocation_status,
+                           COALESCE(m.condition_category, 'None') as `condition`,
+                           COALESCE(m.urgency_score, 0) as score,
+                           COALESCE(m.severity_level, 'Low') as severity,
+                           COALESCE(m.mobility_status, 'Normal Mobility') as mobility,
+                           COALESCE(m.is_requested_mobility, 0) as is_requested
                     FROM student_profiles p 
                     JOIN departments d ON p.department_id = d.department_id
                     JOIN faculties f ON d.faculty_id = f.faculty_id
@@ -5303,32 +5227,26 @@ class AllocationEngine {
                 return ['status' => 'success', 'allocated' => 0, 'total' => 0];
             }
 
-            // 3. Score overriding (ML Model prediction step is skipped here because it's already recorded in urgency_score column, 
-            //    or we could call predict.py if needed. Assuming scores are pre-calculated for simplicity right now based on previous runs).
-            //    To keep it fully backwards compatible we evaluate predict.py first:
             $batch_payload = [];
             foreach ($students as $student) {
-                // Ensure correct format for predict.py expected numerical/string mappings
                 $batch_payload[] = [
                     'id' => $student['id'],
+                    'condition' => $student['condition'],
                     'mobility' => $student['mobility'],
                     'severity' => $student['severity'],
-                    'has_special_needs' => (int)$student['has_special_needs']
+                    'academic_level' => (int)$student['academic_level'],
+                    'has_special_needs' => (int)$student['has_special_needs'],
+                    'is_requested' => (bool)$student['is_requested']
                 ];
             }
-            
-            // Recalculate scores via Python bridge (graceful fallback if Python unavailable)
-            $temp_file = sys_get_temp_dir() . DIRECTORY_SEPARATOR . 'fairmed_batch_' . uniqid() . '.json';
-            file_put_contents($temp_file, json_encode($batch_payload));
-            $script_path = __DIR__ . '/../ml_models/predict.py';
-            $command = escapeshellcmd("python \"$script_path\" \"$temp_file\"");
-            $output = @shell_exec($command);  // @ suppresses warnings; we handle null below
-            $result_data = $output ? json_decode($output, true) : null;
-            if (file_exists($temp_file)) unlink($temp_file);
-
             $scores_map = [];
-            if (($result_data['status'] ?? '') === 'success') {
-                $scores_map = $result_data['results'];
+            $prediction_mode = 'Stored Scores';
+            try {
+                $result_data = $this->predictBatchScores($batch_payload);
+                $scores_map = $result_data['results'] ?? [];
+                $prediction_mode = $result_data['mode'] ?? 'Scored';
+            } catch (Exception $e) {
+                error_log('[FairMedAlloc] Score refresh skipped: ' . $e->getMessage());
             }
 
             // Update students array with latest scores
@@ -5339,11 +5257,13 @@ class AllocationEngine {
             }
             unset($s);
 
+            if (!empty($scores_map)) {
+                $this->persistUrgencyScores($scores_map);
+            }
+
             // Fetch Dynamic Threshold
-            $threshold_res = $this->conn->query("SELECT setting_value FROM settings WHERE setting_key = 'urgency_threshold_proximal'");
-            $threshold_row = $threshold_res->fetch_assoc();
-            $prox_threshold = (float)($threshold_row['setting_value'] ?? 75);
-            $medium_threshold = 40.0;
+            $prox_threshold = (float)$this->getSettingValue('urgency_threshold_proximal', 75);
+            $medium_threshold = (float)$this->getSettingValue('urgency_threshold_medium', 40);
 
             // 4. Fetch Available Rooms for OR-Tools
             // NOTE: Exclude postgrad (is_postgrad=1) and foundation (is_foundation=1) rooms
@@ -5375,49 +5295,58 @@ class AllocationEngine {
             $rooms_csv_file = sys_get_temp_dir() . DIRECTORY_SEPARATOR . 'fairmed_rooms_' . uniqid() . '.csv';
             $output_csv_file = sys_get_temp_dir() . DIRECTORY_SEPARATOR . 'fairmed_output_' . uniqid() . '.csv';
 
-            $fp_students = fopen($students_csv_file, 'w');
-            fputcsv($fp_students, ['id', 'gender', 'faculty', 'score', 'mobility', 'severity', 'urgency_band']);
-            foreach ($students as $s) {
-                $urgency_band = 'Low';
-                if ((float)$s['score'] >= $prox_threshold) {
-                    $urgency_band = 'High';
-                } elseif ((float)$s['score'] >= $medium_threshold) {
-                    $urgency_band = 'Medium';
+            try {
+                $fp_students = fopen($students_csv_file, 'w');
+                fputcsv($fp_students, ['id', 'gender', 'faculty', 'score', 'mobility', 'severity', 'urgency_band']);
+                foreach ($students as $s) {
+                    $urgency_band = 'Low';
+                    if ((float)$s['score'] >= $prox_threshold) {
+                        $urgency_band = 'High';
+                    } elseif ((float)$s['score'] >= $medium_threshold) {
+                        $urgency_band = 'Medium';
+                    }
+
+                    fputcsv($fp_students, [$s['id'], $s['gender'], $s['faculty'], $s['score'], $s['mobility'], $s['severity'], $urgency_band]);
+                }
+                fclose($fp_students);
+
+                $fp_rooms = fopen($rooms_csv_file, 'w');
+                fputcsv($fp_rooms, ['id', 'hostel_id', 'gender', 'faculty_target', 'is_proximal', 'has_elevator', 'available_capacity', 'hostel_name', 'block_name']);
+                foreach ($rooms as $r) {
+                    fputcsv($fp_rooms, [$r['id'], $r['hostel_id'], $r['gender'], $r['faculty_target'], $r['is_proximal'] ? 1 : 0, $r['has_elevator'] ? 1 : 0, $r['available_capacity'], $r['hostel_name'], $r['block_name']]);
+                }
+                fclose($fp_rooms);
+
+                // 6. Execute OR-Tools allocate.py
+                $alloc_script = __DIR__ . '/../ml_models/allocate.py';
+                $solver_output = $this->executeShellCommand(array_merge(
+                    $this->getPythonCommandParts(),
+                    [$alloc_script, $students_csv_file, $rooms_csv_file, $output_csv_file]
+                ));
+                if (!file_exists($output_csv_file)) {
+                    $message = 'Allocation solver failed: OR-Tools output file not generated. Ensure Python and ortools are installed and accessible.';
+                    if (!empty($solver_output)) {
+                        $message .= ' Solver output: ' . $solver_output;
+                    }
+                    throw new Exception($message);
                 }
 
-                fputcsv($fp_students, [$s['id'], $s['gender'], $s['faculty'], $s['score'], $s['mobility'], $s['severity'], $urgency_band]);
-            }
-            fclose($fp_students);
-
-            $fp_rooms = fopen($rooms_csv_file, 'w');
-            fputcsv($fp_rooms, ['id', 'hostel_id', 'gender', 'faculty_target', 'is_proximal', 'has_elevator', 'available_capacity', 'hostel_name', 'block_name']);
-            foreach ($rooms as $r) {
-                fputcsv($fp_rooms, [$r['id'], $r['hostel_id'], $r['gender'], $r['faculty_target'], $r['is_proximal'] ? 1 : 0, $r['has_elevator'] ? 1 : 0, $r['available_capacity'], $r['hostel_name'], $r['block_name']]);
-            }
-            fclose($fp_rooms);
-
-            // 6. Execute OR-Tools allocate.py
-            $alloc_script  = __DIR__ . '/../ml_models/allocate.py';
-            $alloc_command = escapeshellcmd("python \"$alloc_script\" \"$students_csv_file\" \"$rooms_csv_file\" \"$output_csv_file\"");
-            @shell_exec($alloc_command);
-
-            if (file_exists($students_csv_file)) unlink($students_csv_file);
-            if (file_exists($rooms_csv_file))    unlink($rooms_csv_file);
-
-            if (!file_exists($output_csv_file)) {
-                throw new Exception("Allocation solver failed: OR-Tools output file not generated. Ensure Python and ortools are installed and accessible.");
-            }
-
-            $assignments = []; 
-            $fp_out = fopen($output_csv_file, 'r');
-            fgetcsv($fp_out); // Read header
-            while (($row = fgetcsv($fp_out)) !== false) {
-                if (count($row) >= 2) {
-                    $assignments[(int)$row[0]] = (int)$row[1];
+                $assignments = [];
+                $fp_out = fopen($output_csv_file, 'r');
+                fgetcsv($fp_out); // Read header
+                while (($row = fgetcsv($fp_out)) !== false) {
+                    if (count($row) >= 2) {
+                        $assignments[(int)$row[0]] = (int)$row[1];
+                    }
+                }
+                fclose($fp_out);
+            } finally {
+                foreach ([$students_csv_file, $rooms_csv_file, $output_csv_file] as $temp_path) {
+                    if (is_string($temp_path) && file_exists($temp_path)) {
+                        unlink($temp_path);
+                    }
                 }
             }
-            fclose($fp_out);
-            unlink($output_csv_file);
 
             // Fetch Current Session for Session Locking
             $session_res = $this->conn->query("SELECT setting_value FROM settings WHERE setting_key = 'current_session'");
@@ -5460,7 +5389,7 @@ class AllocationEngine {
                         // NOTIFY STUDENT
                         $notifier->send($student_id, "Congratulations! You have been allocated a room in $h_name.");
 
-                        // FIX: Use actual student severity (was hardcoded 0)
+                        
                         $audit_sql = "INSERT INTO algorithm_audit_logs 
                                       (student_id, input_severity, input_proximity_need, calculated_urgency_score, allocation_decision, assigned_hostel_id) 
                                       VALUES (?, ?, ?, ?, 'Allocated', ?)";
@@ -5476,7 +5405,7 @@ class AllocationEngine {
                     // Log Missed Allocation
                     $notifier->send($student_id, "Update: You have been placed on the waiting list as no suitable rooms are currently available.");
 
-                    // FIX: Use actual student severity (was hardcoded 0)
+                    
                     $audit_sql = "INSERT INTO algorithm_audit_logs 
                                   (student_id, input_severity, input_proximity_need, calculated_urgency_score, allocation_decision, assigned_hostel_id) 
                                   VALUES (?, ?, ?, ?, 'No Bed', NULL)";
@@ -5499,11 +5428,73 @@ class AllocationEngine {
             return [
                 'status' => 'success',
                 'allocated' => $allocated_count,
-                'total' => count($students)
+                'total' => count($students),
+                'prediction_mode' => $prediction_mode
             ];
 
         } catch (Exception $e) {
             // Rollback if anything fails
+            $this->conn->rollback();
+            return [
+                'status' => 'error',
+                'message' => $e->getMessage()
+            ];
+        }
+    }
+
+    /**
+     * Recompute and persist urgency scores for every stored medical record.
+     */
+    public function rescoreAllMedicalRecords() {
+        $this->conn->begin_transaction();
+
+        try {
+            $sql = "SELECT m.student_id as id,
+                           COALESCE(m.condition_category, 'None') as `condition`,
+                           COALESCE(m.mobility_status, 'Normal Mobility') as mobility,
+                           COALESCE(m.severity_level, 'Low') as severity,
+                           COALESCE(p.level, 100) as academic_level,
+                           COALESCE(p.has_special_needs, 0) as has_special_needs,
+                           COALESCE(m.is_requested_mobility, 0) as is_requested
+                    FROM medical_records m
+                    JOIN student_profiles p ON p.user_id = m.student_id";
+            $result = $this->conn->query($sql);
+            $students = $result ? $result->fetch_all(MYSQLI_ASSOC) : [];
+
+            if (empty($students)) {
+                $this->conn->commit();
+                return [
+                    'status' => 'success',
+                    'rescored' => 0,
+                    'mode' => 'No medical records'
+                ];
+            }
+
+            $batch_payload = [];
+            foreach ($students as $student) {
+                $batch_payload[] = [
+                    'id' => $student['id'],
+                    'condition' => $student['condition'],
+                    'mobility' => $student['mobility'],
+                    'severity' => $student['severity'],
+                    'academic_level' => (int)$student['academic_level'],
+                    'has_special_needs' => (int)$student['has_special_needs'],
+                    'is_requested' => (bool)$student['is_requested']
+                ];
+            }
+
+            $prediction = $this->predictBatchScores($batch_payload);
+            $scores_map = $prediction['results'] ?? [];
+            $updated = $this->persistUrgencyScores($scores_map);
+
+            $this->conn->commit();
+
+            return [
+                'status' => 'success',
+                'rescored' => $updated,
+                'mode' => $prediction['mode'] ?? 'Scored'
+            ];
+        } catch (Exception $e) {
             $this->conn->rollback();
             return [
                 'status' => 'error',
@@ -5575,7 +5566,7 @@ class AllocationEngine {
         // 3. Find First Free Slot
         $slot_index = -1;
         for ($i = 0; $i < count($config_arr); $i++) {
-            if (!in_array($i, $occupied_indices)) {
+            if (!in_array($i, $occupied_indices, true)) {
                 $slot_index = $i;
                 break;
             }
@@ -5587,8 +5578,14 @@ class AllocationEngine {
         $bed_space = chr(65 + $slot_index); // 0->A
         $bed_label = $config_arr[$slot_index];
         
-        $stmt_ins = $this->conn->prepare("INSERT INTO allocations (student_id, room_id, bed_space, bed_label, academic_session) VALUES (?, ?, ?, ?, ?)");
-        $stmt_ins->bind_param("iisss", $student_id, $room_id, $bed_space, $bed_label, $academic_session);
+        if ($this->allocationsSupportAlgorithmVersion()) {
+            $algorithm_version = $this->getCurrentAlgorithmVersion();
+            $stmt_ins = $this->conn->prepare("INSERT INTO allocations (student_id, room_id, bed_space, bed_label, academic_session, algorithm_version) VALUES (?, ?, ?, ?, ?, ?)");
+            $stmt_ins->bind_param("iissss", $student_id, $room_id, $bed_space, $bed_label, $academic_session, $algorithm_version);
+        } else {
+            $stmt_ins = $this->conn->prepare("INSERT INTO allocations (student_id, room_id, bed_space, bed_label, academic_session) VALUES (?, ?, ?, ?, ?)");
+            $stmt_ins->bind_param("iisss", $student_id, $room_id, $bed_space, $bed_label, $academic_session);
+        }
         
         if ($stmt_ins->execute()) {
             $upd_occ = $this->conn->prepare("UPDATE rooms SET occupied_count = occupied_count + 1 WHERE room_id = ?");
@@ -5598,6 +5595,138 @@ class AllocationEngine {
         }
         
         return false;
+    }
+
+    private function getSettingValue($setting_key, $default_value) {
+        $stmt = $this->conn->prepare("SELECT setting_value FROM settings WHERE setting_key = ? LIMIT 1");
+        if (!$stmt) {
+            return $default_value;
+        }
+
+        $stmt->bind_param("s", $setting_key);
+        $stmt->execute();
+        $row = $stmt->get_result()->fetch_assoc();
+        $stmt->close();
+        return $row['setting_value'] ?? $default_value;
+    }
+
+    private function predictBatchScores(array $batch_payload): array {
+        try {
+            require_once __DIR__ . '/MlServiceClient.php';
+            $client = new MlServiceClient();
+            $result = $client->scoreBatch($batch_payload);
+            if (($result['status'] ?? '') === 'success') {
+                return $result;
+            }
+            throw new Exception($result['message'] ?? 'ML service returned an unexpected response.');
+        } catch (Exception $service_error) {
+            error_log('[FairMedAlloc] ML service unavailable, falling back to local predict.py: ' . $service_error->getMessage());
+        }
+
+        $script_path = __DIR__ . '/../ml_models/predict.py';
+        $result = $this->runPythonJsonScript($script_path, $batch_payload);
+        if (($result['status'] ?? '') !== 'success') {
+            throw new Exception($result['message'] ?? 'predict.py returned an unexpected response.');
+        }
+        return $result;
+    }
+
+    private function runPythonJsonScript($script_path, array $payload): array {
+        $temp_file = tempnam(sys_get_temp_dir(), 'fairmed_json_');
+        if ($temp_file === false) {
+            throw new Exception('Unable to create a temporary file for the Python bridge.');
+        }
+
+        if (file_put_contents($temp_file, json_encode($payload)) === false) {
+            unlink($temp_file);
+            throw new Exception('Unable to write the Python bridge payload.');
+        }
+
+        try {
+            $output = $this->executeShellCommand(array_merge($this->getPythonCommandParts(), [$script_path, $temp_file]));
+        } finally {
+            if (file_exists($temp_file)) {
+                unlink($temp_file);
+            }
+        }
+
+        if ($output === null || $output === '') {
+            throw new Exception('Python bridge produced no output.');
+        }
+
+        $decoded = json_decode($output, true);
+        if (!is_array($decoded)) {
+            throw new Exception('Python bridge returned invalid JSON.');
+        }
+
+        return $decoded;
+    }
+
+    private function executeShellCommand(array $command_parts) {
+        $escaped_parts = array_map('escapeshellarg', $command_parts);
+        $command = implode(' ', $escaped_parts);
+        $output = @shell_exec($command);
+
+        if (!is_string($output)) {
+            return null;
+        }
+
+        return trim($output);
+    }
+
+    private function getPythonCommandParts() {
+        $configured = trim((string)getenv('FAIRMED_PYTHON_BIN'));
+        if ($configured !== '') {
+            $parts = preg_split('/\s+/', $configured);
+            if (is_array($parts) && !empty($parts)) {
+                return $parts;
+            }
+        }
+
+        if (DIRECTORY_SEPARATOR === '\\') {
+            return ['py', '-3'];
+        }
+
+        return ['python3'];
+    }
+
+    private function persistUrgencyScores(array $scores_map) {
+        if (empty($scores_map)) {
+            return 0;
+        }
+
+        $updated = 0;
+        $stmt = $this->conn->prepare("UPDATE medical_records SET urgency_score = ? WHERE student_id = ?");
+        if (!$stmt) {
+            throw new Exception('Unable to prepare the urgency score update statement.');
+        }
+
+        foreach ($scores_map as $student_id => $score) {
+            $student_id = (int)$student_id;
+            $score = (float)$score;
+            $stmt->bind_param("di", $score, $student_id);
+            if ($stmt->execute()) {
+                $updated++;
+            }
+        }
+        $stmt->close();
+
+        return $updated;
+    }
+
+    private function allocationsSupportAlgorithmVersion() {
+        if ($this->allocationsHasAlgorithmVersion !== null) {
+            return $this->allocationsHasAlgorithmVersion;
+        }
+
+        $result = $this->conn->query("SHOW COLUMNS FROM allocations LIKE 'algorithm_version'");
+        $this->allocationsHasAlgorithmVersion = $result && $result->num_rows > 0;
+
+        return $this->allocationsHasAlgorithmVersion;
+    }
+
+    private function getCurrentAlgorithmVersion() {
+        return (string)$this->getSettingValue('allocation_algorithm_version', self::ALGORITHM_VERSION);
     }
 }
 
@@ -5640,6 +5769,132 @@ FILE: includes\header.php
 
 </head>
 <body>
+
+
+============================================================
+FILE: includes\MlServiceClient.php
+============================================================
+<?php
+/**
+ * Local ML service client
+ * =======================
+ * Talks to the loopback-only Python scoring API. Keeps HTTP request handling
+ * in one place so callers can stay focused on allocation flow.
+ */
+
+class MlServiceClient {
+    private $baseUrl;
+    private $timeout;
+
+    public function __construct($baseUrl = null, $timeout = null) {
+        $this->baseUrl = rtrim($baseUrl ?? ML_SERVICE_URL, '/');
+        $this->timeout = (float)($timeout ?? ML_SERVICE_TIMEOUT);
+    }
+
+    public function health(): array {
+        return $this->request('GET', '/health');
+    }
+
+    public function scoreBatch(array $payload): array {
+        return $this->request('POST', '/ml/score-batch', $payload);
+    }
+
+    private function request(string $method, string $path, ?array $payload = null): array {
+        $url = $this->baseUrl . $path;
+
+        if (function_exists('curl_init')) {
+            return $this->requestWithCurl($method, $url, $payload);
+        }
+
+        return $this->requestWithStreams($method, $url, $payload);
+    }
+
+    private function requestWithCurl(string $method, string $url, ?array $payload = null): array {
+        $ch = curl_init($url);
+        if ($ch === false) {
+            throw new Exception('Unable to initialize cURL for ML service request.');
+        }
+
+        $headers = ['Accept: application/json'];
+        $options = [
+            CURLOPT_RETURNTRANSFER => true,
+            CURLOPT_CONNECTTIMEOUT => $this->timeout,
+            CURLOPT_TIMEOUT => $this->timeout,
+            CURLOPT_CUSTOMREQUEST => $method,
+            CURLOPT_HTTPHEADER => $headers,
+        ];
+
+        if ($payload !== null) {
+            $body = json_encode($payload);
+            if ($body === false) {
+                throw new Exception('Unable to encode ML service payload.');
+            }
+            $headers[] = 'Content-Type: application/json';
+            $options[CURLOPT_HTTPHEADER] = $headers;
+            $options[CURLOPT_POSTFIELDS] = $body;
+        }
+
+        curl_setopt_array($ch, $options);
+        $response = curl_exec($ch);
+        $status = (int)curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        $error = curl_error($ch);
+        curl_close($ch);
+
+        if ($response === false) {
+            throw new Exception('ML service request failed: ' . $error);
+        }
+
+        return $this->decodeResponse($response, $status);
+    }
+
+    private function requestWithStreams(string $method, string $url, ?array $payload = null): array {
+        $headers = ['Accept: application/json'];
+        $content = null;
+
+        if ($payload !== null) {
+            $content = json_encode($payload);
+            if ($content === false) {
+                throw new Exception('Unable to encode ML service payload.');
+            }
+            $headers[] = 'Content-Type: application/json';
+        }
+
+        $context = stream_context_create([
+            'http' => [
+                'method' => $method,
+                'header' => implode("\r\n", $headers),
+                'content' => $content,
+                'timeout' => $this->timeout,
+                'ignore_errors' => true,
+            ]
+        ]);
+
+        $response = @file_get_contents($url, false, $context);
+        if ($response === false) {
+            throw new Exception('ML service request failed.');
+        }
+
+        $status = 0;
+        if (isset($http_response_header[0]) && preg_match('/\s(\d{3})\s/', $http_response_header[0], $matches)) {
+            $status = (int)$matches[1];
+        }
+
+        return $this->decodeResponse($response, $status);
+    }
+
+    private function decodeResponse(string $response, int $status): array {
+        $decoded = json_decode($response, true);
+        if (!is_array($decoded)) {
+            throw new Exception('ML service returned invalid JSON.');
+        }
+
+        if ($status >= 400) {
+            throw new Exception($decoded['message'] ?? ('ML service returned HTTP ' . $status));
+        }
+
+        return $decoded;
+    }
+}
 
 
 ============================================================
@@ -7639,6 +7894,127 @@ FILE: ml_models\label_encoders.json
 }
 
 ============================================================
+FILE: ml_models\ml_service.py
+============================================================
+"""
+FairMedAlloc local ML scoring service
+=====================================
+Loopback-only HTTP API for batch urgency scoring.
+
+Endpoints:
+    GET  /health
+    POST /ml/score-batch
+
+Usage:
+    py -3 ml_service.py
+    py -3 ml_service.py 127.0.0.1 5051
+"""
+
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+import json
+import logging
+import os
+import sys
+
+import predict
+
+logging.basicConfig(level=logging.WARNING)
+
+DEFAULT_HOST = os.environ.get("FAIRMED_ML_HOST", "127.0.0.1")
+DEFAULT_PORT = int(os.environ.get("FAIRMED_ML_PORT", "5051"))
+
+
+def current_mode():
+    return "ML Model" if predict._use_ml_model else "Rule-Based (Fallback)"
+
+
+class MlRequestHandler(BaseHTTPRequestHandler):
+    server_version = "FairMedAllocML/1.0"
+
+    def do_GET(self):
+        if self.path == "/health":
+            self.send_json(
+                200,
+                {
+                    "status": "success",
+                    "service": "ml",
+                    "mode": current_mode(),
+                },
+            )
+            return
+
+        self.send_json(404, {"status": "error", "message": "Not found"})
+
+    def do_POST(self):
+        if self.path != "/ml/score-batch":
+            self.send_json(404, {"status": "error", "message": "Not found"})
+            return
+
+        try:
+            length = int(self.headers.get("Content-Length", "0"))
+        except ValueError:
+            self.send_json(400, {"status": "error", "message": "Invalid Content-Length"})
+            return
+
+        raw_body = self.rfile.read(length) if length > 0 else b""
+        try:
+            payload = json.loads(raw_body.decode("utf-8") or "null")
+        except json.JSONDecodeError:
+            self.send_json(400, {"status": "error", "message": "Invalid JSON body"})
+            return
+
+        if not isinstance(payload, (dict, list)):
+            self.send_json(400, {"status": "error", "message": "Expected an object or array payload"})
+            return
+
+        try:
+            results = predict.process_batch(payload)
+        except Exception as exc:
+            logging.exception("Scoring request failed")
+            self.send_json(500, {"status": "error", "message": str(exc)})
+            return
+
+        self.send_json(
+            200,
+            {
+                "status": "success",
+                "mode": current_mode(),
+                "results": results,
+            },
+        )
+
+    def log_message(self, format, *args):
+        logging.info("%s - %s", self.address_string(), format % args)
+
+    def send_json(self, status_code, payload):
+        body = json.dumps(payload).encode("utf-8")
+        self.send_response(status_code)
+        self.send_header("Content-Type", "application/json")
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
+
+
+def main():
+    host = DEFAULT_HOST
+    port = DEFAULT_PORT
+
+    if len(sys.argv) >= 2:
+        host = sys.argv[1]
+    if len(sys.argv) >= 3:
+        port = int(sys.argv[2])
+
+    predict.load_ml_model()
+    server = ThreadingHTTPServer((host, port), MlRequestHandler)
+    print(f"FairMedAlloc ML service listening on http://{host}:{port}")
+    server.serve_forever()
+
+
+if __name__ == "__main__":
+    main()
+
+
+============================================================
 FILE: ml_models\predict.py
 ============================================================
 """
@@ -7879,6 +8255,15 @@ if __name__ == "__main__":
 
 
 ============================================================
+FILE: ml_models\start_ml_service.bat
+============================================================
+@echo off
+setlocal
+cd /d "%~dp0"
+py -3 ml_service.py 127.0.0.1 5051
+
+
+============================================================
 FILE: ml_models\training_data_template.csv
 ============================================================
 student_id,condition,mobility,severity,academic_level,has_special_needs,urgency_score
@@ -7924,6 +8309,8 @@ import numpy as np
 import json
 import sys
 import os
+import shutil
+from datetime import datetime
 
 # Configuration paths for saving the trained model and label encoders
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -8070,7 +8457,8 @@ def train_model(X, y, strata):
 def save_model(model, feature_columns):
     """Save the trained XGBoost model and display feature importance."""
     print("\n[6/6] Saving model...")
-    
+
+    backup_existing_artifacts()
     model.save_model(MODEL_OUTPUT_PATH)
     print(f"      Model saved to: {MODEL_OUTPUT_PATH}")
     
@@ -8080,6 +8468,21 @@ def save_model(model, feature_columns):
     for feat, imp in sorted(importance.items(), key=lambda x: -x[1]):
         bar = '█' * int(imp * 20)
         print(f"        {feat:25s} {bar} {imp:.4f}")
+
+
+def backup_existing_artifacts():
+    """Create timestamped backups before overwriting live model artifacts."""
+    timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+
+    if os.path.exists(MODEL_OUTPUT_PATH):
+        backup_model_path = os.path.join(SCRIPT_DIR, f'urgency_model_backup_{timestamp}.json')
+        shutil.copy2(MODEL_OUTPUT_PATH, backup_model_path)
+        print(f"      Previous model backed up to: {backup_model_path}")
+
+    if os.path.exists(ENCODERS_OUTPUT_PATH):
+        backup_encoder_path = os.path.join(SCRIPT_DIR, f'label_encoders_backup_{timestamp}.json')
+        shutil.copy2(ENCODERS_OUTPUT_PATH, backup_encoder_path)
+        print(f"      Previous encoders backed up to: {backup_encoder_path}")
 
 
 def main():
@@ -8775,6 +9178,8 @@ DB_HOST=127.0.0.1
 DB_USER=root
 DB_PASS=
 DB_NAME=fairmedalloc
+ML_SERVICE_URL=http://127.0.0.1:5051
+ML_SERVICE_TIMEOUT=5
 ```
 
 ### 3. Create the Database
@@ -8876,7 +9281,28 @@ python train_model.py                        # Train with template data
 python train_model.py your_data.csv         # Train with real data
 ```
 
-After training, `urgency_model.json` is auto-generated. The PHP engine calls `predict.py` per-student via `shell_exec()`. If the model file is missing, a deterministic rule-based fallback is used instead.
+After training, `urgency_model.json` is auto-generated. The app now prefers a local ML API on `127.0.0.1` and falls back to direct `predict.py` execution if the service is unavailable. If the model file is missing, a deterministic rule-based fallback is used instead.
+
+### Optional Local ML API
+
+Run the local-only scoring service from `ml_models/`:
+
+```bash
+py -3 ml_service.py
+```
+
+It binds to `http://127.0.0.1:5051` by default and exposes:
+
+- `GET /health`
+- `POST /ml/score-batch`
+
+Example request:
+
+```bash
+curl -X POST http://127.0.0.1:5051/ml/score-batch ^
+  -H "Content-Type: application/json" ^
+  -d "[{\"id\":1,\"condition\":\"Asthma\",\"mobility\":\"Normal Mobility\",\"severity\":\"High\",\"academic_level\":400,\"has_special_needs\":0}]"
+```
 
 ---
 
@@ -9166,6 +9592,14 @@ require_once 'includes/header.php';
                             style="margin-top:1.5rem;padding:0.875rem;">
                         <i class="fa-solid fa-play"></i> Start Allocation Engine
                     </button>
+                    <button class="btn btn-secondary w-full" id="rescore-btn"
+                            onclick="rescoreAllScores()"
+                            style="margin-top:0.875rem;padding:0.875rem;">
+                        <i class="fa-solid fa-rotate"></i> Recalculate All Urgency Scores
+                    </button>
+                    <p class="text-muted" style="font-size:0.78rem;margin-top:0.875rem;">
+                        Use rescoring after retraining the model so existing medical records pick up the latest scoring logic.
+                    </p>
                 <?php endif; ?>
             </div>
 
@@ -9186,7 +9620,8 @@ require_once 'includes/header.php';
 <script>
 function startAllocation() {
     const logEl = document.getElementById('console');
-    const btn   = document.getElementById('start-alloc-btn');
+    const runBtn = document.getElementById('start-alloc-btn');
+    const rescoreBtn = document.getElementById('rescore-btn');
     const csrf  = document.querySelector('#run-allocation-form input[name="csrf_token"]');
 
     if (!csrf) {
@@ -9195,7 +9630,8 @@ function startAllocation() {
     }
 
     // Disable button and show starting state
-    if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Running...'; }
+    if (runBtn) { runBtn.disabled = true; runBtn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Running...'; }
+    if (rescoreBtn) { rescoreBtn.disabled = true; }
     logEl.innerHTML = '<div style="color:var(--c-warning);margin-bottom:0.5rem;">&#9654; Initializing Allocation Engine...</div>';
     logEl.innerHTML += '<div style="margin-bottom:0.5rem;">&#9654; Fetching imported students and portal-paid students eligible for this batch...</div>';
     logEl.innerHTML += '<div style="margin-bottom:0.5rem;">&#9654; Invoking XGBoost urgency scorer (predict.py)...</div>';
@@ -9209,11 +9645,15 @@ function startAllocation() {
     })
         .then(response => response.json())
         .then(data => {
-            if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fa-solid fa-play"></i> Start Allocation Engine'; }
+            if (runBtn) { runBtn.disabled = false; runBtn.innerHTML = '<i class="fa-solid fa-play"></i> Start Allocation Engine'; }
+            if (rescoreBtn) { rescoreBtn.disabled = false; }
 
             if (data.status === 'success') {
                 const optimality = data.optimal ? 'OPTIMAL' : 'FEASIBLE (time limit reached)';
                 logEl.innerHTML += `<div style="color:var(--c-success);margin-bottom:0.5rem;">&#10003; Solver finished: ${optimality}</div>`;
+                if (data.prediction_mode) {
+                    logEl.innerHTML += `<div style="color:var(--c-success);margin-bottom:0.5rem;">&#10003; Score refresh mode: ${data.prediction_mode}</div>`;
+                }
                 logEl.innerHTML += `<div style="color:var(--c-success);margin-bottom:0.5rem;">&#10003; Allocated: ${data.allocated} of ${data.total} eligible students</div>`;
                 logEl.innerHTML += '<div style="font-weight:700;margin-top:1rem;color:var(--c-success);">&#187; ALLOCATION CYCLE COMPLETE &#171;</div>';
                 logEl.innerHTML += '<div style="font-size:0.72rem;opacity:0.6;margin-top:0.5rem;">Audit logs written. Students can now view their status on the dashboard.</div>';
@@ -9223,7 +9663,51 @@ function startAllocation() {
             }
         })
         .catch(err => {
-            if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fa-solid fa-play"></i> Start Allocation Engine'; }
+            if (runBtn) { runBtn.disabled = false; runBtn.innerHTML = '<i class="fa-solid fa-play"></i> Start Allocation Engine'; }
+            if (rescoreBtn) { rescoreBtn.disabled = false; }
+            logEl.innerHTML += `<div style="margin-top:1rem;color:var(--c-danger);">&#10007; Network Error: ${err}</div>`;
+        });
+}
+
+function rescoreAllScores() {
+    const logEl = document.getElementById('console');
+    const runBtn = document.getElementById('start-alloc-btn');
+    const rescoreBtn = document.getElementById('rescore-btn');
+    const csrf = document.querySelector('#run-allocation-form input[name="csrf_token"]');
+
+    if (!csrf) {
+        logEl.innerHTML = '<div style="color:var(--c-danger);">Security token missing. Reload the page and try again.</div>';
+        return;
+    }
+
+    if (rescoreBtn) { rescoreBtn.disabled = true; rescoreBtn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Rescoring...'; }
+    if (runBtn) { runBtn.disabled = true; }
+    logEl.innerHTML = '<div style="color:var(--c-warning);margin-bottom:0.5rem;">&#9654; Recomputing urgency scores for all medical records...</div>';
+    logEl.innerHTML += '<div style="margin-bottom:0.5rem;">&#9654; Invoking predict.py with the latest stored model or fallback scorer...</div>';
+
+    fetch('api/admin_api.php?action=rescore_all', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: new URLSearchParams({ csrf_token: csrf.value })
+    })
+        .then(response => response.json())
+        .then(data => {
+            if (rescoreBtn) { rescoreBtn.disabled = false; rescoreBtn.innerHTML = '<i class="fa-solid fa-rotate"></i> Recalculate All Urgency Scores'; }
+            if (runBtn) { runBtn.disabled = false; }
+
+            if (data.status === 'success') {
+                logEl.innerHTML += `<div style="color:var(--c-success);margin-bottom:0.5rem;">&#10003; Rescored medical records: ${data.rescored}</div>`;
+                if (data.mode) {
+                    logEl.innerHTML += `<div style="color:var(--c-success);margin-bottom:0.5rem;">&#10003; Score refresh mode: ${data.mode}</div>`;
+                }
+                logEl.innerHTML += '<div style="font-weight:700;margin-top:1rem;color:var(--c-success);">&#187; RESCORE COMPLETE &#171;</div>';
+            } else {
+                logEl.innerHTML += `<div style="margin-top:1rem;color:var(--c-danger);">&#10007; Error: ${data.message}</div>`;
+            }
+        })
+        .catch(err => {
+            if (rescoreBtn) { rescoreBtn.disabled = false; rescoreBtn.innerHTML = '<i class="fa-solid fa-rotate"></i> Recalculate All Urgency Scores'; }
+            if (runBtn) { runBtn.disabled = false; }
             logEl.innerHTML += `<div style="margin-top:1rem;color:var(--c-danger);">&#10007; Network Error: ${err}</div>`;
         });
 }
@@ -9243,6 +9727,7 @@ FILE: settings.php
  *   - Current academic session label (displayed on allocation letters).
  *   - Allocation status: 'open' allows the algorithm to run; 'locked' freezes it.
  *   - High-urgency threshold for clinic-proximal hard placement (default: 75).
+ *   - Medium-urgency threshold for softer proximity prioritization (default: 40).
  *
  * Security measures applied:
  *   - Session-based admin auth guard.
@@ -9273,14 +9758,21 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     // Sanitize and cast all incoming values
     $session      = sanitize_input($_POST['academic_session'] ?? '');
     $threshold    = (int)($_POST['threshold'] ?? 0);
+    $medium_threshold = (int)($_POST['medium_threshold'] ?? 0);
     // FIX: Whitelist-validate alloc_status — previously any string could be stored
     $raw_status   = sanitize_input($_POST['alloc_status'] ?? 'open');
     $alloc_status = in_array($raw_status, ['open', 'locked']) ? $raw_status : 'open';
 
     // --- Server-side Validation ---
     // Threshold values must be percentages (0–100).
-    if ($threshold < 41 || $threshold > 100) {
+    if ($medium_threshold < 0 || $medium_threshold > 99) {
+        $msg = "Medium-urgency threshold must be between 0 and 99.";
+        $msg_type = "error";
+    } elseif ($threshold < 41 || $threshold > 100) {
         $msg = "High-urgency threshold must be between 41 and 100.";
+        $msg_type = "error";
+    } elseif ($medium_threshold >= $threshold) {
+        $msg = "Medium-urgency threshold must stay below the high-urgency threshold.";
         $msg_type = "error";
     } elseif (empty($session)) {
         $msg = "Academic session cannot be empty.";
@@ -9288,28 +9780,34 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     } else {
         // Persist to DB using a single prepared statement reused for all keys.
         // This avoids repeated prepare() calls for a simple key=value pattern.
-        $upd = $conn->prepare("UPDATE settings SET setting_value = ? WHERE setting_key = ?");
+        $upd = $conn->prepare("INSERT INTO settings (setting_key, setting_value) VALUES (?, ?) ON DUPLICATE KEY UPDATE setting_value = VALUES(setting_value)");
 
         // Update: current academic session
         $key = 'current_session';
-        $upd->bind_param("ss", $session, $key);
+        $upd->bind_param("ss", $key, $session);
         $upd->execute();
 
         // Update: clinic-proximal high-urgency threshold
         $t_str = (string)$threshold;
         $key   = 'urgency_threshold_proximal';
-        $upd->bind_param("ss", $t_str, $key);
+        $upd->bind_param("ss", $key, $t_str);
+        $upd->execute();
+
+        // Update: medium-urgency threshold
+        $medium_str = (string)$medium_threshold;
+        $key = 'urgency_threshold_medium';
+        $upd->bind_param("ss", $key, $medium_str);
         $upd->execute();
 
         // Update: allocation status (open | locked)
         $key = 'allocation_status';
-        $upd->bind_param("ss", $alloc_status, $key);
+        $upd->bind_param("ss", $key, $alloc_status);
         $upd->execute();
 
         $upd->close();
 
         // Audit log the settings change for accountability
-        log_admin_action($conn, $_SESSION['user_id'], "Updated system settings: session={$session}, threshold={$threshold}");
+        log_admin_action($conn, $_SESSION['user_id'], "Updated system settings: session={$session}, high_threshold={$threshold}, medium_threshold={$medium_threshold}");
 
         $msg = "System configuration updated successfully.";
         $msg_type = "success";
@@ -9325,6 +9823,7 @@ while ($row = $res->fetch_assoc()) {
 
 $cur_session    = $settings['current_session'] ?? '2025/2026';
 $cur_threshold  = $settings['urgency_threshold_proximal'] ?? '75';
+$cur_medium_threshold = $settings['urgency_threshold_medium'] ?? '40';
 $cur_status     = $settings['allocation_status'] ?? 'open';
 
 $page_title = "Settings | FairMedAlloc";
@@ -9399,7 +9898,19 @@ require_once 'includes/header.php';
                                    value="<?php echo htmlspecialchars($cur_threshold); ?>"
                                    min="41" max="100">
                             <div class="text-xs text-muted mt-2">
-                                This value defines the lower bound for the <strong>High</strong> urgency band. Scores from 40 up to one point below this value remain <strong>Medium</strong>, and scores below 40 remain <strong>Low</strong>; they are not ignored.
+                                This value defines the lower bound for the <strong>High</strong> urgency band. Scores from the medium threshold up to one point below this value remain <strong>Medium</strong>, and anything below the medium threshold remains <strong>Low</strong>.
+                            </div>
+                        </div>
+
+                        <div class="form-group">
+                            <label for="setting-medium-threshold">Medium Urgency Threshold</label>
+                            <input type="number"
+                                   id="setting-medium-threshold"
+                                   name="medium_threshold"
+                                   value="<?php echo htmlspecialchars($cur_medium_threshold); ?>"
+                                   min="0" max="99">
+                            <div class="text-xs text-muted mt-2">
+                                Scores at or above this value enter the <strong>Medium</strong> band, unless they already meet the higher clinic-proximal threshold.
                             </div>
                         </div>
 
@@ -9742,6 +10253,20 @@ function toggleSignupPw() {
 
 
 ============================================================
+FILE: sql\20260425_add_algorithm_version.sql
+============================================================
+ALTER TABLE allocations
+    ADD COLUMN IF NOT EXISTS algorithm_version VARCHAR(64) DEFAULT NULL AFTER allocation_method;
+
+UPDATE allocations
+SET algorithm_version = CASE
+    WHEN allocation_method = 'manual' THEN 'manual_override_legacy'
+    ELSE 'allocation_engine_legacy'
+END
+WHERE algorithm_version IS NULL;
+
+
+============================================================
 FILE: sql\schema.sql
 ============================================================
 -- ============================================================
@@ -9894,6 +10419,7 @@ CREATE TABLE allocations (
     academic_session VARCHAR(20) NOT NULL,
     allocated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     allocation_method ENUM('algorithm','manual') DEFAULT 'algorithm',
+    algorithm_version VARCHAR(64) DEFAULT NULL,
     FOREIGN KEY (student_id) REFERENCES users(user_id) ON DELETE CASCADE,
     FOREIGN KEY (room_id) REFERENCES rooms(room_id),
     INDEX idx_room_id (room_id),
@@ -10094,6 +10620,8 @@ function insertStaticData(mysqli $conn): void
     $settings = [
         ['current_session', '2025/2026'],
         ['urgency_threshold_proximal', '75'],
+        ['urgency_threshold_medium', '40'],
+        ['allocation_algorithm_version', 'allocation_engine_v2'],
         ['allocation_status', 'open'],
     ];
 
@@ -10543,13 +11071,21 @@ The new setup flow is split into schema and generated seed data.
 2. Run `php sql/seed.php` from the project root.
 3. Create the first admin account through [create_admin.php](/C:/xampp/htdocs/FairMedAlloc/create_admin.php).
 
+If you already have an existing database instead of a fresh setup:
+
+1. Apply [20260425_add_algorithm_version.sql](/C:/xampp/htdocs/FairMedAlloc/sql/20260425_add_algorithm_version.sql).
+2. Then continue using the app normally. New allocations will start recording `algorithm_version`.
+
 Why this split exists:
 
 - `schema.sql` keeps table structure readable.
 - `seed.php` generates repeated hostel and room patterns without thousands of duplicated SQL rows.
 - The seeder preserves your current hostel layouts, capacities, corner-room rules, postgrad blocks, foundation block, and proximal hostels.
 
-One important fix is included in the new schema: `student_profiles.is_paid` now exists, because the PHP app already reads and writes that column.
+Important schema updates included here:
+
+- `student_profiles.is_paid` exists, because the PHP app already reads and writes that column.
+- `allocations.algorithm_version` now exists, so each new allocation can record which engine or manual override path created it.
 
 
 ============================================================
@@ -10812,6 +11348,7 @@ FILE: upload_data.php
 session_start();
 require_once 'db_config.php';
 require_once 'includes/security_helper.php';
+require_once 'includes/MlServiceClient.php';
 // Auth Guard: admin only
 if (!isset($_SESSION['logged_in']) || ($_SESSION['role'] ?? '') !== 'admin') { header("Location: admin_login.php"); exit(); }
 
@@ -10929,16 +11466,27 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_FILES['csv_file'])) {
         // regardless of how many rows were in the CSV.
         $batch_scores = []; // [uid => score]
         if (!empty($pending_medical)) {
-            $temp_file   = sys_get_temp_dir() . DIRECTORY_SEPARATOR . 'fairmed_bulk_' . uniqid() . '.json';
-            file_put_contents($temp_file, json_encode($pending_medical));
-            $script_path = __DIR__ . '/ml_models/predict.py';
-            $command     = escapeshellcmd("python " . escapeshellarg($script_path) . " " . escapeshellarg($temp_file));
-            $output      = shell_exec($command);
-            $result      = json_decode($output, true);
-            if (file_exists($temp_file)) unlink($temp_file);
+            try {
+                $client = new MlServiceClient();
+                $result = $client->scoreBatch($pending_medical);
+                if (($result['status'] ?? '') === 'success' && isset($result['results'])) {
+                    $batch_scores = $result['results'];
+                }
+            } catch (Exception $e) {
+                error_log('[FairMedAlloc] ML service unavailable during CSV import, falling back to local predict.py: ' . $e->getMessage());
 
-            if (($result['status'] ?? '') === 'success' && isset($result['results'])) {
-                $batch_scores = $result['results'];
+                $temp_file   = sys_get_temp_dir() . DIRECTORY_SEPARATOR . 'fairmed_bulk_' . uniqid() . '.json';
+                file_put_contents($temp_file, json_encode($pending_medical));
+                $script_path = __DIR__ . '/ml_models/predict.py';
+                $python_cmd  = strtoupper(substr(PHP_OS, 0, 3)) === 'WIN' ? ['py', '-3'] : ['python3'];
+                $command     = implode(' ', array_map('escapeshellarg', array_merge($python_cmd, [$script_path, $temp_file])));
+                $output      = shell_exec($command);
+                $result      = json_decode($output, true);
+                if (file_exists($temp_file)) unlink($temp_file);
+
+                if (($result['status'] ?? '') === 'success' && isset($result['results'])) {
+                    $batch_scores = $result['results'];
+                }
             }
         }
 

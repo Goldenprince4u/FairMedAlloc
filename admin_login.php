@@ -1,6 +1,6 @@
 <?php
 /**
- * admin_login.php â€” Administrator Login Portal
+ * admin_login.php — Administrator Login Portal
  * ==============================================
  * Handles admin authentication with the following security features:
  *   - CSRF token validation on every POST request.
@@ -15,18 +15,12 @@ require_once 'db_config.php';
 require_once 'includes/security_helper.php';
 
 $error = '';
-$timeout_notice = '';
-
-// Session idle-timeout notice
-if (isset($_GET['timeout']) && $_GET['timeout'] === '1') {
-    $timeout_notice = "Your session expired after 30 minutes of inactivity. Please log in again.";
-}
 
 if ($_SERVER["REQUEST_METHOD"] == "POST") {
     // Validate CSRF token before any processing
     check_csrf();
 
-    // Use raw trimmed values â€” NOT htmlspecialchars â€” for DB comparison
+    // Use raw trimmed values — NOT htmlspecialchars — for DB comparison
     $username = trim($_POST['username']);
     $password = trim($_POST['password']);
     $generic_login_error = "Unable to sign in right now. Check your credentials or try again later.";
@@ -147,14 +141,6 @@ require_once 'includes/header.php';
                 <h2 style="font-size:1.75rem;margin-bottom:0.35rem;color:var(--c-text-head);">Admin Login</h2>
                 <p class="text-muted" style="font-size:0.9rem;">Enter your administrative credentials to proceed.</p>
             </div>
-
-            <!-- Timeout notice -->
-            <?php if ($timeout_notice): ?>
-                <div class="alert alert-warning mb-4">
-                    <i class="fa-solid fa-clock"></i>
-                    <?php echo htmlspecialchars($timeout_notice); ?>
-                </div>
-            <?php endif; ?>
 
             <!-- Error -->
             <?php if ($error): ?>

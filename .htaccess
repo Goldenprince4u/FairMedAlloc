@@ -32,13 +32,27 @@
     Deny from all
 </FilesMatch>
 
-# --- 5. Block all Python files under ml_models/ ---
-# (These are executed server-side via shell_exec, never via HTTP)
-<FilesMatch "\.py$">
+# --- 5. Block ML model artifacts and Python files ---
+# (These are executed or consumed server-side only, never via HTTP)
+<FilesMatch "\.(json|py|pkl|bat|whl)$">
     Order Allow,Deny
     Deny from all
 </FilesMatch>
 
+<IfModule mod_rewrite.c>
+    RewriteEngine On
+    RewriteRule ^ml_models/(site-packages|__pycache__)/ - [F,L,NC]
+    RewriteRule ^ml_models/(hostel_medical_dataset\.csv|xgboost_hostel_model\.pkl|start_ml_service\.bat)$ - [F,L,NC]
+</IfModule>
+
+<IfModule mod_headers.c>
+    Header always set X-Frame-Options "SAMEORIGIN"
+    Header always set X-Content-Type-Options "nosniff"
+    Header always set Referrer-Policy "strict-origin-when-cross-origin"
+    Header always set Permissions-Policy "geolocation=(), camera=(), microphone=()"
+</IfModule>
+
 # --- 6. Force UTF-8 character encoding for all PHP files ---
 # This prevents the Naira sign and other Unicode chars from rendering garbled
 AddDefaultCharset UTF-8
+Options -Indexes

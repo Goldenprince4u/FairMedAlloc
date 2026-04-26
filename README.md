@@ -2,7 +2,7 @@
 
 [![PHP](https://img.shields.io/badge/PHP-8.x-blue)](https://php.net) [![MySQL](https://img.shields.io/badge/MySQL-8.x-orange)](https://mysql.com) [![License](https://img.shields.io/badge/License-Academic-green)](#)
 
-> A fairness-aware hostel allocation system for Redeemer's University that prioritises students with medical conditions and disabilities, placing them in clinic-proximal residences using an XGBoost-backed ML urgency scoring engine.
+> A fairness-aware hostel allocation system for Redeemer's University that prioritises students with medical conditions and disabilities, placing them in clinic-proximal residences using an XGBoost-backed urgency scoring engine.
 
 ---
 
@@ -11,7 +11,7 @@
 | Feature | Description |
 |---|---|
 | 🏥 **Medical Urgency Scoring** | Assigns scores 0–100 based on condition severity (Asthma, Sickle Cell, Orthopedic, Visual Impairment, etc.) |
-| 🤖 **ML Allocation Engine** | XGBoost model via Python; falls back to rule-based scoring if model is unavailable |
+| 🤖 **ML Allocation Engine** | Python scoring pipeline that uses the provided `.pkl` XGBoost model and falls back to rule-based scoring when the model cannot be used |
 | 🏠 **Proximal Hostel Logic** | High-risk students automatically placed nearest the health centre |
 | 💳 **Fee-Gated Allocation** | Students only receive a room after school fee payment is confirmed |
 | 📋 **CSV Bulk Import** | Admin can import hundreds of students at once via structured CSV |
@@ -42,6 +42,10 @@ DB_HOST=127.0.0.1
 DB_USER=root
 DB_PASS=
 DB_NAME=fairmedalloc
+ML_SERVICE_URL=http://127.0.0.1:5051
+ML_SERVICE_TIMEOUT=5
+PYTHON_BIN=C:/Users/quadr/AppData/Local/Programs/Python/Python311/python.exe
+ML_MODEL_PICKLE_PATH=ml_models/xgboost_hostel_model.pkl
 ```
 
 ### 3. Create the Database
@@ -83,7 +87,6 @@ FairMedAlloc/
 ├── api/
 │   ├── admin_api.php        # Admin AJAX endpoints (rooms, manual assign, analytics, hostel stats)
 │   ├── pay_simulation.php   # Fee payment simulation (allocates on next admin cycle)
-│   ├── update_score.php     # Internal webhook for Python ML score updates (loopback-only)
 │   └── get_departments.php  # AJAX: cascading faculty → department dropdown
 │
 ├── includes/
@@ -102,9 +105,10 @@ FairMedAlloc/
 │   └── student_dashboard.js # Pay fees AJAX flow
 │
 ├── ml_models/
-│   ├── predict.py           # XGBoost inference (called by PHP via shell_exec)
-│   ├── train_model.py       # Model training script
-│   └── training_data_template.csv
+│   ├── predict.py           # XGBoost .pkl inference bridge (called by PHP)
+│   ├── ml_service.py        # Optional local HTTP wrapper around predict.py
+│   ├── xgboost_hostel_model.pkl
+│   └── hostel_medical_dataset.csv
 │
 ├── setup.sql                # Full DB schema + seed data (hostels, departments, admin user)
 ├── db_config.php            # DB connection (reads from .env)
@@ -136,14 +140,30 @@ Column order for `upload_data.php`:
 
 ## 🤖 ML Model Setup *(Optional)*
 
+Place the provided `.pkl` model in `ml_models/` as `xgboost_hostel_model.pkl`, keep `hostel_medical_dataset.csv` alongside it for audit/reference purposes, and point `ML_MODEL_PICKLE_PATH` in `.env` to the exact file if you move it.
+
+The app now uses the same XGBoost scoring pipeline during signup, profile updates, CSV import, admin rescoring, and allocation runs.
+
+### Optional Local ML API
+
+Run the local-only scoring service from `ml_models/`:
+
 ```bash
-cd ml_models
-pip install pandas xgboost scikit-learn
-python train_model.py                        # Train with template data
-python train_model.py your_data.csv         # Train with real data
+py -3 ml_service.py
 ```
 
-After training, `urgency_model.json` is auto-generated. The PHP engine calls `predict.py` per-student via `shell_exec()`. If the model file is missing, a deterministic rule-based fallback is used instead.
+It binds to `http://127.0.0.1:5051` by default and exposes:
+
+- `GET /health`
+- `POST /ml/score-batch`
+
+Example request:
+
+```bash
+curl -X POST http://127.0.0.1:5051/ml/score-batch ^
+  -H "Content-Type: application/json" ^
+  -d "[{\"id\":1,\"condition\":\"Asthma\",\"mobility\":\"Normal Mobility\",\"severity\":\"High\",\"academic_level\":400,\"has_special_needs\":0}]"
+```
 
 ---
 
@@ -151,7 +171,6 @@ After training, `urgency_model.json` is auto-generated. The PHP engine calls `pr
 
 - All DB interactions use **prepared statements** (zero raw interpolation)
 - **CSRF tokens** on all POST forms
-- **IP whitelist** on the ML score webhook (`api/update_score.php` — loopback only)
 - **Account lockout** after 5 failed login attempts (15-minute lock)
 - **Role + session checks** on every protected page and API endpoint
 - **File type + MIME validation** on profile picture uploads
