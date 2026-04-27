@@ -21,3 +21,8 @@ __pycache__/
 # Trained ML model (large binary, regenerated from train_model.py)
 ml_models/urgency_model.json
 ml_models/label_encoders.json
+.gemini/
+.codex_backups/
+db_config.php
+ml_models/site-packages/
+ml_models/venv/
