@@ -132,6 +132,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
             $_SESSION['username']    = $matric;
             $_SESSION['full_name']   = $name;
             $_SESSION['profile_pic'] = 'default.png';
+            $_SESSION['must_change_password'] = false;
 
             // Redirect to the student dashboard after successful registration.
             header("Location: student_dashboard.php");

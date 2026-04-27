@@ -152,9 +152,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $msg_type = "error";
         } else {
             $new_hash = password_hash($new, PASSWORD_DEFAULT);
-            $update   = $conn->prepare("UPDATE users SET password_hash = ? WHERE user_id = ?");
+            $sql = FAIRMED_SUPPORTS_MUST_CHANGE_PASSWORD
+                ? "UPDATE users SET password_hash = ?, must_change_password = 0 WHERE user_id = ?"
+                : "UPDATE users SET password_hash = ? WHERE user_id = ?";
+            $update = $conn->prepare($sql);
             $update->bind_param("si", $new_hash, $user_id);
             if ($update->execute()) {
+                $_SESSION['must_change_password'] = false;
                 $msg      = "Password updated successfully.";
                 $msg_type = "success";
             } else {

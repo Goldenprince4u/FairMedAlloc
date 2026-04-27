@@ -1551,10 +1551,10 @@ tr:hover td { background: var(--c-bg-surface-2); }
         padding: 4rem 1.25rem 1.5rem;
     }
 
-    .auth-container { flex-direction: column; }
-    .auth-left, .auth-right { width: 100%; }
-    .auth-left { padding: 3rem 2rem; min-height: 280px; }
-    .auth-right { padding: 2rem 1.5rem; }
+    .auth-container { flex-direction: column; height: auto; min-height: 100vh; overflow: visible; }
+    .auth-left, .auth-right { width: 100%; height: auto; overflow: visible; position: static; }
+    .auth-left { padding: 3rem 2rem 2rem; min-height: auto; }
+    .auth-right { padding: 2rem 1.5rem 3rem; }
 
     .grid-cols-2 { grid-template-columns: 1fr; }
     .grid-cols-4 { grid-template-columns: 1fr; }

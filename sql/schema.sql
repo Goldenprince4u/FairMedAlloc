@@ -30,6 +30,7 @@ CREATE TABLE users (
     full_name VARCHAR(100),
     email VARCHAR(100),
     password_hash VARCHAR(255) NOT NULL,
+    must_change_password BOOLEAN NOT NULL DEFAULT FALSE,
     role ENUM('student','admin','medical_officer') NOT NULL DEFAULT 'student',
     profile_pic VARCHAR(255) DEFAULT 'default.png',
     last_login TIMESTAMP NULL,

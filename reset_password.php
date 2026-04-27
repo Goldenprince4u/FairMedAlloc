@@ -64,7 +64,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $valid_token) {
             $user_id   = $reset_row['user_id'];
             $pass_hash = password_hash($new_pass, PASSWORD_DEFAULT);
             
-            $stmt_upd = $conn->prepare("UPDATE users SET password_hash = ?, login_attempts = 0, lock_until = NULL WHERE user_id = ?");
+            $sql = FAIRMED_SUPPORTS_MUST_CHANGE_PASSWORD
+                ? "UPDATE users SET password_hash = ?, must_change_password = 0, login_attempts = 0, lock_until = NULL WHERE user_id = ?"
+                : "UPDATE users SET password_hash = ?, login_attempts = 0, lock_until = NULL WHERE user_id = ?";
+            $stmt_upd = $conn->prepare($sql);
             $stmt_upd->bind_param("si", $pass_hash, $user_id);
             
             if ($stmt_upd->execute()) {
@@ -122,7 +125,7 @@ require_once 'includes/header.php';
                         <label>New Password</label>
                         <div class="input-group" style="position:relative;">
                             <input type="password" id="reset-password" name="password"
-                                   placeholder="••••••••" required class="input w-full"
+                                   placeholder="Enter your new password" required class="input w-full"
                                    style="padding-right:2.75rem;">
                             <i class="fa-solid fa-eye"
                                id="toggleResetPassword"
@@ -136,7 +139,7 @@ require_once 'includes/header.php';
                         <label>Confirm Password</label>
                         <div class="input-group" style="position:relative;">
                             <input type="password" id="reset-confirm" name="confirm_password"
-                                   placeholder="••••••••" required class="input w-full"
+                                   placeholder="Enter your new password" required class="input w-full"
                                    style="padding-right:2.75rem;">
                             <i class="fa-solid fa-eye"
                                id="toggleResetConfirm"
@@ -176,3 +179,4 @@ function toggleResetPw(inputId, iconId) {
 </script>
 </body>
 </html>
+

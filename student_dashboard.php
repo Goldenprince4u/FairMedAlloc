@@ -29,6 +29,10 @@ if (!$student) {
 
 $alloc = $studentObj->getAllocation();
 $has_paid = $studentObj->hasPaid();
+$general_notice_stmt = $conn->prepare("SELECT setting_value FROM settings WHERE setting_key = 'general_notice' LIMIT 1");
+$general_notice_stmt->execute();
+$general_notice = trim((string)($general_notice_stmt->get_result()->fetch_assoc()['setting_value'] ?? ''));
+$general_notice = $general_notice !== '' ? $general_notice : 'Hostel allocation runs in admin-managed batches. Keep your academic and medical profile accurate before the next batch.';
 
 $page_title = "Dashboard | FairMedAlloc";
 require_once 'includes/header.php';
@@ -45,6 +49,13 @@ require_once 'includes/header.php';
                 <p class="text-muted">Welcome, <?php echo htmlspecialchars($student['full_name'] ?? $_SESSION['username']); ?></p>
             </div>
         </div>
+
+        <?php if (isset($_GET['password_changed']) && $_GET['password_changed'] === '1'): ?>
+            <div class="alert alert-success mb-6">
+                <i class="fa-solid fa-check-circle"></i>
+                Your password has been updated successfully.
+            </div>
+        <?php endif; ?>
 
         <!-- Allocation Status Card -->
         <div class="card mb-8 p-0 overflow-hidden relative">
@@ -196,7 +207,6 @@ require_once 'includes/header.php';
                         $bg = $notice['is_read'] ? 'rgba(0,0,0,0.02)' : 'rgba(59,130,246,0.06)';
                         $border = $notice['is_read'] ? 'var(--c-muted)' : 'var(--c-primary)';
                         echo '<div class="mb-4 p-3 rounded text-sm" style="background:'.$bg.'; border-left:4px solid '.$border.';">';
-                        echo '<div class="fw-700 text-primary mb-1"><i class="fa-solid fa-bell mr-2"></i>Notice</div>';
                         echo '<p class="text-body">' . htmlspecialchars($notice['message']) . '</p>';
                         echo '<div class="text-xs text-muted mt-1">' . date('M d, H:i', strtotime($notice['created_at'])) . '</div>';
                         echo '</div>';
@@ -213,7 +223,7 @@ require_once 'includes/header.php';
                         <i class="fa-solid fa-bullhorn"></i> General Info
                     </div>
                     <p class="text-sm text-muted leading-relaxed">
-                        Hostel portal closes on Friday. Ensure all medical documents are verified before the deadline.
+                        <?php echo htmlspecialchars($general_notice); ?>
                     </p>
                 </div>
             </div>

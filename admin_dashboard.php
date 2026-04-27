@@ -91,6 +91,13 @@ require_once 'includes/header.php';
             </div>
         </div>
 
+        <?php if (isset($_GET['password_changed']) && $_GET['password_changed'] === '1'): ?>
+            <div class="alert alert-success mb-6">
+                <i class="fa-solid fa-check-circle"></i>
+                Your password has been updated successfully.
+            </div>
+        <?php endif; ?>
+
         <!-- Stats Row -->
         <div class="grid grid-cols-4 mb-8">
             <div class="card stat-card">

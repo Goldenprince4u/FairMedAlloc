@@ -61,14 +61,17 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
         $hash = password_hash($pass, PASSWORD_DEFAULT);
         
         // --- 1. Create Admin User ---
-        $stmt = $conn->prepare("INSERT INTO users (username, full_name, email, password_hash, role) VALUES (?, ?, ?, ?, ?)");
+        $sql = FAIRMED_SUPPORTS_MUST_CHANGE_PASSWORD
+            ? "INSERT INTO users (username, full_name, email, password_hash, must_change_password, role) VALUES (?, ?, ?, ?, 1, ?)"
+            : "INSERT INTO users (username, full_name, email, password_hash, role) VALUES (?, ?, ?, ?, ?)";
+        $stmt = $conn->prepare($sql);
         $stmt->bind_param("sssss", $username, $name, $email, $hash, $role);
         
         if ($stmt->execute()) {
             // FIX: Previously this code replaced the creating admin's session with the
             // new account's session — a silent session-hijack bug. Now the creator stays
             // logged in and receives a clear confirmation message instead.
-            $msg      = "Admin account '{$username}' created successfully. They can now log in at admin_login.php.";
+            $msg      = "Admin account '{$username}' created successfully. They can now log in at admin_login.php and will be required to change the temporary password after sign-in.";
             $msg_type = "success";
         } else {
             // Generic error — do not expose DB error details to the client.

@@ -100,6 +100,7 @@ if (
             <a href="profile.php" class="nav-item <?php echo active('profile.php'); ?>">
                 <i class="fa-solid fa-user"></i> My Profile
             </a>
+
             <a href="print_slip.php" class="nav-item <?php echo active('print_slip.php'); ?>">
                 <i class="fa-solid fa-print"></i> Allocation Slip
             </a>

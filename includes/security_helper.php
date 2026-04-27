@@ -51,6 +51,14 @@ if (isset($_SESSION['logged_in']) && $_SESSION['logged_in'] === true) {
     }
     // Refresh timestamp on every active request
     $_SESSION['last_activity'] = $now;
+
+    $current_script = basename($_SERVER['PHP_SELF'] ?? '');
+    $password_change_allowed = ['change_password.php', 'logout.php'];
+    if (!empty($_SESSION['must_change_password']) && !in_array($current_script, $password_change_allowed, true)) {
+        $base = rtrim(dirname($_SERVER['SCRIPT_NAME']), '/\\');
+        header('Location: ' . $base . '/change_password.php?required=1');
+        exit();
+    }
 }
 
 /**

@@ -72,7 +72,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_FILES['csv_file'])) {
 
         // Prepare reusable statements once for performance across many rows
         $stmt_check = $conn->prepare("SELECT user_id FROM users WHERE username = ?");
-        $stmt_user = $conn->prepare("INSERT INTO users (username, full_name, password_hash, role) VALUES (?, ?, ?, 'student')");
+        $user_insert_sql = FAIRMED_SUPPORTS_MUST_CHANGE_PASSWORD
+            ? "INSERT INTO users (username, full_name, password_hash, must_change_password, role) VALUES (?, ?, ?, 1, 'student')"
+            : "INSERT INTO users (username, full_name, password_hash, role) VALUES (?, ?, ?, 'student')";
+        $stmt_user = $conn->prepare($user_insert_sql);
         $stmt_profile = $conn->prepare("INSERT INTO student_profiles (user_id, level, department_id, gender, is_paid) VALUES (?, ?, ?, ?, ?)");
         $stmt_dept_lookup = $conn->prepare("SELECT department_id FROM departments WHERE name LIKE ? LIMIT 1");
 

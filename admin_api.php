@@ -1,16 +1,9 @@
 <?php
 /**
- * Deprecated API tombstone
- * ========================
- * The live admin API moved to /api/admin_api.php.
- * This root-level file remains only to prevent future reviewers from patching
- * the wrong endpoint by accident.
+ * Backward-compatible proxy to the live admin API controller.
+ *
+ * The canonical endpoint is /api/admin_api.php. This file remains only so
+ * older local references do not break while the codebase uses the namespaced
+ * API path consistently.
  */
-
-http_response_code(410);
-header('Content-Type: application/json');
-
-echo json_encode([
-    'status' => 'error',
-    'message' => 'Deprecated endpoint. Use /api/admin_api.php instead.'
-]);
+require __DIR__ . '/api/admin_api.php';

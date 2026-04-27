@@ -61,11 +61,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $conn->begin_transaction();
 
                 try {
-                    $reset_stmt = $conn->prepare("
-                        UPDATE users
-                        SET password_hash = ?, login_attempts = 0, lock_until = NULL
-                        WHERE user_id = ?
-                    ");
+                    if (FAIRMED_SUPPORTS_MUST_CHANGE_PASSWORD) {
+                        $reset_stmt = $conn->prepare("
+                            UPDATE users
+                            SET password_hash = ?, must_change_password = 1, login_attempts = 0, lock_until = NULL
+                            WHERE user_id = ?
+                        ");
+                    } else {
+                        $reset_stmt = $conn->prepare("
+                            UPDATE users
+                            SET password_hash = ?, login_attempts = 0, lock_until = NULL
+                            WHERE user_id = ?
+                        ");
+                    }
                     $reset_stmt->bind_param("si", $password_hash, $user['user_id']);
                     $reset_stmt->execute();
 
@@ -81,7 +89,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
                     $conn->commit();
 
-                    $msg = "Temporary password issued for {$user['full_name']} ({$user['username']}). Share it securely; it is shown only once below.";
+                    $msg = "Temporary password issued for {$user['full_name']} ({$user['username']}). Share it securely; the user will be required to change it after signing in.";
                     $msg_type = 'success';
                 } catch (Throwable $e) {
                     $conn->rollback();

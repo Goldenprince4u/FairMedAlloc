@@ -17,8 +17,9 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
     $username = trim($_POST['username']);
     $password = trim($_POST['password']);
     $generic_login_error = "Unable to sign in right now. Check your credentials or try again later.";
+    $must_change_select = FAIRMED_SUPPORTS_MUST_CHANGE_PASSWORD ? ', must_change_password' : ', 0 AS must_change_password';
 
-    $stmt = $conn->prepare("SELECT user_id, username, password_hash, role, login_attempts, lock_until, profile_pic, full_name FROM users WHERE username = ?");
+    $stmt = $conn->prepare("SELECT user_id, username, password_hash, role, login_attempts, lock_until, profile_pic, full_name{$must_change_select} FROM users WHERE username = ?");
     $stmt->bind_param("s", $username);
     $stmt->execute();
     $res = $stmt->get_result();
@@ -42,7 +43,9 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
                     $_SESSION['username']    = $user['username'];
                     $_SESSION['profile_pic'] = $user['profile_pic'] ?? 'default.png';
                     $_SESSION['full_name']   = $user['full_name'] ?? $user['username'];
-                    header("Location: student_dashboard.php");
+                    $_SESSION['must_change_password'] = !empty($user['must_change_password']);
+                    $target = $_SESSION['must_change_password'] ? 'change_password.php?required=1' : 'student_dashboard.php';
+                    header("Location: {$target}");
                     exit();
                 }
             } else {
@@ -144,7 +147,7 @@ require_once 'includes/header.php';
                         <input type="password"
                                id="login-password"
                                name="password"
-                               placeholder="••••••••"
+                               placeholder="Enter your password"
                                required
                                class="input-auth"
                                style="padding-left:2.5rem;padding-right:2.75rem;">
@@ -187,3 +190,4 @@ require_once 'includes/header.php';
 
 </body>
 </html>
+

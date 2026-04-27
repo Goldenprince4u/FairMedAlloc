@@ -49,9 +49,9 @@ require_once 'includes/header.php';
                 <ul class="list-instructions">
                     <li>Fetch eligible students imported through Data Import and students whose portal payment has been confirmed through the pay simulator.</li>
                     <li>Recalculate urgency scores via the configured XGBoost model.</li>
-                    <li>Prioritize high-risk students for proximal hostels.</li>
+                    <li>Send High urgency students to clinic-proximal space as a hard constraint, and apply the current Medium urgency faculty rule.</li>
                     <li>Run the OR-Tools CP-SAT solver to assign rooms.</li>
-                    <li>Write audit logs and notify each student of their result.</li>
+                    <li>Use randomness only to break ties between equally valid room options, then write audit logs and notify each student of the result.</li>
                 </ul>
 
                 <?php if ($is_locked): ?>
@@ -114,7 +114,7 @@ function startAllocation() {
     logEl.innerHTML += '<div style="margin-bottom:0.5rem;">&#9654; Fetching imported students and portal-paid students eligible for this batch...</div>';
     logEl.innerHTML += '<div style="margin-bottom:0.5rem;">&#9654; Invoking the XGBoost `.pkl` model bridge (predict.py)...</div>';
     logEl.innerHTML += '<div style="margin-bottom:0.5rem;">&#9654; Running OR-Tools CP-SAT solver (allocate.py)...</div>';
-    logEl.innerHTML += '<div style="margin-bottom:0.5rem;opacity:0.6;font-style:italic;">Please wait — this may take up to 60 seconds...</div>';
+    logEl.innerHTML += '<div style="margin-bottom:0.5rem;opacity:0.6;font-style:italic;">Please wait - this may take up to 60 seconds...</div>';
 
     fetch('api/admin_api.php?action=run_algorithm', {
         method: 'POST',
@@ -192,3 +192,4 @@ function rescoreAllScores() {
 </script>
 </body>
 </html>
+

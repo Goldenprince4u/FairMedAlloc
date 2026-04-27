@@ -86,7 +86,7 @@ require_once 'includes/header.php';
             <div style="display:flex;gap:0.75rem;align-items:center;">
                 <div style="position:relative;">
                     <i class="fa-solid fa-search" style="position:absolute;left:0.75rem;top:50%;transform:translateY(-50%);color:var(--c-text-light);font-size:0.8rem;"></i>
-                    <input type="text" id="searchInput" placeholder="Search name, matric, hostel…"
+                    <input type="text" id="searchInput" placeholder="Search name, matric, hostel..."
                            style="padding-left:2.25rem;width:260px;" class="input">
                 </div>
                 <button id="exportBtn" class="btn btn-primary">
@@ -117,7 +117,7 @@ require_once 'includes/header.php';
                                     </td>
                                     <td>
                                         <div class="text-sm"><?php echo htmlspecialchars($row['faculty']); ?></div>
-                                        <div class="text-xs text-muted"><?php echo htmlspecialchars($row['department']); ?> • <?php echo $row['level']; ?>L</div>
+                                        <div class="text-xs text-muted"><?php echo htmlspecialchars($row['department']); ?> - <?php echo $row['level']; ?>L</div>
                                     </td>
                                     <td>
                                         <?php 
@@ -144,7 +144,7 @@ require_once 'includes/header.php';
                                     <td>
                                         <?php if($row['hostel_name']): ?>
                                             <div class="text-sm fw-700 text-primary">
-                                                <?php echo htmlspecialchars($row['hostel_name']); ?> — Blk <?php echo htmlspecialchars($row['block_name']); ?>
+                                                <?php echo htmlspecialchars($row['hostel_name']); ?> - Block <?php echo htmlspecialchars($row['block_name']); ?>
                                             </div>
                                             <div class="text-xs text-muted">Room <?php echo htmlspecialchars($row['room_number']); ?></div>
                                         <?php else: ?>
@@ -178,7 +178,7 @@ require_once 'includes/header.php';
             <div class="p-4 flex justify-between items-center text-xs text-muted" style="border-top: 1px solid var(--c-border);">
                 <div>
                     <?php if ($total_rows > 0): ?>
-                        Showing <?php echo ($offset + 1); ?>–<?php echo min($offset + $limit, $total_rows); ?> of <?php echo $total_rows; ?> entries
+                        Showing <?php echo ($offset + 1); ?>-<?php echo min($offset + $limit, $total_rows); ?> of <?php echo $total_rows; ?> entries
                     <?php else: ?>
                         No entries found
                     <?php endif; ?>
@@ -255,3 +255,7 @@ require_once 'includes/header.php';
 
 </body>
 </html>
+
+
+
+

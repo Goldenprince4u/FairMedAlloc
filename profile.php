@@ -348,15 +348,7 @@ require_once 'includes/header.php';
                             </select>
                         </div>
 
-                        <div style="display:flex;align-items:flex-end;padding-bottom:2px;">
-                            <label style="display:flex;align-items:center;gap:0.5rem;cursor:pointer;font-weight:500;margin-bottom:0;">
-                                <input type="checkbox" id="profile-special-needs"
-                                       name="has_special_needs" value="1"
-                                       <?php if(!empty($student['has_special_needs'])) echo 'checked'; ?>
-                                       style="width:16px;height:16px;cursor:pointer;flex-shrink:0;accent-color:var(--c-primary);">
-                                <span style="font-size:0.85rem;color:var(--c-text-body);">Documented Special Needs</span>
-                            </label>
-                        </div>
+
 
                     </div>
                 </div>

@@ -45,6 +45,13 @@ $role = $_SESSION['role'] ?? 'student';
                             </div>
                         </details>
 
+                        <details class="faq-item" id="faq-admin-policy">
+                            <summary>What is the current allocation policy?</summary>
+                            <div class="faq-answer">
+                                <strong>High</strong> urgency students are treated as clinic-priority regardless of faculty. <strong>Medium</strong> urgency students are sent to clinic proximity only if they belong to the current clinic-proximal faculties. Other paid students are allocated to the remaining valid halls, with randomness used only to break ties between equally valid options. Any unused clinic-proximal space can be backfilled by clinic-proximal faculties.
+                            </div>
+                        </details>
+
                         <details class="faq-item" id="faq-admin-score">
                             <summary>How are urgency scores calculated?</summary>
                             <div class="faq-answer">
@@ -191,6 +198,7 @@ $role = $_SESSION['role'] ?? 'student';
                             <a href="profile.php" class="text-primary" style="font-size:0.875rem;display:flex;align-items:center;gap:0.5rem;padding:0.5rem 0;border-bottom:1px solid var(--c-border);">
                                 <i class="fa-solid fa-user" style="width:16px;text-align:center;font-size:0.8rem;"></i> My Profile
                             </a>
+
                             <a href="print_slip.php" class="text-primary" style="font-size:0.875rem;display:flex;align-items:center;gap:0.5rem;padding:0.5rem 0;">
                                 <i class="fa-solid fa-print" style="width:16px;text-align:center;font-size:0.8rem;"></i> Allocation Slip
                             </a>
@@ -209,6 +217,9 @@ $role = $_SESSION['role'] ?? 'student';
                             </a>
                             <a href="admin_reset_password.php" class="text-primary" style="font-size:0.875rem;display:flex;align-items:center;gap:0.5rem;padding:0.5rem 0;">
                                 <i class="fa-solid fa-key" style="width:16px;text-align:center;font-size:0.8rem;"></i> Reset Password
+                            </a>
+                            <a href="ALLOCATION_POLICY.md" class="text-primary" style="font-size:0.875rem;display:flex;align-items:center;gap:0.5rem;padding:0.5rem 0;">
+                                <i class="fa-solid fa-file-lines" style="width:16px;text-align:center;font-size:0.8rem;"></i> Allocation Policy
                             </a>
                         <?php endif; ?>
                     </div>

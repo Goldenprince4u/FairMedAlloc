@@ -48,4 +48,26 @@ if ($conn->connect_error) {
         <p><small>If you are a developer: check that XAMPP's MySQL module is running, the .env file is correct, and the database has been created.</small></p>
     ");
 }
+
+/**
+ * Lightweight runtime schema alignment for account-security improvements.
+ * This keeps older local databases compatible without requiring a manual
+ * migration before the app can boot.
+ */
+$supportsMustChangePassword = false;
+$mustChangeColumn = $conn->query("SHOW COLUMNS FROM users LIKE 'must_change_password'");
+if ($mustChangeColumn instanceof mysqli_result) {
+    $supportsMustChangePassword = $mustChangeColumn->num_rows > 0;
+    $mustChangeColumn->free();
+}
+
+if (!$supportsMustChangePassword) {
+    if ($conn->query("ALTER TABLE users ADD COLUMN must_change_password TINYINT(1) NOT NULL DEFAULT 0 AFTER password_hash")) {
+        $supportsMustChangePassword = true;
+    } else {
+        error_log("[FairMedAlloc] Unable to add users.must_change_password automatically: " . $conn->error);
+    }
+}
+
+define('FAIRMED_SUPPORTS_MUST_CHANGE_PASSWORD', $supportsMustChangePassword);
 ?>

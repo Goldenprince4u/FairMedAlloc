@@ -4,6 +4,18 @@
 
 > A fairness-aware hostel allocation system for Redeemer's University that prioritises students with medical conditions and disabilities, placing them in clinic-proximal residences using an XGBoost-backed urgency scoring engine.
 
+## Current Policy
+
+The live allocation rules are documented in [ALLOCATION_POLICY.md](ALLOCATION_POLICY.md).
+
+In summary:
+
+- only paid students are eligible
+- High urgency students receive clinic-proximal placement as a hard constraint
+- Medium urgency clinic placement currently depends on the configured faculty rule
+- remaining students are allocated to valid halls, using randomness only as a tie-break
+- unused clinic-proximal rooms may be backfilled by the clinic-proximal faculties
+
 ---
 
 ## ✨ Features
