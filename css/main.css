@@ -87,9 +87,9 @@
     --c-accent-hover:  #d4b45e;
 
     /* -- Backgrounds -- */
-    --c-bg-body:      #0d1117;
-    --c-bg-surface:   #161b22;
-    --c-bg-surface-2: #1c2333;
+    --c-bg-body:      #1c2333;
+    --c-bg-surface:   #242c3d;
+    --c-bg-surface-2: #2e3748;
 
     /* -- Text -- */
     --c-text-head:       #e6edf3;
