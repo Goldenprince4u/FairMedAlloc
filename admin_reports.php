@@ -251,13 +251,77 @@ require_once 'includes/header.php';
                 </div>
             </div>
 
-            <div class="card reports-card p-6">
-                <h3 class="serif reports-title">Gender &amp; Severity Split</h3>
-                <div class="chart-wrap chart-wrap--bar" style="margin-bottom:1.5rem;">
-                    <canvas id="genderChart"></canvas>
+            <div class="card reports-card p-6" style="justify-content: space-between;">
+                <h3 class="serif reports-title mb-4">Demographics &amp; Severity</h3>
+                
+                <?php
+                // Process Gender Data
+                $m_cnt = 0; $f_cnt = 0;
+                foreach($genders as $g) {
+                    if($g['gender'] === 'Male') $m_cnt = (int)$g['cnt'];
+                    if($g['gender'] === 'Female') $f_cnt = (int)$g['cnt'];
+                }
+                $tot_g = $m_cnt + $f_cnt;
+                $m_pct = $tot_g > 0 ? round(($m_cnt / $tot_g) * 100) : 0;
+                $f_pct = $tot_g > 0 ? round(($f_cnt / $tot_g) * 100) : 0;
+
+                // Process Severity Data
+                $sev_counts = ['High' => 0, 'Medium' => 0, 'Low' => 0];
+                $tot_sev = 0;
+                foreach($severities as $s) {
+                    $sev_counts[$s['label']] = (int)$s['cnt'];
+                    $tot_sev += (int)$s['cnt'];
+                }
+                $h_pct = $tot_sev > 0 ? round(($sev_counts['High'] / $tot_sev) * 100) : 0;
+                $m_pct_sev = $tot_sev > 0 ? round(($sev_counts['Medium'] / $tot_sev) * 100) : 0;
+                $l_pct = $tot_sev > 0 ? round(($sev_counts['Low'] / $tot_sev) * 100) : 0;
+                ?>
+
+                <!-- Gender Split Bar -->
+                <div class="mb-6">
+                    <div class="flex justify-between text-sm fw-600 mb-2">
+                        <span style="color: #3b82f6;"><i class="fa-solid fa-mars mr-2"></i>Male <span class="text-muted fw-400 ml-1">(<?php echo $m_cnt; ?>)</span></span>
+                        <span style="color: #ec4899;"><span class="text-muted fw-400 mr-1">(<?php echo $f_cnt; ?>)</span> Female <i class="fa-solid fa-venus ml-2"></i></span>
+                    </div>
+                    <div style="display:flex; height: 12px; border-radius: 999px; overflow: hidden; background: var(--c-bg-surface-2); box-shadow: inset 0 1px 2px rgba(0,0,0,0.05);">
+                        <div style="width: <?php echo $m_pct; ?>%; background: #3b82f6; transition: width 1s ease;"></div>
+                        <div style="width: <?php echo $f_pct; ?>%; background: #ec4899; transition: width 1s ease;"></div>
+                    </div>
                 </div>
-                <div class="chart-wrap chart-wrap--bar">
-                    <canvas id="severityChart"></canvas>
+
+                <!-- Severity Progress Bars -->
+                <div style="background: var(--c-bg-surface-2); border: 1px solid var(--c-border); border-radius: var(--radius-md); padding: 1.25rem;">
+                    <h4 class="text-xs uppercase text-muted mb-4 tracking-wider fw-800">Medical Severity Split</h4>
+                    
+                    <div class="mb-3">
+                        <div class="flex justify-between text-xs fw-600 mb-1">
+                            <span style="color: var(--c-danger);">High Risk</span>
+                            <span><?php echo $sev_counts['High']; ?> <span class="text-muted fw-400 ml-1">(<?php echo $h_pct; ?>%)</span></span>
+                        </div>
+                        <div style="height: 6px; border-radius: 999px; background: var(--c-border);">
+                            <div style="width: <?php echo $h_pct; ?>%; height: 100%; border-radius: 999px; background: var(--c-danger); transition: width 1s ease;"></div>
+                        </div>
+                    </div>
+
+                    <div class="mb-3">
+                        <div class="flex justify-between text-xs fw-600 mb-1">
+                            <span style="color: var(--c-warning);">Medium Risk</span>
+                            <span><?php echo $sev_counts['Medium']; ?> <span class="text-muted fw-400 ml-1">(<?php echo $m_pct_sev; ?>%)</span></span>
+                        </div>
+                        <div style="height: 6px; border-radius: 999px; background: var(--c-border);">
+                            <div style="width: <?php echo $m_pct_sev; ?>%; height: 100%; border-radius: 999px; background: var(--c-warning); transition: width 1s ease;"></div>
+                        </div>
+                    </div>
+
+                    <div>
+                        <div class="flex justify-between text-xs fw-600 mb-1">
+                            <span style="color: var(--c-success);">Low Risk</span>
+                            <span><?php echo $sev_counts['Low']; ?> <span class="text-muted fw-400 ml-1">(<?php echo $l_pct; ?>%)</span></span>
+                        </div>
+                        <div style="height: 6px; border-radius: 999px; background: var(--c-border);">
+                            <div style="width: <?php echo $l_pct; ?>%; height: 100%; border-radius: 999px; background: var(--c-success); transition: width 1s ease;"></div>
+                        </div>
+                    </div>
                 </div>
             </div>
         </div>
@@ -397,33 +461,7 @@ require_once 'includes/header.php';
         options: { plugins: { legend: { display: false } }, cutout: '75%', maintainAspectRatio: false }
     });
 
-    // Gender bar
-    const genderData = <?php echo json_encode($genders); ?>;
-    const genderColors = genderData.map(d => d.gender === 'Female' ? palette.female : palette.male);
-    new Chart(document.getElementById('genderChart'), {
-        type: 'bar',
-        data: {
-            labels: genderData.map(d => d.gender),
-            datasets: [{ label: 'Students', data: genderData.map(d => +d.cnt),
-                backgroundColor: genderColors, borderRadius: 6, maxBarThickness: 36 }]
-        },
-        options: { indexAxis: 'y', plugins: { legend: { display: false } },
-            maintainAspectRatio: false, scales: { x: { grid }, y: { grid: { display: false } } } }
-    });
 
-    // Severity bar
-    const sevData = <?php echo json_encode($severities); ?>;
-    const sevColors = sevData.map(d => d.label === 'High' ? palette.high : d.label === 'Medium' ? palette.medium : palette.low);
-    new Chart(document.getElementById('severityChart'), {
-        type: 'bar',
-        data: {
-            labels: sevData.map(d => d.label),
-            datasets: [{ label: 'Cases', data: sevData.map(d => +d.cnt),
-                backgroundColor: sevColors, borderRadius: 6, maxBarThickness: 36 }]
-        },
-        options: { indexAxis: 'y', plugins: { legend: { display: false } },
-            maintainAspectRatio: false, scales: { x: { grid }, y: { grid: { display: false } } } }
-    });
 
     // Medical conditions
     const condCanvas = document.getElementById('condChart');
