@@ -86,7 +86,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $session = sanitize_input($_POST['academic_session'] ?? '');
         $threshold = (int)($_POST['threshold'] ?? 0);
         $medium_threshold = (int)($_POST['medium_threshold'] ?? 0);
-        $general_notice = trim(sanitize_input($_POST['general_notice'] ?? ''));
+        // Read the notice as raw text — no sanitize_input() here because
+        // that would HTML-encode it before DB storage, causing double-encoding
+        // when it is later displayed with htmlspecialchars().
+        $general_notice = trim((string)($_POST['general_notice'] ?? ''));
         $raw_status = sanitize_input($_POST['alloc_status'] ?? 'open');
         $alloc_status = in_array($raw_status, ['open', 'locked'], true) ? $raw_status : 'open';
 
@@ -158,7 +161,11 @@ $cur_session = $settings['current_session'] ?? '2025/2026';
 $cur_threshold = $settings['urgency_threshold_proximal'] ?? '75';
 $cur_medium_threshold = $settings['urgency_threshold_medium'] ?? '40';
 $cur_status = $settings['allocation_status'] ?? 'open';
-$cur_general_notice = $settings['general_notice'] ?? '';
+// Read the stored value as-is (plain text). html_entity_decode() is intentionally
+// NOT used here — the value is raw text stored via a prepared statement, so no
+// HTML entities are present. Decoding would be a no-op at best and could corrupt
+// apostrophes on re-save (the '→&#039; number-display bug).
+$cur_general_notice = (string)($settings['general_notice'] ?? '');
 
 $page_title = "Settings | FairMedAlloc";
 require_once 'includes/header.php';
@@ -257,7 +264,7 @@ require_once 'includes/header.php';
                             rows="4"
                             maxlength="600"
                             placeholder="Write a message that should appear on every student's dashboard."
-                        ><?php echo htmlspecialchars($cur_general_notice); ?></textarea>
+                        ><?php echo htmlspecialchars($cur_general_notice, ENT_QUOTES, 'UTF-8'); ?></textarea>
                         <div class="text-xs text-muted mt-2">
                             This message appears under General Info on every student dashboard.
                         </div>

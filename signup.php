@@ -79,48 +79,58 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
             $stmt2->bind_param("iiis", $new_id, $level, $dept_id, $gen);
             $stmt2->execute();
 
-            // --- 3. Process Medical Record (conditional) ---
-            // If the student reports a medical condition, store it as a pending record.
-            // This data is later used by the XGBoost model to calculate priority scores.
+            // --- 3. Process Medical Record ---
+            // A record is created if the student declares a medical condition OR
+            // a non-zero mobility status (wheelchair, crutches, artificial limb).
+            // Both inputs feed the XGBoost urgency score, so either one alone is
+            // sufficient to warrant a medical record and priority consideration.
             $condition = trim($_POST['medical_condition']);
-            if ($condition && $condition !== 'None / Healthy') {
-                $mobility = (int)($_POST['mobility'] ?? 0);
-                $details  = "$condition (Self-Reported)";
+            $mobility  = (int)($_POST['mobility'] ?? 0);
+            $has_condition = ($condition && $condition !== 'None / Healthy');
+            $has_mobility  = ($mobility > 0);
+
+            if ($has_condition || $has_mobility) {
+                // Use a generic condition label when only mobility is declared.
+                $record_condition = $has_condition ? $condition : 'Physical Disability';
+                $details          = $has_condition
+                    ? "$condition (Self-Reported)"
+                    : "Mobility Support Required (Self-Reported)";
 
                 $severity = 'Low';
-                if (in_array($condition, ['Sickle Cell Disease', 'Epilepsy', 'Cardiovascular', 'Asthma'])) {
+                if ($has_condition && in_array($condition, ['Sickle Cell Disease', 'Epilepsy', 'Cardiovascular', 'Asthma'])) {
                     $severity = 'High';
-                } elseif (in_array($condition, ['Visual Impairment', 'Physical Disability'])) {
+                } elseif ($has_condition && in_array($condition, ['Visual Impairment', 'Physical Disability'])) {
                     $severity = 'Medium';
                 }
 
+                // Mobility level can independently raise the severity band.
                 if ($mobility === 3) {
-                    $severity = 'High';
+                    $severity = 'High';          // Wheelchair → always High
                 } elseif ($mobility === 1 || $mobility === 2) {
                     if ($severity !== 'High') $severity = 'Medium';
                 }
 
                 $scorePayload = [
-                    'id' => $new_id,
-                    'condition' => $condition,
-                    'mobility' => $mobility,
-                    'severity' => $severity,
-                    'academic_level' => $level,
-                    'has_special_needs' => (int)($mobility > 0),
-                    'is_requested' => (int)($mobility > 0),
+                    'id'            => $new_id,
+                    'condition'     => $record_condition,
+                    'mobility'      => $mobility,
+                    'severity'      => $severity,
+                    'academic_level'=> $level,
+                    'has_special_needs' => (int)$has_mobility,
+                    'is_requested'  => (int)$has_mobility,
                 ];
 
                 try {
                     $scoreService = new UrgencyScoreService();
-                    $scoreResult = $scoreService->scoreStudent($scorePayload);
-                    $score = (float)$scoreResult['score'];
+                    $scoreResult  = $scoreService->scoreStudent($scorePayload);
+                    $score        = (float)$scoreResult['score'];
                 } catch (Exception $e) {
                     error_log('[FairMedAlloc] Signup scoring fell back to PHP rules: ' . $e->getMessage());
                     $score = UrgencyScoreService::calculateFallbackScore($scorePayload);
                 }
 
                 $stmt_med = $conn->prepare("INSERT INTO medical_records (student_id, condition_category, condition_details, severity_level, urgency_score, mobility_status) VALUES (?, ?, ?, ?, ?, ?)");
-                $stmt_med->bind_param("isssdi", $new_id, $condition, $details, $severity, $score, $mobility);
+                $stmt_med->bind_param("isssdi", $new_id, $record_condition, $details, $severity, $score, $mobility);
                 $stmt_med->execute();
             }
 
@@ -236,9 +246,10 @@ require_once 'includes/header.php';
                     </div>
                 </div>
 
-                <div class="grid grid-cols-2 gap-4 mb-4">                    <div class="form-group">
+                <div class="grid grid-cols-2 gap-4 mb-4">
+                    <div class="form-group">
                         <label class="text-sm fw-700 mb-2">Medical Condition</label>
-                        <select name="medical_condition" id="medCondition" required class="input-auth" onchange="toggleMobility()">
+                        <select name="medical_condition" id="medCondition" required class="input-auth">
                             <option value="">Select Status...</option>
                             <option value="None / Healthy">None / Healthy</option>
                             <option value="Asthma">Asthma</option>
@@ -251,29 +262,21 @@ require_once 'includes/header.php';
                             <option value="Other">Other</option>
                         </select>
                     </div>
-                        <div class="form-group" id="mobilityGroup" style="display:none;">
-                            <label class="text-sm fw-700 mb-2">Mobility Status</label>
-                            <select name="mobility" id="mobilityInput" class="input-auth">
-                                <option value="0">Normal Mobility</option>
-                                <option value="1">Artificial Limb</option>
-                                <option value="2">Crutches/Walker</option>
-                                <option value="3">Wheelchair User</option>
-                            </select>
+                    <div class="form-group" id="mobilityGroup">
+                        <label class="text-sm fw-700 mb-2">Mobility Status</label>
+                        <select name="mobility" id="mobilityInput" class="input-auth">
+                            <option value="0">Normal Mobility</option>
+                            <option value="1">Artificial Limb</option>
+                            <option value="2">Crutches / Walker</option>
+                            <option value="3">Wheelchair User</option>
+                        </select>
+                        <div class="text-xs text-muted mt-2">
+                            Select if you require mobility support. A wheelchair or
+                            crutch declaration <strong>alone</strong> is enough to
+                            trigger priority scoring — no medical condition required.
                         </div>
+                    </div>
                 </div>
-
-                <script>
-                function toggleMobility() {
-                    const cond = document.getElementById('medCondition').value;
-                    const mobGroup = document.getElementById('mobilityGroup');
-                    if (cond && cond !== 'None / Healthy') {
-                        mobGroup.style.display = 'block';
-                    } else {
-                        mobGroup.style.display = 'none';
-                        document.getElementById('mobilityInput').value = '0';
-                    }
-                }
-                </script>
 
                 <div class="form-group mb-4">
                     <label class="text-sm fw-700 mb-2">Email Address</label>

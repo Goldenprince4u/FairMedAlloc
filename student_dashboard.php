@@ -31,6 +31,10 @@ $has_paid = $studentObj->hasPaid();
 
 $general_notice_stmt = $conn->prepare("SELECT setting_value FROM settings WHERE setting_key = 'general_notice' LIMIT 1");
 $general_notice_stmt->execute();
+// Read the stored notice as raw text. html_entity_decode() is intentionally
+// NOT used — the value is plain text from a prepared statement with no HTML
+// entities embedded. Decoding + re-encoding caused apostrophes to appear as
+// the literal string "&#039;" (the "gives a number" bug) on some setups.
 $general_notice = trim((string)($general_notice_stmt->get_result()->fetch_assoc()['setting_value'] ?? ''));
 $general_notice = $general_notice !== ''
     ? $general_notice

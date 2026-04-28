@@ -277,6 +277,16 @@ require_once 'includes/header.php';
                       </form>
                       <?php endif; ?>
                   </div>
+                  <?php if (!empty($student['profile_pic']) && $student['profile_pic'] !== 'default.png'): ?>
+                  <div style="margin-top:0.75rem;">
+                      <button type="button"
+                              class="btn btn-outline btn-sm"
+                              style="border-color:rgba(220,38,38,0.25);color:var(--c-danger);"
+                              onclick="if(confirm('Remove your profile photo? This cannot be undone.')) document.getElementById('remove-photo-form').submit();">
+                          <i class="fa-solid fa-trash-can"></i> Remove Photo
+                      </button>
+                  </div>
+                  <?php endif; ?>
                   <div class="profile-banner-info">
                       <h2><?php echo htmlspecialchars($student['full_name']); ?></h2>
                       <div class="profile-banner-meta">
