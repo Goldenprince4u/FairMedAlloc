@@ -115,8 +115,23 @@ require_once 'includes/header.php';
 /* ── Custom Reports CSS to supplement main.css ── */
 .reports-chart-grid {
     display: grid;
-    grid-template-columns: 1fr 1fr;
+    grid-template-columns: repeat(auto-fit, minmax(400px, 1fr));
     gap: 1.5rem;
+}
+.kpi-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 1.5rem;
+}
+.urgency-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    gap: 1.5rem;
+}
+.faculty-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+    gap: 1rem;
 }
 .reports-card {
     display: flex;
@@ -179,6 +194,12 @@ require_once 'includes/header.php';
 @media (max-width: 1024px) {
     .reports-chart-grid { grid-template-columns: 1fr; }
 }
+@media (max-width: 768px) {
+    .kpi-grid { grid-template-columns: repeat(2, 1fr); }
+}
+@media (max-width: 480px) {
+    .kpi-grid, .faculty-grid, .urgency-grid { grid-template-columns: 1fr; }
+}
 </style>
 
 <div class="app-shell">
@@ -198,7 +219,7 @@ require_once 'includes/header.php';
         </div>
 
         <!-- ── KPI Row ──────────────────────────────────────────────────── -->
-        <div class="grid grid-cols-4 mb-8">
+        <div class="kpi-grid mb-8">
             <div class="card stat-card">
                 <div class="stat-icon" style="background:rgba(59,130,246,0.1);color:var(--c-info);"><i class="fa-solid fa-users"></i></div>
                 <div class="stat-info"><h3><?php echo (int)$alloc['total']; ?></h3><p>Total Students</p></div>
@@ -220,7 +241,7 @@ require_once 'includes/header.php';
         <!-- ── Urgency Band Summary ──────────────────────────────────────── -->
         <div class="mb-8">
             <h2 style="font-size:1rem;font-weight:700;margin-bottom:1rem;color:var(--c-text-head);">Urgency Band Distribution</h2>
-            <div class="grid grid-cols-3">
+            <div class="urgency-grid">
                 <div class="card stat-card">
                     <div class="stat-icon" style="background:rgba(239,68,68,0.1);color:var(--c-danger);"><i class="fa-solid fa-triangle-exclamation"></i></div>
                     <div class="stat-info"><h3><?php echo (int)$urgency['high_count']; ?></h3><p>High (&ge;<?php echo $prox_t; ?>)</p></div>
@@ -360,7 +381,7 @@ require_once 'includes/header.php';
             <?php if (empty($faculty_med)): ?>
                 <p class="text-muted text-sm">No faculty data yet.</p>
             <?php else: ?>
-                <div class="grid grid-cols-4" style="gap: 1rem;">
+                <div class="faculty-grid">
                     <?php 
                     $icons = ['fa-laptop-medical', 'fa-notes-medical', 'fa-briefcase-medical', 'fa-book-medical', 'fa-file-medical', 'fa-truck-medical', 'fa-suitcase-medical', 'fa-kit-medical'];
                     $theme_colors = [
