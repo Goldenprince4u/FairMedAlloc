@@ -98,15 +98,14 @@ $faculty_med = $conn->query("
 
 // ── Hostel occupancy by block ────────────────────────────────────────────────
 $occupancy = $conn->query("
-    SELECT h.name AS hostel_name, h.block_name,
-           h.gender_allowed AS gender,
-           SUM(r.capacity)       AS total_cap,
+    SELECT h.name AS hostel_name,
+           SUM(r.capacity) AS total_cap,
            SUM(r.occupied_count) AS occupied
     FROM rooms r
     JOIN hostels h ON r.hostel_id = h.hostel_id
     WHERE h.is_postgrad = 0 AND h.is_foundation = 0
-    GROUP BY h.hostel_id
-    ORDER BY h.name ASC, CAST(h.block_name AS UNSIGNED) ASC
+    GROUP BY h.name
+    ORDER BY h.name
 ")->fetch_all(MYSQLI_ASSOC);
 
 require_once 'includes/header.php';
@@ -402,19 +401,17 @@ require_once 'includes/header.php';
         <!-- ── Hostel Occupancy Table ────────────────────────────────────── -->
         <div class="card mb-8 reports-card p-0 overflow-hidden">
             <div class="p-6 pb-4 border-b border-divider">
-                <h3 class="serif reports-title mb-0">Hostel Occupancy by Block</h3>
+                <h3 class="serif reports-title mb-0">Hostel Occupancy Breakdown</h3>
             </div>
             <div style="overflow-x:auto;">
                 <table class="data-table reports-table">
                     <thead>
                         <tr>
-                            <th>Hostel</th>
-                            <th class="text-center">Block</th>
-                            <th class="text-center">Gender</th>
+                            <th>Hall</th>
                             <th class="text-center">Capacity</th>
                             <th class="text-center">Occupied</th>
                             <th class="text-center">Available</th>
-                            <th style="min-width:160px;">Fill Rate</th>
+                            <th style="min-width:140px;">Fill Rate</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -423,22 +420,16 @@ require_once 'includes/header.php';
                             $occ   = (int)$row['occupied'];
                             $avail = $cap - $occ;
                             $pct   = $cap > 0 ? round($occ / $cap * 100) : 0;
-                            $bar   = $pct >= 90 ? 'var(--c-danger)' : ($pct >= 70 ? 'var(--c-warning)' : 'var(--c-success)');
+                            $bar_color = $pct >= 90 ? '#b85c5c' : ($pct >= 70 ? '#c9a84c' : '#4c956c');
                         ?>
                             <tr>
                                 <td><?php echo htmlspecialchars($row['hostel_name']); ?></td>
-                                <td class="text-center"><?php echo htmlspecialchars($row['block_name'] ?? '—'); ?></td>
-                                <td class="text-center">
-                                    <span class="badge <?php echo $row['gender'] === 'Male' ? 'badge-info' : 'badge-primary'; ?>" style="font-size:0.68rem;">
-                                        <?php echo htmlspecialchars($row['gender']); ?>
-                                    </span>
-                                </td>
-                                <td class="text-center fw-700"><?php echo $cap; ?></td>
+                                <td class="text-center"><?php echo $cap; ?></td>
                                 <td class="text-center"><?php echo $occ; ?></td>
-                                <td class="text-center <?php echo $avail === 0 ? 'text-danger fw-700' : ''; ?>"><?php echo $avail; ?></td>
-                                <td>
-                                    <div style="background:var(--c-border);border-radius:999px;height:8px;margin-bottom:4px;">
-                                        <div style="width:<?php echo $pct; ?>%;background:<?php echo $bar; ?>;border-radius:999px;height:8px;transition:width .4s;"></div>
+                                <td class="text-center"><?php echo $avail; ?></td>
+                                <td style="min-width:140px;">
+                                    <div style="background:var(--c-border);border-radius:999px;height:8px;">
+                                        <div style="width:<?php echo $pct; ?>%;background:<?php echo $bar_color; ?>;border-radius:999px;height:8px;transition:width .4s;"></div>
                                     </div>
                                     <small style="color:var(--c-text-muted);"><?php echo $pct; ?>%</small>
                                 </td>
