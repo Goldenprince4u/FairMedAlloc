@@ -18,7 +18,7 @@ class AllocationEngine {
     /**
      * Run the full allocation process
      */
-    public function run() {
+    public function run(?int $single_student_id = null) {
         // Start Transaction for Atomicity
         $this->conn->begin_transaction();
 
@@ -48,8 +48,13 @@ class AllocationEngine {
                             WHERE py.student_id = p.user_id
                               AND py.status = 'paid'
                         )
-                    )
-                    ORDER BY m.urgency_score DESC";
+                    )";
+            
+            if ($single_student_id !== null) {
+                $sql .= " AND p.user_id = " . (int)$single_student_id;
+            }
+            
+            $sql .= " ORDER BY m.urgency_score DESC";
             
             $result = $this->conn->query($sql);
             $students = $result->fetch_all(MYSQLI_ASSOC);

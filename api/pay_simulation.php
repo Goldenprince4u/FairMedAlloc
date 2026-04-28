@@ -61,7 +61,7 @@ if ($stmt->execute()) {
     require_once '../includes/AllocationEngine.php';
     try {
         $engine = new AllocationEngine($conn);
-        $engine->run();
+        $engine->run($user_id);
     } catch (Exception $e) {
         error_log('Allocation engine error during pay simulation: ' . $e->getMessage());
     }
