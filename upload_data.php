@@ -36,6 +36,9 @@ $msg = '';
 $msg_type = 'success';
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_FILES['csv_file'])) {
+    // Prevent script timeout during massive batch processing
+    set_time_limit(0);
+
     // Validate CSRF token before processing any file data
     check_csrf();
 
