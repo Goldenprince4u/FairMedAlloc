@@ -243,9 +243,9 @@ require_once 'includes/header.php';
 
                         <?php if (!empty($profile_pic) && $profile_pic !== 'default.png'): ?>
                         <div style="height:1px;background:var(--c-border);"></div>
-                        <!-- Remove photo -->
+                        <!-- Remove photo (hidden by request) -->
                         <button type="button"
-                                style="display:flex;align-items:center;gap:0.625rem;width:100%;padding:0.625rem 0.875rem;font-size:0.82rem;font-weight:600;color:var(--c-danger);background:none;border:none;cursor:pointer;font-family:inherit;transition:background 0.15s;"
+                                style="display:none;align-items:center;gap:0.625rem;width:100%;padding:0.625rem 0.875rem;font-size:0.82rem;font-weight:600;color:var(--c-danger);background:none;border:none;cursor:pointer;font-family:inherit;transition:background 0.15s;"
                                 onmouseover="this.style.background='rgba(220,38,38,0.06)'"
                                 onmouseout="this.style.background=''"
                                 onclick="if(confirm('Remove your profile photo? This cannot be undone.')) document.getElementById('admin-remove-form').submit();">
@@ -263,7 +263,7 @@ require_once 'includes/header.php';
                     </form>
                     <?php endif; ?>
                 </div>
-                <?php if (!empty($profile_pic) && $profile_pic !== 'default.png'): ?>
+                <?php if (false): ?>
                 <div style="margin-top:0.5rem;">
                     <button type="button"
                             class="btn btn-outline btn-sm"

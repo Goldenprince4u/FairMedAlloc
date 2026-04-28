@@ -16,6 +16,9 @@ require_once '../includes/DbHelper.php';
 // All responses from this file will be JSON-formatted
 header('Content-Type: application/json');
 
+// Prevent PHP timeout during long-running tasks like XGBoost or Allocation
+set_time_limit(0);
+
 const MANUAL_ALLOCATION_VERSION = 'manual_override_v1';
 
 // --- 1. Security Check ---

@@ -115,7 +115,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_FILES['csv_file'])) {
                 }
 
                 // Default password is the lowercase matric number — must_change_password=1 forces a reset on first login.
-                $hash = password_hash(strtolower($matric), PASSWORD_DEFAULT);
+                $hash = password_hash(strtolower($matric), PASSWORD_BCRYPT, ['cost' => 4]);
 
                 $stmt_user->bind_param("sss", $matric, $name, $hash);
                 if ($stmt_user->execute()) {
