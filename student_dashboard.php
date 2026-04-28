@@ -41,9 +41,6 @@ require_once 'includes/NotificationManager.php';
 $notifier            = new NotificationManager($conn);
 $notices             = $notifier->getRecent($user_id, 5);
 $unread_notice_count = count(array_filter($notices, fn($n) => !(bool)$n['is_read']));
-if (count($notices) > 0) {
-    $notifier->markAllRead($user_id);
-}
 
 $page_title = "Dashboard | FairMedAlloc";
 require_once 'includes/header.php';
@@ -164,6 +161,9 @@ require_once 'includes/header.php';
         </div>
 
         <script src="js/student_dashboard.js"></script>
+        <form id="notice-csrf-form" class="hidden">
+            <?php csrf_field(); ?>
+        </form>
 
         <!-- Bottom Grid: Profile & Notices -->
         <div class="grid grid-dashboard-custom">
@@ -204,69 +204,48 @@ require_once 'includes/header.php';
                 </div>
             </div>
 
-            <!-- Notices (collapsible) -->
-            <div class="card" style="padding:0;overflow:hidden;">
-                <!-- Collapsible Header -->
-                <button
-                    id="noticesToggle"
-                    aria-expanded="false"
-                    aria-controls="noticesBody"
-                    onclick="toggleNotices()"
-                    style="
-                        width:100%;display:flex;align-items:center;justify-content:space-between;
-                        padding:1.25rem 1.75rem;
-                        background:none;border:none;cursor:pointer;
-                        border-bottom:1px solid transparent;
-                        transition:border-color 0.2s;
-                        font-family:var(--font-heading);
-                    "
-                >
-                    <span style="display:flex;align-items:center;gap:0.625rem;">
+            <!-- Notices -->
+            <div class="card" style="padding:1.75rem;">
+                <div class="flex items-center justify-between mb-4" style="gap:0.75rem;">
+                    <div style="display:flex;align-items:center;gap:0.625rem;">
                         <i class="fa-solid fa-bell" style="color:var(--c-primary);font-size:1rem;"></i>
-                        <span style="font-size:1.15rem;font-weight:800;color:var(--c-text-head);">Notices</span>
-                        <?php if ($unread_notice_count > 0): ?>
-                            <span style="
-                                background:var(--c-danger);color:#fff;
-                                font-size:0.65rem;font-weight:700;
-                                padding:0.1rem 0.45rem;border-radius:999px;
-                                min-width:18px;text-align:center;
-                            "><?php echo $unread_notice_count; ?></span>
-                        <?php endif; ?>
-                    </span>
-                    <i id="noticesChevron" class="fa-solid fa-chevron-down"
-                       style="color:var(--c-text-muted);font-size:0.85rem;transition:transform 0.25s;"></i>
-                </button>
-
-                <!-- Collapsible Body -->
-                <div id="noticesBody" style="max-height:0;overflow:hidden;transition:max-height 0.35s ease;">
-                    <div style="padding:1.25rem 1.75rem 0.75rem;">
-                        <?php if (count($notices) > 0): ?>
-                            <?php foreach ($notices as $notice):
-                                $bg     = $notice['is_read'] ? 'rgba(0,0,0,0.02)' : 'rgba(59,130,246,0.06)';
-                                $border = $notice['is_read'] ? 'var(--c-border)'   : 'var(--c-primary)';
-                            ?>
-                                <div class="mb-4 p-3 rounded text-sm"
-                                     style="background:<?php echo $bg; ?>;border-left:4px solid <?php echo $border; ?>;">
-                                    <p class="text-body"><?php echo htmlspecialchars($notice['message']); ?></p>
-                                    <div class="text-xs text-muted mt-1">
-                                        <?php echo date('M d, H:i', strtotime($notice['created_at'])); ?>
-                                    </div>
-                                </div>
-                            <?php endforeach; ?>
-                        <?php else: ?>
-                            <p class="text-muted text-sm mb-4" style="font-style:italic;">No recent notifications.</p>
-                        <?php endif; ?>
-
-                        <div class="border-t pt-4 mb-3">
-                            <div class="flex items-center gap-2 mb-1 text-primary fw-700">
-                                <i class="fa-solid fa-bullhorn"></i> General Info
-                            </div>
-                            <p class="text-sm text-muted leading-relaxed">
-                                <?php echo htmlspecialchars($general_notice); ?>
-                            </p>
-                        </div>
+                        <h3 class="serif text-xl mb-0">Notices</h3>
                     </div>
+                    <?php if ($unread_notice_count > 0): ?>
+                        <span id="noticeBadge" class="badge badge-danger">
+                            <?php echo $unread_notice_count; ?> New
+                        </span>
+                    <?php endif; ?>
                 </div>
+
+                <div class="mb-4 p-4 rounded" style="background:var(--c-bg-surface-2);border:1px solid var(--c-border);">
+                    <div class="flex items-center gap-2 mb-2 text-primary fw-700">
+                        <i class="fa-solid fa-bullhorn"></i> General Info
+                    </div>
+                    <p class="text-sm text-body leading-relaxed">
+                        <?php echo htmlspecialchars($general_notice); ?>
+                    </p>
+                </div>
+
+                <?php if (count($notices) > 0): ?>
+                    <div style="display:flex;flex-direction:column;gap:0.875rem;">
+                        <?php foreach ($notices as $notice):
+                            $bg     = $notice['is_read'] ? 'rgba(0,0,0,0.02)' : 'rgba(59,130,246,0.06)';
+                            $border = $notice['is_read'] ? 'var(--c-border)'   : 'var(--c-primary)';
+                        ?>
+                            <div class="p-3 rounded text-sm notice-item"
+                                 data-read="<?php echo $notice['is_read'] ? '1' : '0'; ?>"
+                                 style="background:<?php echo $bg; ?>;border-left:4px solid <?php echo $border; ?>;">
+                                <p class="text-body"><?php echo htmlspecialchars($notice['message']); ?></p>
+                                <div class="text-xs text-muted mt-1">
+                                    <?php echo date('M d, H:i', strtotime($notice['created_at'])); ?>
+                                </div>
+                            </div>
+                        <?php endforeach; ?>
+                    </div>
+                <?php else: ?>
+                    <p class="text-muted text-sm" style="font-style:italic;">No recent notifications.</p>
+                <?php endif; ?>
             </div>
 
         </div><!-- end grid -->
@@ -274,37 +253,49 @@ require_once 'includes/header.php';
 </div>
 
 <script>
-function toggleNotices() {
-    const btn     = document.getElementById('noticesToggle');
-    const body    = document.getElementById('noticesBody');
-    const chevron = document.getElementById('noticesChevron');
-    const isOpen  = btn.getAttribute('aria-expanded') === 'true';
+let noticesMarkedRead = <?php echo $unread_notice_count > 0 ? 'false' : 'true'; ?>;
 
-    if (isOpen) {
-        body.style.maxHeight = '0';
-        btn.style.borderBottomColor = 'transparent';
-        chevron.style.transform = 'rotate(0deg)';
-        btn.setAttribute('aria-expanded', 'false');
-    } else {
-        body.style.maxHeight = body.scrollHeight + 'px';
-        btn.style.borderBottomColor = 'var(--c-border)';
-        chevron.style.transform = 'rotate(180deg)';
-        btn.setAttribute('aria-expanded', 'true');
+function markNoticesRead() {
+    if (noticesMarkedRead) {
+        return;
     }
-}
 
-// Auto-open when there are unread notifications
-<?php if ($unread_notice_count > 0): ?>
+    const csrfInput = document.querySelector('#notice-csrf-form input[name="csrf_token"]');
+    if (!csrfInput) {
+        return;
+    }
+
+    fetch('api/mark_notifications_read.php', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: new URLSearchParams({ csrf_token: csrfInput.value })
+    })
+        .then(response => response.json())
+        .then(data => {
+            if (data.status !== 'success') {
+                return;
+            }
+
+            noticesMarkedRead = true;
+
+            const badge = document.getElementById('noticeBadge');
+            if (badge) {
+                badge.remove();
+            }
+
+            document.querySelectorAll('.notice-item[data-read="0"]').forEach((item) => {
+                item.dataset.read = '1';
+                item.style.background = 'rgba(0,0,0,0.02)';
+                item.style.borderLeftColor = 'var(--c-border)';
+            });
+        })
+        .catch(() => {});
+}
 document.addEventListener('DOMContentLoaded', function () {
-    const body    = document.getElementById('noticesBody');
-    const btn     = document.getElementById('noticesToggle');
-    const chevron = document.getElementById('noticesChevron');
-    body.style.maxHeight = body.scrollHeight + 'px';
-    btn.style.borderBottomColor = 'var(--c-border)';
-    chevron.style.transform = 'rotate(180deg)';
-    btn.setAttribute('aria-expanded', 'true');
+    <?php if ($unread_notice_count > 0): ?>
+    markNoticesRead();
+    <?php endif; ?>
 });
-<?php endif; ?>
 </script>
 </body>
 </html>

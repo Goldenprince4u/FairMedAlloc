@@ -14,6 +14,9 @@
 // Load environment variables from the .env file in the project root.
 // Use defaults only as a last resort (localhost dev fallback).
 $env = parse_ini_file(__DIR__ . '/.env') ?: [];
+if (empty($env)) {
+    error_log('[FairMedAlloc] WARNING: .env file missing or unreadable — using built-in defaults. Check file path and permissions.');
+}
 
 if (!headers_sent()) {
     header('X-Frame-Options: SAMEORIGIN');
@@ -45,7 +48,7 @@ if ($conn->connect_error) {
     die("
         <h3>Service Temporarily Unavailable</h3>
         <p>The application is unable to connect to the database. Please try again shortly, or contact the system administrator.</p>
-        <p><small>If you are a developer: check that XAMPP's MySQL module is running, the .env file is correct, and the database has been created.</small></p>
+        <p><small>If you are a developer: check your database server is running, the .env file credentials are correct, and the database exists.</small></p>
     ");
 }
 

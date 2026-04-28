@@ -19,10 +19,6 @@ import os
 import sys
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
-SITE_PACKAGES_PATH = os.path.join(SCRIPT_DIR, "site-packages")
-
-if os.path.isdir(SITE_PACKAGES_PATH) and SITE_PACKAGES_PATH not in sys.path:
-    sys.path.insert(0, SITE_PACKAGES_PATH)
 
 import predict
 

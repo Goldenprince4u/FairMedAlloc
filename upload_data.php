@@ -50,11 +50,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_FILES['csv_file'])) {
         // MIME type check — must be CSV or plain-text (some OS report CSV as text/plain)
     } else {
         $allowed_mimes = ['text/csv', 'text/plain', 'application/csv', 'application/vnd.ms-excel'];
-        $finfo = finfo_open(FILEINFO_MIME_TYPE);
-        $detected = finfo_file($finfo, $_FILES['csv_file']['tmp_name']);
-        // finfo_close is deprecated in PHP 8+ and not needed
-        // Also check the original filename extension as a secondary guard
-        $ext = strtolower(pathinfo($_FILES['csv_file']['name'], PATHINFO_EXTENSION));
+        $finfo    = new finfo(FILEINFO_MIME_TYPE);
+        $detected = $finfo->file($_FILES['csv_file']['tmp_name']);
+        $ext      = strtolower(pathinfo($_FILES['csv_file']['name'], PATHINFO_EXTENSION));
 
         if (!in_array($detected, $allowed_mimes) && $ext !== 'csv') {
             $msg = "Invalid file type. Please upload a valid CSV file (detected: {$detected}).";
@@ -63,138 +61,135 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_FILES['csv_file'])) {
     }
 
     if (empty($msg)) {
-        $file = fopen($_FILES['csv_file']['tmp_name'], 'r');
-        $count = 0;
+        $file      = fopen($_FILES['csv_file']['tmp_name'], 'r');
+        $count     = 0;
         $duplicates = 0;
 
         // Skip the CSV header row (column labels)
         fgetcsv($file);
 
         // Prepare reusable statements once for performance across many rows
-        $stmt_check = $conn->prepare("SELECT user_id FROM users WHERE username = ?");
+        $stmt_check      = $conn->prepare("SELECT user_id FROM users WHERE username = ?");
         $user_insert_sql = FAIRMED_SUPPORTS_MUST_CHANGE_PASSWORD
             ? "INSERT INTO users (username, full_name, password_hash, must_change_password, role) VALUES (?, ?, ?, 1, 'student')"
             : "INSERT INTO users (username, full_name, password_hash, role) VALUES (?, ?, ?, 'student')";
-        $stmt_user = $conn->prepare($user_insert_sql);
-        $stmt_profile = $conn->prepare("INSERT INTO student_profiles (user_id, level, department_id, gender, is_paid) VALUES (?, ?, ?, ?, ?)");
+        $stmt_user        = $conn->prepare($user_insert_sql);
+        $stmt_profile     = $conn->prepare("INSERT INTO student_profiles (user_id, level, department_id, gender, is_paid) VALUES (?, ?, ?, ?, ?)");
         $stmt_dept_lookup = $conn->prepare("SELECT department_id FROM departments WHERE name LIKE ? LIMIT 1");
 
-        // ── PHASE 1: Create user & profile records ──────────────────────────────
-        // FIX: Medical records are NOT inserted here. Instead, all students that need
-        // scoring are collected in $pending_medical for a single batch Python call.
-        // Previously: 1 shell_exec() per student → N processes for N rows (timeout risk).
-        // Now: 1 shell_exec() total regardless of import size.
-        $pending_medical = []; // ['id'=>uid, 'condition'=>..., 'severity'=>..., 'mobility'=>..., 'academic_level'=>...]
+        // ── PHASE 1 + 3: Wrapped in a single atomic transaction ─────────────────
+        // If the server crashes mid-import, the entire batch is rolled back so
+        // no orphaned users rows are left without a matching student_profiles row.
+        $pending_medical = [];
 
-        while (($row = fgetcsv($file)) !== false) {
-            // Require all 10 columns
-            if (count($row) < 10)
-                continue;
+        $conn->begin_transaction();
+        try {
+            while (($row = fgetcsv($file)) !== false) {
+                // Require all 10 columns
+                if (count($row) < 10)
+                    continue;
 
-            $matric = trim($row[0]);
-            $name = trim($row[1]);
-            $level = (int) trim($row[2]);
-            $dept = trim($row[4]);
-            $gender = trim($row[5]);
-            $condition = trim($row[6]); // Raw ENUM value — do NOT HTML-encode
-            $severity = trim($row[7]);
-            $mobility = trim($row[8]);
-            $paid_str = trim($row[9]);
+                $matric    = trim($row[0]);
+                $name      = trim($row[1]);
+                $level     = (int) trim($row[2]);
+                $dept      = trim($row[4]);
+                $gender    = trim($row[5]);
+                $condition = trim($row[6]);
+                $severity  = trim($row[7]);
+                $mobility  = trim($row[8]);
+                $paid_str  = trim($row[9]);
 
-            // Skip row if any required field is empty (Paid Status can be '0')
-            if (empty($matric) || empty($name) || empty($dept) || empty($gender) || empty($condition) || empty($severity) || empty($mobility) || $paid_str === '')
-                continue;
+                if (empty($matric) || empty($name) || empty($dept) || empty($gender) || empty($condition) || empty($severity) || empty($mobility) || $paid_str === '')
+                    continue;
 
-            $is_paid = (int) $paid_str === 1 ? 1 : 0;
+                $is_paid = (int) $paid_str === 1 ? 1 : 0;
 
-            // --- Duplicate Detection ---
-            $stmt_check->bind_param("s", $matric);
-            $stmt_check->execute();
-            if ($stmt_check->get_result()->num_rows > 0) {
-                $duplicates++;
-                continue;
-            }
-
-            // --- Default Password: lowercase matric number ---
-            // TODO: Implement forced password change on first login
-            $hash = password_hash(strtolower($matric), PASSWORD_DEFAULT);
-
-            $stmt_user->bind_param("sss", $matric, $name, $hash);
-            if ($stmt_user->execute()) {
-                $uid = $conn->insert_id;
-
-                // --- Department String → ID ---
-                $dept_id = 1;
-                $search_dept = "%" . $dept . "%";
-                $stmt_dept_lookup->bind_param("s", $search_dept);
-                $stmt_dept_lookup->execute();
-                $res_dept = $stmt_dept_lookup->get_result();
-                if ($res_dept->num_rows > 0) {
-                    $dept_id = $res_dept->fetch_assoc()['department_id'];
+                $stmt_check->bind_param("s", $matric);
+                $stmt_check->execute();
+                if ($stmt_check->get_result()->num_rows > 0) {
+                    $duplicates++;
+                    continue;
                 }
 
-                $stmt_profile->bind_param("iiisi", $uid, $level, $dept_id, $gender, $is_paid);
-                $stmt_profile->execute();
+                // Default password is the lowercase matric number — must_change_password=1 forces a reset on first login.
+                $hash = password_hash(strtolower($matric), PASSWORD_DEFAULT);
 
-                // Queue student for batch ML scoring (medical data only if condition is not None)
-                $normalizedCondition = strtolower(trim($condition));
-                if (!in_array($normalizedCondition, ['none', 'none / healthy', 'healthy'], true)) {
-                    $pending_medical[] = [
-                        'id' => $uid,
-                        'condition' => $condition,
-                        'severity' => $severity,
-                        'mobility' => $mobility,
-                        'academic_level' => $level,
-                        'is_requested' => (int)(strtolower(trim($mobility)) !== 'normal mobility' && trim($mobility) !== '0'),
-                    ];
+                $stmt_user->bind_param("sss", $matric, $name, $hash);
+                if ($stmt_user->execute()) {
+                    $uid = $conn->insert_id;
+
+                    $dept_id    = 1;
+                    $search_dept = "%" . $dept . "%";
+                    $stmt_dept_lookup->bind_param("s", $search_dept);
+                    $stmt_dept_lookup->execute();
+                    $res_dept = $stmt_dept_lookup->get_result();
+                    if ($res_dept->num_rows > 0) {
+                        $dept_id = $res_dept->fetch_assoc()['department_id'];
+                    }
+
+                    $stmt_profile->bind_param("iiisi", $uid, $level, $dept_id, $gender, $is_paid);
+                    $stmt_profile->execute();
+
+                    $normalizedCondition = strtolower(trim($condition));
+                    if (!in_array($normalizedCondition, ['none', 'none / healthy', 'healthy'], true)) {
+                        $pending_medical[] = [
+                            'id'            => $uid,
+                            'condition'     => $condition,
+                            'severity'      => $severity,
+                            'mobility'      => $mobility,
+                            'academic_level' => $level,
+                            'is_requested'  => (int)(strtolower(trim($mobility)) !== 'normal mobility' && trim($mobility) !== '0'),
+                        ];
+                    }
+                    $count++;
                 }
-                $count++;
             }
-        }
-        fclose($file);
+            fclose($file);
 
-        // ── PHASE 2: Single batch Python call for ALL students ───────────────────
-        // Calls predict.py once with the full student array — O(1) Python processes
-        // regardless of how many rows were in the CSV.
-        $batch_scores = []; // [uid => score]
-        if (!empty($pending_medical)) {
-            try {
-                $scoreService = new UrgencyScoreService();
-                $result = $scoreService->scoreBatch($pending_medical);
-                if (($result['status'] ?? '') === 'success' && isset($result['results'])) {
-                    $batch_scores = $result['results'];
+            // ── PHASE 2: Single batch Python call for ALL students ───────────────
+            // Runs outside the transaction — ML scoring is a pure computation
+            // with its own fallback; it does not need rollback semantics.
+            $batch_scores = [];
+            if (!empty($pending_medical)) {
+                try {
+                    $scoreService = new UrgencyScoreService();
+                    $result       = $scoreService->scoreBatch($pending_medical);
+                    if (($result['status'] ?? '') === 'success' && isset($result['results'])) {
+                        $batch_scores = $result['results'];
+                    }
+                } catch (Exception $e) {
+                    error_log('[FairMedAlloc] Batch scoring failed during CSV import, falling back to PHP rules: ' . $e->getMessage());
                 }
-            } catch (Exception $e) {
-                error_log('[FairMedAlloc] Batch scoring failed during CSV import, falling back to PHP rules: ' . $e->getMessage());
-            }
-        }
-
-        // ── PHASE 3: Insert medical records with resolved urgency scores ─────────
-        $stmt_med = $conn->prepare("INSERT INTO medical_records (student_id, condition_category, condition_details, severity_level, urgency_score, mobility_status) VALUES (?, ?, ?, ?, ?, ?)");
-
-        foreach ($pending_medical as $s) {
-            $uid = $s['id'];
-            $condition = $s['condition'];
-            $severity = $s['severity'];
-            $mobility = $s['mobility'];
-            // Use ML batch score if available; otherwise apply the weighted fallback formula
-            if (isset($batch_scores[$uid])) {
-                $score = (float) $batch_scores[$uid];
-            } else {
-                $score = UrgencyScoreService::calculateFallbackScore([
-                    'condition' => $condition,
-                    'mobility' => $mobility,
-                    'severity' => $severity,
-                ]);
             }
 
-            $details = "{$condition} (Imported via CSV)";
-            $stmt_med->bind_param("isssds", $uid, $condition, $details, $severity, $score, $mobility);
-            $stmt_med->execute();
-        }
+            // ── PHASE 3: Insert medical records with resolved urgency scores ─────
+            $stmt_med = $conn->prepare("INSERT INTO medical_records (student_id, condition_category, condition_details, severity_level, urgency_score, mobility_status) VALUES (?, ?, ?, ?, ?, ?)");
+            foreach ($pending_medical as $s) {
+                $uid       = $s['id'];
+                $condition = $s['condition'];
+                $severity  = $s['severity'];
+                $mobility  = $s['mobility'];
+                $score     = isset($batch_scores[$uid])
+                    ? (float) $batch_scores[$uid]
+                    : UrgencyScoreService::calculateFallbackScore(['condition' => $condition, 'mobility' => $mobility, 'severity' => $severity]);
 
-        $msg = "Processed: {$count} students registered. Duplicates skipped: {$duplicates}. Imported payment status was preserved, and eligible students will be considered in the next admin batch.";
-        $msg_type = 'success';
+                $details = "{$condition} (Imported via CSV)";
+                $stmt_med->bind_param("isssds", $uid, $condition, $details, $severity, $score, $mobility);
+                $stmt_med->execute();
+            }
+
+            $conn->commit();
+            $msg      = "Processed: {$count} students registered. Duplicates skipped: {$duplicates}. Imported payment status was preserved, and eligible students will be considered in the next admin batch.";
+            $msg_type = 'success';
+
+        } catch (Exception $e) {
+            $conn->rollback();
+            if (is_resource($file)) {
+                fclose($file);
+            }
+            $msg      = "Import failed and was rolled back: " . htmlspecialchars($e->getMessage()) . ". No records were written.";
+            $msg_type = 'error';
+        }
     } // end mime check
 } // end POST
 

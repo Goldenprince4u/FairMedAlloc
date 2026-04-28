@@ -251,7 +251,7 @@ require_once 'includes/header.php';
                               Change Photo
                               <input type="file" id="profile-pic-upload" name="profile_pic"
                                      class="hidden" accept="image/jpeg,image/png,image/gif"
-                                     onchange="this.form.submit()" form="profileForm">
+                                     onchange="previewAndSubmit(this)" form="profileForm">
                           </label>
 
                           <?php if (!empty($student['profile_pic']) && $student['profile_pic'] !== 'default.png'): ?>
@@ -433,6 +433,38 @@ document.addEventListener('keydown', function(e) {
         if (menu) menu.style.display = 'none';
     }
 });
+// Instantly preview uploaded photo in both the banner and the nav sidebar,
+// then auto-submit so the server persists the new image.
+function previewAndSubmit(input) {
+    if (!input.files || !input.files[0]) return;
+    var reader = new FileReader();
+    reader.onload = function(e) {
+        // Update banner preview
+        var banner = document.getElementById('profile-pic-preview');
+        if (banner) banner.src = e.target.result;
+
+        // Update nav sidebar avatar (photo variant)
+        var navImg = document.getElementById('nav-avatar-img');
+        if (navImg) {
+            navImg.src = e.target.result;
+        } else {
+            // No photo element yet (first upload) — swap initials for img
+            var initials = document.getElementById('nav-avatar-initials');
+            if (initials) {
+                var img = document.createElement('img');
+                img.id  = 'nav-avatar-img';
+                img.alt = 'Profile photo';
+                img.src = e.target.result;
+                img.style.cssText = 'width:36px;height:36px;border-radius:50%;object-fit:cover;flex-shrink:0;border:2px solid rgba(255,255,255,0.25);';
+                initials.parentNode.replaceChild(img, initials);
+            }
+        }
+
+        // Submit the form so PHP saves the file
+        input.form.submit();
+    };
+    reader.readAsDataURL(input.files[0]);
+}
 </script>
 </body>
 </html>

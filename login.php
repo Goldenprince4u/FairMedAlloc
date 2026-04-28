@@ -12,7 +12,7 @@ if (isset($_GET['error']) && $_GET['error'] === 'profile_missing') {
     $error = "Profile data incomplete. Please log in again to sync.";
 }
 
-if ($_SERVER["REQUEST_METHOD"] == "POST") {
+if ($_SERVER["REQUEST_METHOD"] === "POST") {
     check_csrf();
     $username = trim($_POST['username']);
     $password = trim($_POST['password']);

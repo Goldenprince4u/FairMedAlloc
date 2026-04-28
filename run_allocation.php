@@ -49,7 +49,7 @@ require_once 'includes/header.php';
                 <ul class="list-instructions">
                     <li>Fetch eligible students imported through Data Import and students whose portal payment has been confirmed through the pay simulator.</li>
                     <li>Recalculate urgency scores via the configured XGBoost model.</li>
-                    <li>Send High urgency students to clinic-proximal space as a hard constraint, and apply the current Medium urgency faculty rule.</li>
+                    <li>Strongly prioritise High urgency students for clinic-proximal space; if that space is full they fall through to the next available valid room. Apply the current Medium urgency faculty rule.</li>
                     <li>Run the OR-Tools CP-SAT solver to assign rooms.</li>
                     <li>Use randomness only to break ties between equally valid room options, then write audit logs and notify each student of the result.</li>
                 </ul>

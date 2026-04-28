@@ -20,10 +20,9 @@ Payment can be recognised in either of these ways:
 
 ## 3. Clinic-Proximal Rule
 
-### Hard Constraint
+### Soft Constraint
 
-Any student in the `High` urgency band must be allocated to clinic-proximal
-space regardless of faculty.
+Any student in the `High` urgency band is strongly prioritised for a clinic-proximal space regardless of faculty. If no clinic spaces are available, the solver will allocate them to the next available valid room instead of failing.
 
 ### Current Male Clinic Block
 
@@ -31,8 +30,7 @@ space regardless of faculty.
 
 ### Current Female Clinic Space
 
-Until a dedicated female clinic block is chosen, the system uses the existing
-female proximal hostel inventory as female clinic-proximal space.
+- `Queen Esther Extension hall Block 39`
 
 ## 4. Clinic-Proximal Faculties
 

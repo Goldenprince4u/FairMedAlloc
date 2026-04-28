@@ -1,5 +1,7 @@
 <?php
 /**
+<?php
+/**
  * Admin API Controller
  * ====================
  * Unified endpoint for administrative API actions.
@@ -9,6 +11,7 @@
 session_start();
 require_once '../db_config.php';
 require_once '../includes/security_helper.php';
+require_once '../includes/DbHelper.php';
 
 // All responses from this file will be JSON-formatted
 header('Content-Type: application/json');
@@ -219,7 +222,7 @@ function handleManualAssign($conn) {
             throw new Exception('The selected room is already full.');
         }
 
-        if (allocationsSupportAlgorithmVersion($conn)) {
+        if (DbHelper::supportsAlgorithmVersion($conn)) {
             $algorithm_version = MANUAL_ALLOCATION_VERSION;
             $ins_stmt = $conn->prepare("INSERT INTO allocations (student_id, room_id, bed_space, bed_label, academic_session, allocation_method, algorithm_version) VALUES (?, ?, ?, ?, ?, 'manual', ?)");
             $ins_stmt->bind_param("iissss", $student_id, $room_id, $bed['bed_space'], $bed['bed_label'], $current_session, $algorithm_version);
@@ -262,23 +265,30 @@ function handleManualAssign($conn) {
 }
 
 /**
- * Fetches available (unfilled) rooms dynamically for a specific hostel.
- * Used often for dynamic dropdowns on the admin panel.
+ * Fetches available (unfilled) rooms for a specific hostel.
+ * Joined against hostels to block postgrad and foundation rooms from the dropdown.
  */
 function handleGetRooms($conn) {
-    $hostel_id = (int) ($_GET['hostel_id'] ?? 0);
+    $hostel_id = (int)($_GET['hostel_id'] ?? 0);
     if (!$hostel_id) {
         echo json_encode([]);
         return;
     }
 
-    // Only select rooms that haven't reached maximum capacity yet
-    $stmt = $conn->prepare("SELECT room_id, room_number, floor_level, capacity, occupied_count FROM rooms
-            WHERE hostel_id = ? AND occupied_count < capacity
-            ORDER BY CAST(room_number AS UNSIGNED) ASC");
+    // Only return rooms with capacity AND belonging to a non-restricted hostel.
+    $stmt = $conn->prepare("
+        SELECT r.room_id, r.room_number, r.floor_level, r.capacity, r.occupied_count
+        FROM rooms r
+        JOIN hostels h ON r.hostel_id = h.hostel_id
+        WHERE r.hostel_id = ?
+          AND r.occupied_count < r.capacity
+          AND h.is_postgrad   = 0
+          AND h.is_foundation = 0
+        ORDER BY CAST(r.room_number AS UNSIGNED) ASC
+    ");
     $stmt->bind_param("i", $hostel_id);
     $stmt->execute();
-    $res = $stmt->get_result();
+    $res   = $stmt->get_result();
     $rooms = [];
     while ($row = $res->fetch_assoc()) {
         $row['available'] = (int)$row['capacity'] - (int)$row['occupied_count'];
@@ -454,16 +464,6 @@ function releaseProcessingLock($conn, string $lock_key): void {
     $unlock_stmt->close();
 }
 
-function allocationsSupportAlgorithmVersion($conn): bool {
-    static $has_column = null;
-
-    if ($has_column !== null) {
-        return $has_column;
-    }
-
-    $result = $conn->query("SHOW COLUMNS FROM allocations LIKE 'algorithm_version'");
-    $has_column = $result && $result->num_rows > 0;
-
-    return $has_column;
-}
+// allocationsSupportAlgorithmVersion() is no longer defined here.
+// Use DbHelper::supportsAlgorithmVersion($conn) — the single shared implementation.
 ?>

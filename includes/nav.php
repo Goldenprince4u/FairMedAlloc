@@ -114,7 +114,18 @@ if (
     <div class="sidebar-footer">
         <!-- User identity row -->
         <div class="flex items-center gap-3 mt-3">
-            <div class="avatar-initials"><?php echo htmlspecialchars($initials); ?></div>
+            <?php
+            $nav_pic = $_SESSION['profile_pic'] ?? null;
+            if ($nav_pic && $nav_pic !== 'default.png'):
+            ?>
+            <img src="uploads/profile_pics/<?php echo htmlspecialchars(basename($nav_pic)); ?>"
+                 id="nav-avatar-img"
+                 alt="Profile photo"
+                 style="width:36px;height:36px;border-radius:50%;object-fit:cover;flex-shrink:0;border:2px solid rgba(255,255,255,0.25);"
+                 onerror="this.style.display='none';document.getElementById('nav-avatar-initials').style.display='flex';">
+            <?php else: ?>
+            <div class="avatar-initials" id="nav-avatar-initials"><?php echo htmlspecialchars($initials); ?></div>
+            <?php endif; ?>
             <div class="flex-1" style="overflow: hidden;">
                 <div class="fw-700 text-sm" style="color: var(--c-text-head); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">
                     <?php echo htmlspecialchars($_SESSION['full_name'] ?? $_SESSION['username']); ?>

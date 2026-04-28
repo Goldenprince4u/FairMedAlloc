@@ -4,6 +4,7 @@
  * =================
  * Core logic for assigning students to hostels based on fairness constraints.
  */
+require_once __DIR__ . '/DbHelper.php';
 class AllocationEngine {
     private const ALGORITHM_VERSION = 'allocation_engine_v2';
 
@@ -552,14 +553,12 @@ class AllocationEngine {
         return $updated;
     }
 
-    private function allocationsSupportAlgorithmVersion() {
+    private function allocationsSupportAlgorithmVersion(): bool {
         if ($this->allocationsHasAlgorithmVersion !== null) {
             return $this->allocationsHasAlgorithmVersion;
         }
-
-        $result = $this->conn->query("SHOW COLUMNS FROM allocations LIKE 'algorithm_version'");
-        $this->allocationsHasAlgorithmVersion = $result && $result->num_rows > 0;
-
+        // Delegate to shared helper — single source of truth for this schema check.
+        $this->allocationsHasAlgorithmVersion = DbHelper::supportsAlgorithmVersion($this->conn);
         return $this->allocationsHasAlgorithmVersion;
     }
 

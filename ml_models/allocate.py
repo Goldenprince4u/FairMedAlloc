@@ -35,11 +35,10 @@ def is_male_clinic_room(room):
 
 
 def is_female_clinic_room(room):
-    # Until a dedicated female clinic block is specified, use the existing
-    # proximal female hostel inventory as the female clinic-proximal space.
     return (
-        room.get('gender', '') == 'Female'
-        and bool(int(room.get('is_proximal', 0)))
+        room.get('hostel_name', '') == 'Queen Esther Extension hall'
+        and room.get('block_name', '') == '39'
+        and room.get('gender', '') == 'Female'
     )
 
 
@@ -48,11 +47,8 @@ def is_clinic_room(room):
 
 
 def needs_clinic_proximity(student):
-    faculty = student.get('faculty', '')
     urgency_band = student.get('urgency_band', 'Low')
-    return urgency_band == 'High' or (
-        urgency_band == 'Medium' and faculty in CLINIC_PROXIMAL_FACULTIES
-    )
+    return urgency_band == 'High'
 
 
 def clinic_room_matches_student(student, room):
@@ -101,12 +97,7 @@ def allocate(students_csv, rooms_csv, output_csv):
                 model.Add(x[(s_idx, r_idx)] == 0)
                 continue
 
-            if student_needs_clinic:
-                if not clinic_room_matches_student(student, room):
-                    model.Add(x[(s_idx, r_idx)] == 0)
-                continue
-
-            if room_is_clinic and not student_can_backfill_clinic:
+            if room_is_clinic and not (student_needs_clinic or student_can_backfill_clinic):
                 model.Add(x[(s_idx, r_idx)] == 0)
 
     for r_idx, room in enumerate(rooms):
@@ -121,6 +112,7 @@ def allocate(students_csv, rooms_csv, output_csv):
     for s_idx, student in enumerate(students):
         score = float(student.get('score', 0))
         faculty = student.get('faculty', '')
+        urgency_band = student.get('urgency_band', 'Low')
         student_needs_clinic = needs_clinic_proximity(student)
         student_can_backfill_clinic = faculty in CLINIC_PROXIMAL_FACULTIES
 
@@ -130,10 +122,15 @@ def allocate(students_csv, rooms_csv, output_csv):
             weight = 1_000_000
             weight += int(score * 100)
 
+            # High urgency students massively prefer clinic rooms, but can go elsewhere if full.
             if student_needs_clinic and clinic_room_matches_student(student, room):
                 weight += 5_000_000
-            elif room_is_clinic and student_can_backfill_clinic:
+            # Medium urgency students from clinic-proximal faculties prefer clinic rooms.
+            elif urgency_band == 'Medium' and student_can_backfill_clinic and clinic_room_matches_student(student, room):
                 weight += 250_000
+            # Low urgency students from clinic-proximal faculties can backfill clinic rooms.
+            elif room_is_clinic and student_can_backfill_clinic:
+                weight += 50_000
 
             weight += random_tie_break[(s_idx, r_idx)]
             obj_terms.append(x[(s_idx, r_idx)] * weight)
@@ -151,10 +148,25 @@ def allocate(students_csv, rooms_csv, output_csv):
         writer.writerow(['student_id', 'room_id'])
 
         if status in (cp_model.OPTIMAL, cp_model.FEASIBLE):
+            assigned = set()
             for s_idx, student in enumerate(students):
                 for r_idx, room in enumerate(rooms):
                     if solver.Value(x[(s_idx, r_idx)]):
                         writer.writerow([student['id'], room['id']])
+                        assigned.add(s_idx)
+
+            # Log any students who did not receive a room assignment so
+            # administrators can diagnose constraint issues post-run.
+            for s_idx, student in enumerate(students):
+                if s_idx not in assigned:
+                    logging.error(
+                        "Student %s (band=%s, gender=%s, faculty=%s) was not assigned "
+                        "a room — no valid room matched their constraints.",
+                        student.get('id', '?'),
+                        student.get('urgency_band', '?'),
+                        student.get('gender', '?'),
+                        student.get('faculty', '?'),
+                    )
             print(f"Success: wrote to {output_csv}")
         else:
             print("No feasible allocation found by OR-Tools.")

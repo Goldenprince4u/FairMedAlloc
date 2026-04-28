@@ -63,18 +63,25 @@ if (isset($_SESSION['logged_in']) && $_SESSION['logged_in'] === true) {
 
 /**
  * Generate CSRF Token
- * 
- * Creates a cryptographically secure token if one does not already exist 
- * in the session. This token is used to validate POST requests.
- * 
+ *
+ * Creates a cryptographically secure token if one does not already exist
+ * in the session. If a previous POST set the rotation flag, the old token
+ * is cleared here so a fresh one is issued for the new page render.
+ *
  * @return string The valid CSRF token.
  */
 function generate_csrf_token(): string {
+    // Consume the rotation flag set by check_csrf() after a successful POST.
+    // AJAX handlers never call this function, so they are unaffected and can
+    // continue using the same token within the session.
+    if (!empty($_SESSION['csrf_rotate_pending'])) {
+        unset($_SESSION['csrf_token'], $_SESSION['csrf_rotate_pending']);
+    }
+
     if (empty($_SESSION['csrf_token'])) {
         try {
             $_SESSION['csrf_token'] = bin2hex(random_bytes(32));
         } catch (Exception $e) {
-            // Fallback for older systems (unlikely in modern PHP)
             $_SESSION['csrf_token'] = bin2hex(openssl_random_pseudo_bytes(32));
         }
     }
@@ -83,10 +90,10 @@ function generate_csrf_token(): string {
 
 /**
  * Verify CSRF Token
- * 
- * Compares the provided token against the session token to ensure 
+ *
+ * Compares the provided token against the session token to ensure
  * the request originated from a trusted source.
- * 
+ *
  * @param string $token The token submitted via the form.
  * @return bool True if valid, False otherwise.
  */
@@ -99,10 +106,12 @@ function verify_csrf_token(string $token): bool {
 
 /**
  * Check CSRF (Strict Enforcement)
- * 
- * Validates the CSRF token for all POST requests. If validation fails, 
+ *
+ * Validates the CSRF token for all POST requests. If validation fails,
  * the script execution is terminated with a 403 Forbidden response.
- * 
+ * On success, a rotation flag is set so the next page render issues
+ * a fresh token, preventing replay attacks.
+ *
  * @return void
  */
 function check_csrf(): void {
@@ -115,15 +124,17 @@ function check_csrf(): void {
                  <p>Security Token Mismatch (Session Expired).</p>
                  <p><a href='$url'>Click here to reload the page safely</a></p>");
         }
+        // Schedule deferred rotation — fires on the next page render, not here.
+        $_SESSION['csrf_rotate_pending'] = true;
     }
 }
 
 /**
  * Output CSRF Field
- * 
+ *
  * Helper to echo the hidden input field containing the CSRF token.
  * Should be used inside all <form> tags.
- * 
+ *
  * @return void
  */
 function csrf_field(): void {

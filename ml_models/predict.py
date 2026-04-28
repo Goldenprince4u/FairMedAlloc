@@ -29,14 +29,6 @@ warnings.filterwarnings(
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 PROJECT_ROOT = os.path.dirname(SCRIPT_DIR)
 DOTENV_PATH = os.path.join(PROJECT_ROOT, ".env")
-SITE_PACKAGES_PATH = os.path.join(SCRIPT_DIR, "site-packages")
-VENDOR_PATH = os.path.join(SCRIPT_DIR, "vendor")
-
-if os.path.isdir(SITE_PACKAGES_PATH) and SITE_PACKAGES_PATH not in sys.path:
-    sys.path.insert(0, SITE_PACKAGES_PATH)
-
-if os.path.isdir(VENDOR_PATH) and VENDOR_PATH not in sys.path:
-    sys.path.insert(0, VENDOR_PATH)
 
 PICKLE_FEATURE_KEYS = [
     "has_asthma",
@@ -392,7 +384,12 @@ def score_student(student):
     if "urgency_score" in student and student["urgency_score"] is not None:
         try:
             value = float(student["urgency_score"])
-            if value > 0:
+            condition = normalize_condition_value(student.get("condition", "None"))
+            # Trust the stored score when it is positive OR when the student is
+            # confirmed None/Healthy (a legitimate score of 0). Without this
+            # check a healthy student with score=0 would trigger an XGBoost
+            # call on every allocation run unnecessarily.
+            if value > 0 or condition == "None":
                 score = max(0.0, min(value, 100.0))
                 return {"score": score, "tier": calculate_tier(score), "strategy": "stored"}
         except (TypeError, ValueError):
