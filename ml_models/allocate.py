@@ -281,7 +281,7 @@ def allocate(students_csv, rooms_csv, output_csv):
     model.Maximize(sum(obj_terms))
 
     solver = cp_model.CpSolver()
-    solver.parameters.max_time_in_seconds = 60.0
+    solver.parameters.max_time_in_seconds = 15.0
     solver.parameters.random_seed = rng.randint(1, 1_000_000)
 
     status = solver.Solve(model)

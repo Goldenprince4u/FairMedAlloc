@@ -75,9 +75,6 @@ require_once 'includes/header.php';
                             style="margin-top:0.875rem;padding:0.875rem;">
                         <i class="fa-solid fa-rotate"></i> Recalculate All Urgency Scores
                     </button>
-                    <p class="text-muted" style="font-size:0.78rem;margin-top:0.875rem;">
-                        Use rescoring after replacing the XGBoost `.pkl` model so existing medical records pick up the latest XGBoost output.
-                    </p>
                 <?php endif; ?>
             </div>
 
