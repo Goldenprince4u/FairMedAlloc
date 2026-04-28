@@ -399,12 +399,13 @@ require_once 'includes/header.php';
 
     // Gender bar
     const genderData = <?php echo json_encode($genders); ?>;
+    const genderColors = genderData.map(d => d.gender === 'Female' ? palette.female : palette.male);
     new Chart(document.getElementById('genderChart'), {
         type: 'bar',
         data: {
             labels: genderData.map(d => d.gender),
             datasets: [{ label: 'Students', data: genderData.map(d => +d.cnt),
-                backgroundColor: [palette.male, palette.female], borderRadius: 6 }]
+                backgroundColor: genderColors, borderRadius: 6, maxBarThickness: 36 }]
         },
         options: { indexAxis: 'y', plugins: { legend: { display: false } },
             maintainAspectRatio: false, scales: { x: { grid }, y: { grid: { display: false } } } }
@@ -418,7 +419,7 @@ require_once 'includes/header.php';
         data: {
             labels: sevData.map(d => d.label),
             datasets: [{ label: 'Cases', data: sevData.map(d => +d.cnt),
-                backgroundColor: sevColors, borderRadius: 6 }]
+                backgroundColor: sevColors, borderRadius: 6, maxBarThickness: 36 }]
         },
         options: { indexAxis: 'y', plugins: { legend: { display: false } },
             maintainAspectRatio: false, scales: { x: { grid }, y: { grid: { display: false } } } }
