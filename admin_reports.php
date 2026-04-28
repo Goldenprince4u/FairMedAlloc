@@ -356,13 +356,45 @@ require_once 'includes/header.php';
         </div>
 
         <!-- ── Faculty Medical Cases ─────────────────────────────────────── -->
-        <div class="card mb-8 reports-card p-6">
-            <h3 class="serif reports-title">Medical Cases by Faculty</h3>
+        <div class="card mb-8 reports-card p-6" style="background: linear-gradient(145deg, var(--c-bg-surface), var(--c-bg-surface-2));">
+            <h3 class="serif reports-title mb-4">Medical Cases by Faculty</h3>
             <?php if (empty($faculty_med)): ?>
                 <p class="text-muted text-sm">No faculty data yet.</p>
             <?php else: ?>
-                <div class="chart-wrap chart-wrap--wide">
-                    <canvas id="facultyChart"></canvas>
+                <div class="grid grid-cols-4" style="gap: 1rem;">
+                    <?php 
+                    $icons = ['fa-laptop-medical', 'fa-notes-medical', 'fa-briefcase-medical', 'fa-book-medical', 'fa-file-medical', 'fa-truck-medical', 'fa-suitcase-medical', 'fa-kit-medical'];
+                    $theme_colors = [
+                        ['bg' => 'rgba(59,130,246,0.1)', 'color' => '#3b82f6'],
+                        ['bg' => 'rgba(236,72,153,0.1)', 'color' => '#ec4899'],
+                        ['bg' => 'rgba(16,185,129,0.1)', 'color' => '#10b981'],
+                        ['bg' => 'rgba(245,158,11,0.1)', 'color' => '#f59e0b'],
+                        ['bg' => 'rgba(139,92,246,0.1)', 'color' => '#8b5cf6'],
+                        ['bg' => 'rgba(6,182,212,0.1)',  'color' => '#06b6d4'],
+                        ['bg' => 'rgba(244,63,94,0.1)',  'color' => '#f43f5e'],
+                        ['bg' => 'rgba(99,102,241,0.1)', 'color' => '#6366f1']
+                    ];
+                    foreach ($faculty_med as $index => $fac): 
+                        $short_name = str_replace(['Faculty of ', ' and '], ['', ' & '], $fac['faculty']);
+                        $count = (int)$fac['med_count'];
+                        $theme = $theme_colors[$index % count($theme_colors)];
+                        $icon  = $icons[$index % count($icons)];
+                    ?>
+                    <div style="background: var(--c-bg-surface); border: 1px solid var(--c-border); border-radius: var(--radius-md); padding: 1.25rem; display: flex; align-items: center; gap: 1rem; transition: transform 0.2s, box-shadow 0.2s; cursor: default;" onmouseover="this.style.transform='translateY(-2px)'; this.style.boxShadow='var(--shadow-md)';" onmouseout="this.style.transform='none'; this.style.boxShadow='none';">
+                        <div style="width: 46px; height: 46px; border-radius: 12px; background: <?php echo $theme['bg']; ?>; color: <?php echo $theme['color']; ?>; display: flex; align-items: center; justify-content: center; font-size: 1.1rem; flex-shrink: 0;">
+                            <i class="fa-solid <?php echo $icon; ?>"></i>
+                        </div>
+                        <div style="min-width: 0;">
+                            <h4 style="font-size: 0.8rem; font-weight: 700; color: var(--c-text-body); line-height: 1.3; margin-bottom: 0.15rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;" title="<?php echo htmlspecialchars($short_name); ?>">
+                                <?php echo htmlspecialchars($short_name); ?>
+                            </h4>
+                            <div style="font-size: 1.25rem; font-weight: 800; color: var(--c-text-head); line-height: 1;">
+                                <?php echo $count; ?> 
+                                <span style="font-size: 0.65rem; font-weight: 700; color: var(--c-text-muted); text-transform: uppercase; letter-spacing: 0.05em; vertical-align: middle;">Cases</span>
+                            </div>
+                        </div>
+                    </div>
+                    <?php endforeach; ?>
                 </div>
             <?php endif; ?>
         </div>
@@ -495,22 +527,6 @@ require_once 'includes/header.php';
         },
         options: { plugins: { legend: { display: false } }, cutout: '70%', maintainAspectRatio: false }
     });
-
-    // Faculty medical cases
-    const facCanvas = document.getElementById('facultyChart');
-    if (facCanvas) {
-        const facData = <?php echo json_encode($faculty_med); ?>;
-        new Chart(facCanvas, {
-            type: 'bar',
-            data: {
-                labels: facData.map(d => d.faculty.replace('Faculty of ','').replace('Faculty of ','').replace(' and ',' & ')),
-                datasets: [{ label: 'Medical Cases', data: facData.map(d => +d.med_count),
-                    backgroundColor: palette.faculty, borderRadius: 6 }]
-            },
-            options: { indexAxis: 'y', plugins: { legend: { display: false } },
-                maintainAspectRatio: false, scales: { x: { grid }, y: { grid: { display: false } } } }
-        });
-    }
 })();
 </script>
 
