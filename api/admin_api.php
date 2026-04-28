@@ -15,6 +15,7 @@ require_once '../includes/DbHelper.php';
 
 // All responses from this file will be JSON-formatted
 header('Content-Type: application/json');
+ob_start();
 
 // Prevent PHP timeout during long-running tasks like XGBoost or Allocation
 set_time_limit(0);
@@ -99,8 +100,10 @@ function handleRunAlgorithm($conn) {
         if (($result['status'] ?? '') === 'success') {
             log_admin_action($conn, (int)$_SESSION['user_id'], 'Triggered allocation engine');
         }
+        ob_clean();
         echo json_encode($result);
     } catch (Exception $e) {
+        ob_clean();
         echo json_encode(['status' => 'error', 'message' => $e->getMessage()]);
     } finally {
         releaseProcessingLock($conn, 'admin_processing_lock');
@@ -129,8 +132,10 @@ function handleRescoreAll($conn) {
         if (($result['status'] ?? '') === 'success') {
             log_admin_action($conn, (int)$_SESSION['user_id'], 'Recomputed all XGBoost urgency scores');
         }
+        ob_clean();
         echo json_encode($result);
     } catch (Exception $e) {
+        ob_clean();
         echo json_encode(['status' => 'error', 'message' => $e->getMessage()]);
     } finally {
         releaseProcessingLock($conn, 'admin_processing_lock');
