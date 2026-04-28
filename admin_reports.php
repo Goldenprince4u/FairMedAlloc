@@ -132,19 +132,19 @@ require_once 'includes/header.php';
 .chart-wrap {
     position: relative;
     width: 100%;
-    flex: 1;
-    min-height: 250px;
+    height: 260px;
 }
 .chart-wrap--doughnut {
-    min-height: 280px;
+    height: 260px;
     display: flex;
     justify-content: center;
+    align-items: center;
 }
 .chart-wrap--bar {
-    min-height: 220px;
+    height: 180px;
 }
 .chart-wrap--wide {
-    min-height: 320px;
+    height: 300px;
 }
 .reports-legend {
     display: flex;
