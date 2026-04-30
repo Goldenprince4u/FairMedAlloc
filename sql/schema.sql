@@ -78,18 +78,8 @@ CREATE TABLE student_profiles (
 CREATE TABLE medical_records (
     record_id INT AUTO_INCREMENT PRIMARY KEY,
     student_id INT NOT NULL,
-    condition_category ENUM(
-        'None / Healthy',
-        'Asthma',
-        'Epilepsy',
-        'Ulcer',
-        'Sickle Cell Disease',
-        'Cardiovascular',
-        'Visual Impairment',
-        'Physical Disability',
-        'Other'
-    ) DEFAULT 'None / Healthy',
-    mobility_status TINYINT DEFAULT 0,
+    condition_category VARCHAR(100) DEFAULT 'None / Healthy',
+    mobility_status VARCHAR(50) DEFAULT 'Normal Mobility',
     condition_details TEXT,
     severity_level ENUM('Low', 'Medium', 'High') DEFAULT 'Low',
     urgency_score FLOAT DEFAULT 0,

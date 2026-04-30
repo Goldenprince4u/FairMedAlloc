@@ -52,19 +52,29 @@ $urgency = $conn->query("
 $conditions = $conn->query("
     SELECT condition_category AS label, COUNT(*) AS cnt
     FROM medical_records
-    WHERE condition_category NOT IN ('None','None / Healthy')
+    WHERE COALESCE(NULLIF(condition_category, ''), 'None / Healthy') NOT IN ('None','None / Healthy')
     GROUP BY condition_category
     ORDER BY cnt DESC
     LIMIT 10
 ")->fetch_all(MYSQLI_ASSOC);
 
 // ── Mobility status breakdown ────────────────────────────────────────────────
-$mobility_map = ['0'=>'Normal Mobility','1'=>'Artificial Limb','2'=>'Crutches/Walker','3'=>'Wheelchair User'];
+$mobility_map = [
+    '0' => 'Normal Mobility',
+    '1' => 'Artificial Limb',
+    '2' => 'Crutches/Walker',
+    '3' => 'Wheelchair User',
+    'Normal Mobility' => 'Normal Mobility',
+    'Artificial Limb' => 'Artificial Limb',
+    'Crutches/Walker' => 'Crutches/Walker',
+    'Crutches / Walker' => 'Crutches/Walker',
+    'Wheelchair User' => 'Wheelchair User',
+];
 $mob_raw = $conn->query("
     SELECT mobility_status, COUNT(*) AS cnt
     FROM medical_records
     GROUP BY mobility_status
-    ORDER BY CAST(mobility_status AS UNSIGNED) ASC
+    ORDER BY FIELD(mobility_status, 'Wheelchair User', 'Crutches/Walker', 'Artificial Limb', 'Normal Mobility', '3', '2', '1', '0') ASC
 ")->fetch_all(MYSQLI_ASSOC);
 $mob_data = array_map(fn($r) => [
     'label' => $mobility_map[$r['mobility_status']] ?? ('Code '.$r['mobility_status']),

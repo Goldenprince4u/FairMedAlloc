@@ -13,10 +13,20 @@ if (!isset($_SESSION['logged_in']) || ($_SESSION['role'] ?? '') !== 'admin') {
     exit();
 }
 
+$high_urgency_threshold = 75;
 $medium_urgency_threshold = 40;
-$threshold_result = $conn->query("SELECT setting_value FROM settings WHERE setting_key = 'urgency_threshold_proximal'");
-$threshold_row = $threshold_result ? $threshold_result->fetch_assoc() : null;
-$high_urgency_threshold = (float)($threshold_row['setting_value'] ?? 75);
+$threshold_result = $conn->query("SELECT setting_key, setting_value FROM settings WHERE setting_key IN ('urgency_threshold_proximal', 'urgency_threshold_medium')");
+if ($threshold_result) {
+    while ($threshold_row = $threshold_result->fetch_assoc()) {
+        if (($threshold_row['setting_key'] ?? '') === 'urgency_threshold_proximal') {
+            $high_urgency_threshold = (float)$threshold_row['setting_value'];
+        }
+        if (($threshold_row['setting_key'] ?? '') === 'urgency_threshold_medium') {
+            $medium_urgency_threshold = (float)$threshold_row['setting_value'];
+        }
+    }
+}
+$high_urgency_threshold = $high_urgency_threshold ?? 75;
 
 // Pagination Setup
 $page = isset($_GET['page']) ? (int)$_GET['page'] : 1;

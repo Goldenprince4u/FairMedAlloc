@@ -75,8 +75,9 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
             $dept_id = (int)$_POST['department'];
             $gen = sanitize_input($_POST['gender']);
             
-            $stmt2 = $conn->prepare("INSERT INTO student_profiles (user_id, level, department_id, gender) VALUES (?, ?, ?, ?)");
-            $stmt2->bind_param("iiis", $new_id, $level, $dept_id, $gen);
+            $specialNeedsFlag = 0;
+            $stmt2 = $conn->prepare("INSERT INTO student_profiles (user_id, level, department_id, gender, has_special_needs) VALUES (?, ?, ?, ?, ?)");
+            $stmt2->bind_param("iiisi", $new_id, $level, $dept_id, $gen, $specialNeedsFlag);
             $stmt2->execute();
 
             // --- 3. Process Medical Record ---
@@ -85,9 +86,9 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
             // Both inputs feed the XGBoost urgency score, so either one alone is
             // sufficient to warrant a medical record and priority consideration.
             $condition = trim($_POST['medical_condition']);
-            $mobility  = (int)($_POST['mobility'] ?? 0);
+            $mobility  = UrgencyScoreService::normalizeMobility((string)($_POST['mobility'] ?? '0'));
             $has_condition = ($condition && $condition !== 'None / Healthy');
-            $has_mobility  = ($mobility > 0);
+            $has_mobility  = ($mobility !== 'Normal Mobility');
 
             if ($has_condition || $has_mobility) {
                 // Use a generic condition label when only mobility is declared.
@@ -104,9 +105,9 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
                 }
 
                 // Mobility level can independently raise the severity band.
-                if ($mobility === 3) {
+                if ($mobility === 'Wheelchair User') {
                     $severity = 'High';          // Wheelchair → always High
-                } elseif ($mobility === 1 || $mobility === 2) {
+                } elseif (in_array($mobility, ['Artificial Limb', 'Crutches/Walker'], true)) {
                     if ($severity !== 'High') $severity = 'Medium';
                 }
 
@@ -129,8 +130,13 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
                     $score = UrgencyScoreService::calculateFallbackScore($scorePayload);
                 }
 
-                $stmt_med = $conn->prepare("INSERT INTO medical_records (student_id, condition_category, condition_details, severity_level, urgency_score, mobility_status) VALUES (?, ?, ?, ?, ?, ?)");
-                $stmt_med->bind_param("isssdi", $new_id, $record_condition, $details, $severity, $score, $mobility);
+                $specialNeedsFlag = (int)$has_mobility;
+                $updateProfile = $conn->prepare("UPDATE student_profiles SET has_special_needs = ? WHERE user_id = ?");
+                $updateProfile->bind_param("ii", $specialNeedsFlag, $new_id);
+                $updateProfile->execute();
+
+                $stmt_med = $conn->prepare("INSERT INTO medical_records (student_id, condition_category, condition_details, severity_level, urgency_score, mobility_status, is_requested_mobility) VALUES (?, ?, ?, ?, ?, ?, ?)");
+                $stmt_med->bind_param("isssdsi", $new_id, $record_condition, $details, $severity, $score, $mobility, $specialNeedsFlag);
                 $stmt_med->execute();
             }
 

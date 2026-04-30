@@ -57,6 +57,8 @@ if ($conn->connect_error) {
  * This keeps older local databases compatible without requiring a manual
  * migration before the app can boot.
  */
+
+require_once __DIR__ . '/includes/DbHelper.php';
 $supportsMustChangePassword = false;
 $mustChangeColumn = $conn->query("SHOW COLUMNS FROM users LIKE 'must_change_password'");
 if ($mustChangeColumn instanceof mysqli_result) {
@@ -73,4 +75,6 @@ if (!$supportsMustChangePassword) {
 }
 
 define('FAIRMED_SUPPORTS_MUST_CHANGE_PASSWORD', $supportsMustChangePassword);
+
+DbHelper::alignMedicalSchema($conn);
 ?>

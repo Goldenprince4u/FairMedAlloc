@@ -48,7 +48,7 @@ $role = $_SESSION['role'] ?? 'student';
                         <details class="faq-item" id="faq-admin-policy">
                             <summary>What is the current allocation policy?</summary>
                             <div class="faq-answer">
-                                <strong>High</strong> urgency students are treated as clinic-priority regardless of faculty. <strong>Medium</strong> urgency students are sent to clinic proximity only if they belong to the current clinic-proximal faculties. Other paid students are allocated to the remaining valid halls, with randomness used only to break ties between equally valid options. Any unused clinic-proximal space can be backfilled by clinic-proximal faculties.
+                                <strong>High</strong> urgency students remain clinic-priority regardless of faculty. <strong>Medium</strong> urgency students are steered to their faculty-proximal halls, while <strong>Low</strong> urgency students are now kept inside their faculty-proximal hall set instead of being sent to arbitrary spare halls. For mobility-priority students mapped to <strong>Joshua Hall</strong> or <strong>Deborah Hall</strong>, the allocator targets the <strong>ground floor</strong> because those halls are stair-access, not elevator-access.
                             </div>
                         </details>
 

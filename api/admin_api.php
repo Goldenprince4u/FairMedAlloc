@@ -1,7 +1,5 @@
 <?php
 /**
-<?php
-/**
  * Admin API Controller
  * ====================
  * Unified endpoint for administrative API actions.
@@ -15,19 +13,22 @@ require_once '../includes/DbHelper.php';
 
 // All responses from this file will be JSON-formatted
 header('Content-Type: application/json');
+ini_set('display_errors', '0');
 ob_start();
 
-// Prevent PHP timeout during long-running tasks like XGBoost or Allocation
+// ── Timeout & disconnection guards ────────────────────────────────────────────
+// set_time_limit(0) removes the PHP execution ceiling for this script.
+// ignore_user_abort(true) keeps PHP running even if the browser disconnects or
+// the network drops mid-allocation — critical for long OR-Tools solver runs.
 set_time_limit(0);
+ignore_user_abort(true);
 
 const MANUAL_ALLOCATION_VERSION = 'manual_override_v1';
 
 // --- 1. Security Check ---
 // Ensure the request is coming from an authenticated administrator
 if (!isset($_SESSION['logged_in']) || ($_SESSION['role'] ?? '') !== 'admin') {
-    http_response_code(403);
-    echo json_encode(['status' => 'error', 'message' => 'Unauthorized']);
-    exit();
+    sendJsonResponse(['status' => 'error', 'message' => 'Unauthorized'], 403);
 }
 
 // Retrieve the requested action 
@@ -66,9 +67,16 @@ switch ($action) {
 
     default:
         // Reject unknown or missing actions
-        http_response_code(400);
-        echo json_encode(['status' => 'error', 'message' => 'Invalid action']);
+        sendJsonResponse(['status' => 'error', 'message' => 'Invalid action'], 400);
         break;
+}
+
+function sendJsonResponse(array $payload, int $statusCode = 200): void {
+    http_response_code($statusCode);
+    while (ob_get_level() > 0) {
+        ob_end_clean();
+    }
+    echo json_encode($payload);
 }
 
 // --------------------------------------------------------------------------
@@ -80,8 +88,7 @@ switch ($action) {
  */
 function handleRunAlgorithm($conn) {
     if ($_SERVER["REQUEST_METHOD"] !== "POST") {
-        http_response_code(405);
-        echo json_encode(['status' => 'error', 'message' => 'POST required']);
+        sendJsonResponse(['status' => 'error', 'message' => 'POST required'], 405);
         return;
     }
 
@@ -89,8 +96,7 @@ function handleRunAlgorithm($conn) {
 
     require_once '../includes/AllocationEngine.php';
     if (!acquireProcessingLock($conn, 'admin_processing_lock')) {
-        http_response_code(409);
-        echo json_encode(['status' => 'error', 'message' => 'Another admin processing job is already running.']);
+        sendJsonResponse(['status' => 'error', 'message' => 'Another admin processing job is already running.'], 409);
         return;
     }
 
@@ -100,11 +106,9 @@ function handleRunAlgorithm($conn) {
         if (($result['status'] ?? '') === 'success') {
             log_admin_action($conn, (int)$_SESSION['user_id'], 'Triggered allocation engine');
         }
-        ob_clean();
-        echo json_encode($result);
-    } catch (Exception $e) {
-        ob_clean();
-        echo json_encode(['status' => 'error', 'message' => $e->getMessage()]);
+        sendJsonResponse($result);
+    } catch (Throwable $e) {
+        sendJsonResponse(['status' => 'error', 'message' => $e->getMessage()], 500);
     } finally {
         releaseProcessingLock($conn, 'admin_processing_lock');
     }
@@ -112,8 +116,7 @@ function handleRunAlgorithm($conn) {
 
 function handleRescoreAll($conn) {
     if ($_SERVER["REQUEST_METHOD"] !== "POST") {
-        http_response_code(405);
-        echo json_encode(['status' => 'error', 'message' => 'POST required']);
+        sendJsonResponse(['status' => 'error', 'message' => 'POST required'], 405);
         return;
     }
 
@@ -121,8 +124,7 @@ function handleRescoreAll($conn) {
 
     require_once '../includes/AllocationEngine.php';
     if (!acquireProcessingLock($conn, 'admin_processing_lock')) {
-        http_response_code(409);
-        echo json_encode(['status' => 'error', 'message' => 'Another admin processing job is already running.']);
+        sendJsonResponse(['status' => 'error', 'message' => 'Another admin processing job is already running.'], 409);
         return;
     }
 
@@ -132,11 +134,9 @@ function handleRescoreAll($conn) {
         if (($result['status'] ?? '') === 'success') {
             log_admin_action($conn, (int)$_SESSION['user_id'], 'Recomputed all XGBoost urgency scores');
         }
-        ob_clean();
-        echo json_encode($result);
-    } catch (Exception $e) {
-        ob_clean();
-        echo json_encode(['status' => 'error', 'message' => $e->getMessage()]);
+        sendJsonResponse($result);
+    } catch (Throwable $e) {
+        sendJsonResponse(['status' => 'error', 'message' => $e->getMessage()], 500);
     } finally {
         releaseProcessingLock($conn, 'admin_processing_lock');
     }
@@ -148,13 +148,12 @@ function handleMlStatus() {
     try {
         $client = new MlServiceClient();
         $result = $client->health();
-        echo json_encode($result);
-    } catch (Exception $e) {
-        http_response_code(503);
-        echo json_encode([
+        sendJsonResponse($result);
+    } catch (Throwable $e) {
+        sendJsonResponse([
             'status' => 'error',
             'message' => $e->getMessage()
-        ]);
+        ], 503);
     }
 }
 
@@ -164,7 +163,7 @@ function handleMlStatus() {
 function handleManualAssign($conn) {
     // Only accept form-submissions (POST) for data mutations
     if ($_SERVER["REQUEST_METHOD"] !== "POST") {
-        echo json_encode(['status' => 'error', 'message' => 'POST required']);
+        sendJsonResponse(['status' => 'error', 'message' => 'POST required'], 405);
         return;
     }
 
@@ -175,8 +174,7 @@ function handleManualAssign($conn) {
     $room_id    = (int)($_POST['room_id'] ?? 0);
 
     if ($room_id <= 0 || $student_id <= 0) {
-        http_response_code(400);
-        echo json_encode(['status' => 'error', 'message' => 'Invalid Data']);
+        sendJsonResponse(['status' => 'error', 'message' => 'Invalid Data'], 400);
         return;
     }
 
@@ -260,15 +258,14 @@ function handleManualAssign($conn) {
         );
 
         $conn->commit();
-        echo json_encode([
+        sendJsonResponse([
             'status' => 'success',
             'bed_space' => $bed['bed_space'],
             'bed_label' => $bed['bed_label']
         ]);
-    } catch (Exception $e) {
+    } catch (Throwable $e) {
         $conn->rollback();
-        http_response_code(400);
-        echo json_encode(['status' => 'error', 'message' => $e->getMessage()]);
+        sendJsonResponse(['status' => 'error', 'message' => $e->getMessage()], 400);
     }
 }
 
@@ -279,7 +276,7 @@ function handleManualAssign($conn) {
 function handleGetRooms($conn) {
     $hostel_id = (int)($_GET['hostel_id'] ?? 0);
     if (!$hostel_id) {
-        echo json_encode([]);
+        sendJsonResponse([]);
         return;
     }
 
@@ -302,7 +299,7 @@ function handleGetRooms($conn) {
         $row['available'] = (int)$row['capacity'] - (int)$row['occupied_count'];
         $rooms[] = $row;
     }
-    echo json_encode($rooms);
+    sendJsonResponse($rooms);
 }
 
 /**
@@ -333,7 +330,7 @@ function handleAnalytics($conn) {
     ")->fetch_all(MYSQLI_ASSOC);
 
     // Return the aggregated metrics back to the Admin JS frontend
-    echo json_encode([
+    sendJsonResponse([
         'status'   => 'success',
         'allocation' => $stats_alloc,
         'medical'    => $stats_medical,
@@ -367,7 +364,7 @@ function handleHostelStats($conn) {
             $rows[] = $row;
         }
     }
-    echo json_encode($rows);
+    sendJsonResponse($rows);
 }
 
 function fetchStudentForManualAllocation($conn, int $student_id): ?array {
@@ -438,38 +435,94 @@ function determineAvailableBedForManualAllocation($conn, int $room_id, int $capa
     return null;
 }
 
+/**
+ * Acquire a named processing lock stored in the settings table.
+ *
+ * Stale-lock protection: if a lock has been held for longer than
+ * LOCK_STALE_SECONDS (default 15 min) it is presumed to belong to a
+ * crashed process and is forcibly released before the new attempt.
+ * This prevents the allocation UI from being permanently blocked after
+ * an unexpected PHP/Python crash mid-run.
+ */
 function acquireProcessingLock($conn, string $lock_key): bool {
-    $seed_stmt = $conn->prepare("INSERT INTO settings (setting_key, setting_value) VALUES (?, '0') ON DUPLICATE KEY UPDATE setting_key = setting_key");
-    if (!$seed_stmt) {
-        return false;
+    $lock_stale_seconds = 900; // 15 minutes
+
+    $ts_key = $lock_key . '_acquired_at';
+
+    // Seed both the lock and its timestamp rows so ON DUPLICATE KEY works.
+    foreach ([$lock_key => '0', $ts_key => '0'] as $k => $v) {
+        $s = $conn->prepare("INSERT INTO settings (setting_key, setting_value) VALUES (?, ?) ON DUPLICATE KEY UPDATE setting_key = setting_key");
+        if (!$s) return false;
+        $s->bind_param("ss", $k, $v);
+        $s->execute();
+        $s->close();
     }
 
-    $seed_stmt->bind_param("s", $lock_key);
-    $seed_stmt->execute();
-    $seed_stmt->close();
+    // Check for a stale lock and force-release if needed.
+    $chk = $conn->prepare("SELECT setting_value FROM settings WHERE setting_key = ?");
+    if ($chk) {
+        $chk->bind_param("s", $lock_key);
+        $chk->execute();
+        $row = $chk->get_result()->fetch_assoc();
+        $chk->close();
 
+        if (($row['setting_value'] ?? '0') === '1') {
+            // Lock is held — check how long ago it was acquired.
+            $ts_chk = $conn->prepare("SELECT setting_value FROM settings WHERE setting_key = ?");
+            if ($ts_chk) {
+                $ts_chk->bind_param("s", $ts_key);
+                $ts_chk->execute();
+                $ts_row = $ts_chk->get_result()->fetch_assoc();
+                $ts_chk->close();
+
+                $acquired_at = (int)($ts_row['setting_value'] ?? 0);
+                $age = time() - $acquired_at;
+
+                if ($acquired_at > 0 && $age > $lock_stale_seconds) {
+                    // Stale lock — force release so we don't block forever.
+                    error_log("acquireProcessingLock: releasing stale lock '{$lock_key}' (held for {$age}s)");
+                    releaseProcessingLock($conn, $lock_key);
+                } else {
+                    // Lock is genuinely held by another live process.
+                    return false;
+                }
+            } else {
+                return false;
+            }
+        }
+    }
+
+    // Try to atomically set the lock from '0' → '1' and record the timestamp.
     $lock_stmt = $conn->prepare("UPDATE settings SET setting_value = '1' WHERE setting_key = ? AND setting_value = '0'");
-    if (!$lock_stmt) {
-        return false;
-    }
-
+    if (!$lock_stmt) return false;
     $lock_stmt->bind_param("s", $lock_key);
     $lock_stmt->execute();
     $acquired = $lock_stmt->affected_rows === 1;
     $lock_stmt->close();
 
+    if ($acquired) {
+        $now = (string)time();
+        $ts_stmt = $conn->prepare("UPDATE settings SET setting_value = ? WHERE setting_key = ?");
+        if ($ts_stmt) {
+            $ts_stmt->bind_param("ss", $now, $ts_key);
+            $ts_stmt->execute();
+            $ts_stmt->close();
+        }
+    }
+
     return $acquired;
 }
 
 function releaseProcessingLock($conn, string $lock_key): void {
-    $unlock_stmt = $conn->prepare("UPDATE settings SET setting_value = '0' WHERE setting_key = ?");
-    if (!$unlock_stmt) {
-        return;
-    }
+    $ts_key = $lock_key . '_acquired_at';
 
-    $unlock_stmt->bind_param("s", $lock_key);
-    $unlock_stmt->execute();
-    $unlock_stmt->close();
+    foreach ([$lock_key => '0', $ts_key => '0'] as $k => $v) {
+        $s = $conn->prepare("UPDATE settings SET setting_value = ? WHERE setting_key = ?");
+        if (!$s) continue;
+        $s->bind_param("ss", $v, $k);
+        $s->execute();
+        $s->close();
+    }
 }
 
 // allocationsSupportAlgorithmVersion() is no longer defined here.

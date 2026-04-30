@@ -93,98 +93,230 @@ require_once 'includes/header.php';
 </div>
 
 <script>
-function startAllocation() {
-    const logEl = document.getElementById('console');
-    const runBtn = document.getElementById('start-alloc-btn');
-    const rescoreBtn = document.getElementById('rescore-btn');
-    const csrf  = document.querySelector('#run-allocation-form input[name="csrf_token"]');
+/* ─── Shared helpers ─────────────────────────────────────────── */
+let _elapsedInterval = null;
 
-    if (!csrf) {
-        logEl.innerHTML = '<div style="color:var(--c-danger);">Security token missing. Reload the page and try again.</div>';
-        return;
-    }
-
-    // Disable button and show starting state
-    if (runBtn) { runBtn.disabled = true; runBtn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Running...'; }
-    if (rescoreBtn) { rescoreBtn.disabled = true; }
-    logEl.innerHTML = '<div style="color:var(--c-warning);margin-bottom:0.5rem;">&#9654; Initializing Allocation Engine...</div>';
-    logEl.innerHTML += '<div style="margin-bottom:0.5rem;">&#9654; Fetching imported students and portal-paid students eligible for this batch...</div>';
-    logEl.innerHTML += '<div style="margin-bottom:0.5rem;">&#9654; Invoking the XGBoost `.pkl` model bridge (predict.py)...</div>';
-    logEl.innerHTML += '<div style="margin-bottom:0.5rem;">&#9654; Running OR-Tools CP-SAT solver (allocate.py)...</div>';
-    logEl.innerHTML += '<div style="margin-bottom:0.5rem;opacity:0.6;font-style:italic;">Please wait - this may take up to 60 seconds...</div>';
-
-    fetch('api/admin_api.php?action=run_algorithm', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-        body: new URLSearchParams({ csrf_token: csrf.value })
-    })
-        .then(response => response.json())
-        .then(data => {
-            if (runBtn) { runBtn.disabled = false; runBtn.innerHTML = '<i class="fa-solid fa-play"></i> Start Allocation Engine'; }
-            if (rescoreBtn) { rescoreBtn.disabled = false; }
-
-            if (data.status === 'success') {
-                const optimality = data.optimal ? 'OPTIMAL' : 'FEASIBLE (time limit reached)';
-                logEl.innerHTML += `<div style="color:var(--c-success);margin-bottom:0.5rem;">&#10003; Solver finished: ${optimality}</div>`;
-                if (data.prediction_mode) {
-                    logEl.innerHTML += `<div style="color:var(--c-success);margin-bottom:0.5rem;">&#10003; XGBoost score mode: ${data.prediction_mode}</div>`;
-                }
-                logEl.innerHTML += `<div style="color:var(--c-success);margin-bottom:0.5rem;">&#10003; Allocated: ${data.allocated} of ${data.total} eligible students</div>`;
-                logEl.innerHTML += '<div style="font-weight:700;margin-top:1rem;color:var(--c-success);">&#187; ALLOCATION CYCLE COMPLETE &#171;</div>';
-                logEl.innerHTML += '<div style="font-size:0.72rem;opacity:0.6;margin-top:0.5rem;">Audit logs written. Students can now view their status on the dashboard.</div>';
-            } else {
-                logEl.innerHTML += `<div style="margin-top:1rem;color:var(--c-danger);">&#10007; Error: ${data.message}</div>`;
-                logEl.innerHTML += '<div style="font-size:0.72rem;opacity:0.6;margin-top:0.5rem;">Check that Python, OR-Tools, the bundled XGBoost dependencies, and shell execution are available to Apache.</div>';
-            }
-        })
-        .catch(err => {
-            if (runBtn) { runBtn.disabled = false; runBtn.innerHTML = '<i class="fa-solid fa-play"></i> Start Allocation Engine'; }
-            if (rescoreBtn) { rescoreBtn.disabled = false; }
-            logEl.innerHTML += `<div style="margin-top:1rem;color:var(--c-danger);">&#10007; Network Error: ${err}</div>`;
-        });
+function startElapsedTimer(logEl) {
+    const startTime = Date.now();
+    _elapsedInterval = setInterval(() => {
+        const secs = Math.floor((Date.now() - startTime) / 1000);
+        const min  = String(Math.floor(secs / 60)).padStart(2, '0');
+        const sec  = String(secs % 60).padStart(2, '0');
+        const el   = document.getElementById('elapsed-timer');
+        if (el) el.textContent = `${min}:${sec}`;
+    }, 1000);
 }
 
-function rescoreAllScores() {
-    const logEl = document.getElementById('console');
-    const runBtn = document.getElementById('start-alloc-btn');
-    const rescoreBtn = document.getElementById('rescore-btn');
-    const csrf = document.querySelector('#run-allocation-form input[name="csrf_token"]');
+function stopElapsedTimer() {
+    if (_elapsedInterval) { clearInterval(_elapsedInterval); _elapsedInterval = null; }
+}
+
+function logLine(logEl, msg, color) {
+    const div = document.createElement('div');
+    div.style.marginBottom = '0.5rem';
+    if (color) div.style.color = color;
+    div.innerHTML = msg;
+    logEl.appendChild(div);
+    logEl.scrollTop = logEl.scrollHeight;
+}
+
+function resetButtons(runBtn, rescoreBtn) {
+    stopElapsedTimer();
+    if (runBtn)     { runBtn.disabled     = false; runBtn.innerHTML     = '<i class="fa-solid fa-play"></i> Start Allocation Engine'; }
+    if (rescoreBtn) { rescoreBtn.disabled = false; rescoreBtn.innerHTML = '<i class="fa-solid fa-rotate"></i> Recalculate All Urgency Scores'; }
+}
+
+async function parseApiJson(response) {
+    const text = (await response.text()).trim();
+    if (!response.ok) {
+        throw new Error(`HTTP ${response.status} ${response.statusText}`);
+    }
+
+    try {
+        return JSON.parse(text);
+    } catch (err) {
+        const compact = text.replace(/\s+/g, ' ').slice(0, 220);
+        throw new Error(`Invalid JSON response from server: ${compact || 'empty response'}`);
+    }
+}
+
+/* ─── Allocation ─────────────────────────────────────────────── */
+function startAllocation() {
+    const logEl     = document.getElementById('console');
+    const runBtn    = document.getElementById('start-alloc-btn');
+    const rescoreBtn= document.getElementById('rescore-btn');
+    const csrf      = document.querySelector('#run-allocation-form input[name="csrf_token"]');
 
     if (!csrf) {
         logEl.innerHTML = '<div style="color:var(--c-danger);">Security token missing. Reload the page and try again.</div>';
         return;
     }
 
-    if (rescoreBtn) { rescoreBtn.disabled = true; rescoreBtn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Rescoring...'; }
-    if (runBtn) { runBtn.disabled = true; }
-    logEl.innerHTML = '<div style="color:var(--c-warning);margin-bottom:0.5rem;">&#9654; Recomputing urgency scores for all medical records...</div>';
-    logEl.innerHTML += '<div style="margin-bottom:0.5rem;">&#9654; Invoking predict.py against the XGBoost `.pkl` model...</div>';
+    // Disable buttons
+    if (runBtn)     { runBtn.disabled     = true; runBtn.innerHTML     = '<i class="fa-solid fa-spinner fa-spin"></i> Running…'; }
+    if (rescoreBtn) { rescoreBtn.disabled = true; }
+
+    // Clear console and show live header
+    logEl.innerHTML = `
+        <div style="display:flex;align-items:center;gap:0.75rem;margin-bottom:0.75rem;color:var(--c-warning);font-weight:700;">
+            <i class="fa-solid fa-circle-notch fa-spin"></i>
+            Allocation Engine Running
+            <span style="font-family:monospace;font-size:0.9em;opacity:0.8;">
+                — Elapsed: <span id="elapsed-timer">00:00</span>
+            </span>
+        </div>`;
+
+    logLine(logEl, '&#9654; Engine started — fetching students, scoring via XGBoost, and running the solver…');
+    logLine(logEl,
+        '<span style="opacity:0.5;font-style:italic;">The page will update automatically when the solver finishes. Do not reload.</span>');
+
+    startElapsedTimer(logEl);
+
+    // Add a "still working" ping every 30 s so the admin knows it hasn't hung
+    let pingCount = 0;
+    const pingInterval = setInterval(() => {
+        pingCount++;
+        logLine(logEl,
+            `<span style="opacity:0.55;">&#9656; Still running… (${pingCount * 30}s elapsed — solver is working)</span>`);
+    }, 30_000);
+
+    // AbortController: cancel only after 10 minutes (600 s).
+    // The solver itself is capped at 180 s inside allocate.py, so 600 s gives
+    // plenty of headroom for I/O, scoring, DB writes, and notification dispatch.
+    const controller = new AbortController();
+    const networkTimeout = setTimeout(() => controller.abort(), 600_000);
+
+    fetch('api/admin_api.php?action=run_algorithm', {
+        method : 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body   : new URLSearchParams({ csrf_token: csrf.value }),
+        signal : controller.signal,
+        // keepalive tells the browser not to tear down the connection when the
+        // user switches tabs — important for a long-running background task.
+        keepalive: true,
+    })
+    .then(parseApiJson)
+    .then(data => {
+        clearInterval(pingInterval);
+        clearTimeout(networkTimeout);
+        resetButtons(runBtn, rescoreBtn);
+
+        if (data.status === 'success') {
+            // Show scoring backend actually used
+            if (data.prediction_mode) {
+                logLine(logEl, `&#10003; Urgency scoring: ${data.prediction_mode}`, 'var(--c-success)');
+            }
+            // Show solver actually used + its optimality status
+            if (data.solver_mode) {
+                const solverLabel = data.solver_mode;
+                const optLabel = data.optimal ? 'OPTIMAL' : 'FEASIBLE (time-limit reached — still a valid allocation)';
+                logLine(logEl, `&#10003; Solver: ${solverLabel} — ${optLabel}`, 'var(--c-success)');
+            }
+            if (data.total === 0) {
+                logLine(logEl, '&#9888; No eligible students found (check that students are marked as paid).', 'var(--c-warning)');
+            } else {
+                logLine(logEl, `&#10003; Allocated: ${data.allocated} of ${data.total} eligible students`, 'var(--c-success)');
+            }
+            logLine(logEl, '<strong>&#187; ALLOCATION CYCLE COMPLETE &#171;</strong>', 'var(--c-success)');
+            logLine(logEl,
+                '<span style="font-size:0.72rem;opacity:0.6;">Audit logs written. Students can now view their status on the dashboard.</span>');
+        } else {
+            logLine(logEl, `&#10007; Error: ${data.message}`, 'var(--c-danger)');
+            logLine(logEl,
+                '<span style="font-size:0.72rem;opacity:0.6;">Check that Python, OR-Tools, the XGBoost dependencies, and shell execution are available to Apache.</span>');
+        }
+    })
+    .catch(err => {
+        clearInterval(pingInterval);
+        clearTimeout(networkTimeout);
+        resetButtons(runBtn, rescoreBtn);
+
+        if (err.name === 'AbortError') {
+            logLine(logEl,
+                '&#10007; The request timed out after 10 minutes. The server may still be running — check the allocation results page before retrying.',
+                'var(--c-danger)');
+        } else {
+            logLine(logEl, `&#10007; Network Error: ${err.message}`, 'var(--c-danger)');
+        }
+    });
+}
+
+/* ─── Rescore ────────────────────────────────────────────────── */
+function rescoreAllScores() {
+    const logEl     = document.getElementById('console');
+    const runBtn    = document.getElementById('start-alloc-btn');
+    const rescoreBtn= document.getElementById('rescore-btn');
+    const csrf      = document.querySelector('#run-allocation-form input[name="csrf_token"]');
+
+    if (!csrf) {
+        logEl.innerHTML = '<div style="color:var(--c-danger);">Security token missing. Reload the page and try again.</div>';
+        return;
+    }
+
+    if (rescoreBtn) { rescoreBtn.disabled = true; rescoreBtn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Rescoring…'; }
+    if (runBtn)     { runBtn.disabled = true; }
+
+    logEl.innerHTML = `
+        <div style="display:flex;align-items:center;gap:0.75rem;margin-bottom:0.75rem;color:var(--c-warning);font-weight:700;">
+            <i class="fa-solid fa-circle-notch fa-spin"></i>
+            Recalculating Urgency Scores
+            <span style="font-family:monospace;font-size:0.9em;opacity:0.8;">
+                — Elapsed: <span id="elapsed-timer">00:00</span>
+            </span>
+        </div>`;
+
+    logLine(logEl, '&#9654; Fetching all medical records…');
+    logLine(logEl, '&#9654; Invoking <em>predict.py</em> against the XGBoost <code>.pkl</code> model…');
+    logLine(logEl, '<span style="opacity:0.5;font-style:italic;">Please keep this page open while scoring completes.</span>');
+
+    startElapsedTimer(logEl);
+
+    let pingCount = 0;
+    const pingInterval = setInterval(() => {
+        pingCount++;
+        logLine(logEl,
+            `<span style="opacity:0.55;">&#9656; Still scoring… (${pingCount * 30}s elapsed)</span>`);
+    }, 30_000);
+
+    const controller  = new AbortController();
+    const networkTimeout = setTimeout(() => controller.abort(), 300_000); // 5 min cap
 
     fetch('api/admin_api.php?action=rescore_all', {
-        method: 'POST',
+        method : 'POST',
         headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-        body: new URLSearchParams({ csrf_token: csrf.value })
+        body   : new URLSearchParams({ csrf_token: csrf.value }),
+        signal : controller.signal,
+        keepalive: true,
     })
-        .then(response => response.json())
-        .then(data => {
-            if (rescoreBtn) { rescoreBtn.disabled = false; rescoreBtn.innerHTML = '<i class="fa-solid fa-rotate"></i> Recalculate All Urgency Scores'; }
-            if (runBtn) { runBtn.disabled = false; }
+    .then(parseApiJson)
+    .then(data => {
+        clearInterval(pingInterval);
+        clearTimeout(networkTimeout);
+        resetButtons(runBtn, rescoreBtn);
 
-            if (data.status === 'success') {
-                logEl.innerHTML += `<div style="color:var(--c-success);margin-bottom:0.5rem;">&#10003; Rescored medical records: ${data.rescored}</div>`;
-                if (data.mode) {
-                    logEl.innerHTML += `<div style="color:var(--c-success);margin-bottom:0.5rem;">&#10003; XGBoost score mode: ${data.mode}</div>`;
-                }
-                logEl.innerHTML += '<div style="font-weight:700;margin-top:1rem;color:var(--c-success);">&#187; RESCORE COMPLETE &#171;</div>';
-            } else {
-                logEl.innerHTML += `<div style="margin-top:1rem;color:var(--c-danger);">&#10007; Error: ${data.message}</div>`;
+        if (data.status === 'success') {
+            logLine(logEl, `&#10003; Rescored medical records: ${data.rescored}`, 'var(--c-success)');
+            if (data.mode) {
+                logLine(logEl, `&#10003; XGBoost score mode: ${data.mode}`, 'var(--c-success)');
             }
-        })
-        .catch(err => {
-            if (rescoreBtn) { rescoreBtn.disabled = false; rescoreBtn.innerHTML = '<i class="fa-solid fa-rotate"></i> Recalculate All Urgency Scores'; }
-            if (runBtn) { runBtn.disabled = false; }
-            logEl.innerHTML += `<div style="margin-top:1rem;color:var(--c-danger);">&#10007; Network Error: ${err}</div>`;
-        });
+            logLine(logEl, '<strong>&#187; RESCORE COMPLETE &#171;</strong>', 'var(--c-success)');
+        } else {
+            logLine(logEl, `&#10007; Error: ${data.message}`, 'var(--c-danger)');
+        }
+    })
+    .catch(err => {
+        clearInterval(pingInterval);
+        clearTimeout(networkTimeout);
+        resetButtons(runBtn, rescoreBtn);
+
+        if (err.name === 'AbortError') {
+            logLine(logEl,
+                '&#10007; Request timed out after 5 minutes. Check the ML service logs.',
+                'var(--c-danger)');
+        } else {
+            logLine(logEl, `&#10007; Network Error: ${err.message}`, 'var(--c-danger)');
+        }
+    });
 }
 </script>
 </body>

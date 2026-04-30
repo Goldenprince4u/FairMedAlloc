@@ -9,6 +9,7 @@ session_start();
 require_once '../db_config.php';
 
 header('Content-Type: application/json');
+ini_set('display_errors', '0');
 
 // --- 1. Authentication Check ---
 // Require that the user making the payment is a logged-in student
@@ -47,8 +48,13 @@ $stmt = $conn->prepare("SELECT payment_id FROM payments WHERE student_id = ? AND
 $stmt->bind_param("i", $user_id);
 $stmt->execute();
 if ($stmt->get_result()->num_rows > 0) {
-    // Escape early if already paid
-    echo json_encode(['status' => 'success', 'message' => 'Already paid']);
+    require_once '../includes/Student.php';
+    $student = new Student($conn, $user_id);
+    $allocation = $student->getAllocation();
+    $message = $allocation
+        ? 'Your portal payment was already confirmed and your allocation is active.'
+        : 'Your portal payment was already confirmed. Your allocation is still pending.';
+    echo json_encode(['status' => 'success', 'message' => $message]);
     exit;
 }
 
@@ -58,16 +64,29 @@ $stmt = $conn->prepare("INSERT INTO payments (student_id, amount, reference_no, 
 $stmt->bind_param("ids", $user_id, $amount, $ref);
 
 if ($stmt->execute()) {
+    $paid_stmt = $conn->prepare("UPDATE student_profiles SET is_paid = 1 WHERE user_id = ?");
+    $paid_stmt->bind_param("i", $user_id);
+    $paid_stmt->execute();
+
+    $message = 'Portal payment of &#8358;50,000 confirmed. You are now eligible for hostel allocation.';
     require_once '../includes/AllocationEngine.php';
     try {
         $engine = new AllocationEngine($conn);
-        $engine->run($user_id);
-    } catch (Exception $e) {
+        $result = $engine->run($user_id);
+        if (($result['status'] ?? '') === 'success' && (int)($result['allocated'] ?? 0) > 0) {
+            $message = 'Portal payment of &#8358;50,000 confirmed. Your room has been allocated automatically.';
+        } elseif (($result['status'] ?? '') !== 'success') {
+            $message = 'Portal payment of &#8358;50,000 confirmed, but auto-allocation could not complete immediately. Your payment is safe and you remain eligible.';
+            error_log('Allocation engine returned an error during pay simulation: ' . ($result['message'] ?? 'Unknown error'));
+        } else {
+            $message = 'Portal payment of &#8358;50,000 confirmed. Your payment is recorded, but no suitable room was available immediately.';
+        }
+    } catch (Throwable $e) {
         error_log('Allocation engine error during pay simulation: ' . $e->getMessage());
     }
     echo json_encode([
         'status'  => 'success',
-        'message' => 'Portal payment of &#8358;50,000 confirmed. Your room has been allocated automatically.'
+        'message' => $message
     ]);
 } else {
     echo json_encode(['status' => 'error', 'message' => 'Database error. Please try again.']);

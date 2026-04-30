@@ -190,8 +190,14 @@ $display_mobility_map = [
     1 => 'Artificial Limb',
     2 => 'Crutches / Walker',
     3 => 'Wheelchair User',
+    'Normal Mobility' => 'Normal Mobility',
+    'Artificial Limb' => 'Artificial Limb',
+    'Crutches/Walker' => 'Crutches / Walker',
+    'Crutches / Walker' => 'Crutches / Walker',
+    'Wheelchair User' => 'Wheelchair User',
 ];
-$display_mobility = $display_mobility_map[(int)($student['mobility_status'] ?? 0)] ?? 'Normal Mobility';
+$mobilityRaw = $student['mobility_status'] ?? 'Normal Mobility';
+$display_mobility = $display_mobility_map[$mobilityRaw] ?? ($display_mobility_map[(int)$mobilityRaw] ?? 'Normal Mobility');
 
 $page_title = "My Profile | FairMedAlloc";
 require_once 'includes/header.php';

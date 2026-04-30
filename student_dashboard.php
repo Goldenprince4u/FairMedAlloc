@@ -123,7 +123,7 @@ require_once 'includes/header.php';
                                     <i class="fa-solid fa-clock text-warning text-xl mt-1"></i>
                                     <div>
                                         <div class="fw-700 text-warning text-lg mb-2">Allocation Pending</div>
-                                        <p class="text-muted">Your portal payment has been confirmed. Your room allocation will be considered in the next admin batch.</p>
+                                        <p class="text-muted">Your portal payment has been confirmed. The system attempted allocation immediately and will keep you pending until a suitable room is available.</p>
                                     </div>
                                 </div>
                             </div>

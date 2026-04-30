@@ -63,10 +63,40 @@ function clearCurrentSessionAllocations(mysqli $conn, string $session, int $admi
     }
 }
 
+function deleteAllImportedData(mysqli $conn, int $admin_id): void {
+    $conn->begin_transaction();
+    try {
+        $conn->query("DELETE FROM allocations");
+        $conn->query("DELETE FROM algorithm_audit_logs");
+        $conn->query("DELETE FROM medical_records");
+        $conn->query("DELETE FROM notifications");
+        $conn->query("DELETE FROM payments");
+        $conn->query("DELETE FROM student_profiles");
+        $conn->query("DELETE FROM users WHERE role = 'student'");
+        $conn->query("UPDATE rooms SET occupied_count = 0");
+
+        log_admin_action($conn, $admin_id, "Permanently deleted ALL imported student data");
+        $conn->commit();
+    } catch (Throwable $e) {
+        $conn->rollback();
+        throw $e;
+    }
+}
+
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     check_csrf();
 
-    if (isset($_POST['clear_session_allocations'])) {
+    if (isset($_POST['delete_all_data'])) {
+        try {
+            deleteAllImportedData($conn, (int)$_SESSION['user_id']);
+            $msg = "All imported student data, medical records, and allocations have been permanently deleted.";
+            $msg_type = "success";
+        } catch (Throwable $e) {
+            $msg = "Unable to delete data. Please try again.";
+            $msg_type = "error";
+            error_log('[FairMedAlloc] Delete all data failed: ' . $e->getMessage());
+        }
+    } elseif (isset($_POST['clear_session_allocations'])) {
         $session_to_clear = sanitize_input($_POST['session_to_clear'] ?? '');
         if ($session_to_clear === '') {
             $msg = "No academic session was supplied for clearing allocations.";
@@ -293,12 +323,26 @@ require_once 'includes/header.php';
                     <i class="fa-solid fa-triangle-exclamation"></i>
                     This removes room assignments for <strong><?php echo htmlspecialchars($cur_session); ?></strong>, recalculates room occupancy, resets all students to <strong>Unallocated</strong>, and clears all simulated portal payments.
                 </div>
-                <form method="post" onsubmit="return confirm('Clear all allocations and reset payments for <?php echo htmlspecialchars($cur_session); ?>? Student and medical records will remain.');">
+                <form method="post" onsubmit="return confirm('Clear all allocations and reset payments for <?php echo htmlspecialchars($cur_session); ?>? Student and medical records will remain.');" style="margin-bottom: 2rem;">
                     <?php csrf_field(); ?>
                     <input type="hidden" name="session_to_clear" value="<?php echo htmlspecialchars($cur_session); ?>">
                     <input type="hidden" name="clear_session_allocations" value="1">
                     <button type="submit" class="btn btn-outline" style="border-color:var(--c-warning);color:var(--c-warning);">
                         <i class="fa-solid fa-rotate-left"></i> Clear Current Session Allocations
+                    </button>
+                </form>
+
+                <hr style="border: 0; border-top: 1px solid var(--c-border); margin: 2rem 0;">
+
+                <h4 style="margin-bottom: 1rem; color: var(--c-danger);"><i class="fa-solid fa-trash"></i> Delete All Imported Data</h4>
+                <p class="text-muted mb-4">
+                    <span style="color: var(--c-danger); font-weight: bold;">Developer / Testing Only:</span> This will permanently delete ALL students, medical records, payments, notifications, and allocations from the database. It is unrecoverable.
+                </p>
+                <form method="post" onsubmit="return confirm('Are you absolutely sure you want to delete ALL imported student data? This cannot be undone!');">
+                    <?php csrf_field(); ?>
+                    <input type="hidden" name="delete_all_data" value="1">
+                    <button type="submit" class="btn btn-primary" style="background-color: var(--c-danger); border-color: var(--c-danger);">
+                        <i class="fa-solid fa-trash-can"></i> Delete All Imported Data
                     </button>
                 </form>
             </div>

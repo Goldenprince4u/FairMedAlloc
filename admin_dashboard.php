@@ -32,7 +32,7 @@ $stats_query = "
     SELECT 
         (SELECT COUNT(*) FROM users WHERE role='student') as total_students,
         (SELECT COUNT(*) FROM allocations) as total_alloc,
-        (SELECT COUNT(*) FROM medical_records WHERE condition_category != 'None') as medical_cases,
+        (SELECT COUNT(*) FROM medical_records WHERE COALESCE(NULLIF(condition_category, ''), 'None / Healthy') NOT IN ('None', 'None / Healthy')) as medical_cases,
         (SELECT COALESCE(SUM(r.capacity), 0)
          FROM rooms r
          JOIN hostels h ON r.hostel_id = h.hostel_id

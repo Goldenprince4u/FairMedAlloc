@@ -52,17 +52,14 @@ class UrgencyScoreService {
             $client = new MlServiceClient($this->baseUrl, $this->timeout);
             $result = $client->scoreBatch($payload);
             if (($result['status'] ?? '') === 'success') {
-                if (!isset($result['tiers']) && isset($result['results']) && is_array($result['results'])) {
-                    $result['tiers'] = $this->buildTiersFromScores($result['results']);
-                }
-                return $result;
+                return $this->normalizeBatchResponse($payload, $result);
             }
         } catch (Exception $serviceError) {
             $serviceErrorMessage = $serviceError->getMessage();
         }
 
         try {
-            return $this->runLocalPredictScript($payload);
+            return $this->normalizeBatchResponse($payload, $this->runLocalPredictScript($payload));
         } catch (Exception $localError) {
             if ($serviceErrorMessage !== null) {
                 error_log('[FairMedAlloc] XGBoost service unavailable, and local predict.py also failed: ' . $serviceErrorMessage . ' | ' . $localError->getMessage());
@@ -281,6 +278,77 @@ class UrgencyScoreService {
             $tiers[$studentId] = self::tierFromScore((float)$score);
         }
         return $tiers;
+    }
+
+    private function normalizeBatchResponse(array $payload, array $result): array {
+        $scores = $result['results'] ?? [];
+        if (!is_array($scores)) {
+            $result['results'] = [];
+            $result['tiers'] = [];
+            return $result;
+        }
+
+        $studentsById = [];
+        foreach ($payload as $index => $student) {
+            if (!is_array($student)) {
+                continue;
+            }
+            $studentId = $student['id'] ?? ('unknown_' . $index);
+            $studentsById[(string)$studentId] = $student;
+        }
+
+        $normalizedScores = [];
+        foreach ($scores as $studentId => $score) {
+            $studentKey = (string)$studentId;
+            $normalizedScores[$studentKey] = self::stabilizeScore(
+                $studentsById[$studentKey] ?? [],
+                (float)$score
+            );
+        }
+
+        $result['results'] = $normalizedScores;
+        $result['tiers'] = $this->buildTiersFromScores($normalizedScores);
+        return $result;
+    }
+
+    private static function stabilizeScore(array $student, float $rawScore): float {
+        $score = min(max($rawScore, 0.0), 100.0);
+
+        $condition = self::normalizeCondition($student['condition'] ?? 'None');
+        $mobility = self::normalizeMobility($student['mobility'] ?? ($student['mobility_status'] ?? 'Normal Mobility'));
+        $severity = self::normalizeSeverityValue($student['severity'] ?? ($student['severity_level'] ?? 'Low'));
+        $requestedMobility = isset($student['is_requested'])
+            ? (bool)$student['is_requested']
+            : ((int)($student['is_requested_mobility'] ?? ($student['has_special_needs'] ?? 0)) === 1);
+
+        $severityIndex = max(0, min($severity, 3));
+        $floor = 0.0;
+
+        $highRiskFloors = [0 => 0.0, 1 => 55.0, 2 => 78.0, 3 => 90.0];
+        $mediumRiskFloors = [
+            'Asthma' => [0 => 0.0, 1 => 28.0, 2 => 48.0, 3 => 74.0],
+            'Respiratory' => [0 => 0.0, 1 => 28.0, 2 => 48.0, 3 => 74.0],
+            'Visual Impairment' => [0 => 0.0, 1 => 34.0, 2 => 52.0, 3 => 78.0],
+            'Ulcer' => [0 => 0.0, 1 => 22.0, 2 => 44.0, 3 => 68.0],
+            'Orthopaedic' => [0 => 0.0, 1 => 46.0, 2 => 68.0, 3 => 88.0],
+            'Physical Disability' => [0 => 0.0, 1 => 52.0, 2 => 74.0, 3 => 90.0],
+            'Other' => [0 => 0.0, 1 => 18.0, 2 => 32.0, 3 => 50.0],
+        ];
+
+        if (in_array($condition, ['Sickle Cell', 'Cardiac', 'Cardiovascular', 'Epilepsy', 'Diabetes'], true)) {
+            $floor = max($floor, $highRiskFloors[$severityIndex] ?? 0.0);
+        } elseif (isset($mediumRiskFloors[$condition])) {
+            $floor = max($floor, $mediumRiskFloors[$condition][$severityIndex] ?? 0.0);
+        }
+
+        if ($condition === 'Physical Disability' || $mobility === 'Wheelchair User') {
+            $floor = max($floor, $requestedMobility ? 92.0 : 85.0);
+        } elseif (in_array($mobility, ['Crutches/Walker', 'Artificial Limb'], true)) {
+            $mobilityFloors = [0 => 0.0, 1 => 48.0, 2 => 64.0, 3 => 82.0];
+            $floor = max($floor, $mobilityFloors[$severityIndex] ?? 48.0);
+        }
+
+        return min(max($score, $floor), 100.0);
     }
 
     private function extractJsonResponse(string $output): ?array {

@@ -136,7 +136,8 @@ function insertStaticData(mysqli $conn): void
         ['current_session', '2025/2026'],
         ['urgency_threshold_proximal', '75'],
         ['urgency_threshold_medium', '40'],
-        ['allocation_algorithm_version', 'allocation_engine_v2'],
+        ['allocation_algorithm_version', 'allocation_engine_v3'],
+        ['allocation_solver_backend', 'ortools'],
         ['allocation_status', 'open'],
     ];
 
@@ -324,12 +325,13 @@ function buildDeborahRooms(): array
     $rooms = [];
 
     for ($room = 1; $room <= 28; $room++) {
+        $floorLevel = $room <= 14 ? 0 : 1;
         if ($room === 1) {
-            $rooms[] = makeRoom($room, 8, true, 'LB,UB,LB,UB,LB,UB,LB,UB');
+            $rooms[] = makeRoom($room, 8, true, 'LB,UB,LB,UB,LB,UB,LB,UB', $floorLevel);
             continue;
         }
 
-        $rooms[] = makeRoom($room, 4, false, 'LB,UB,LB,UB');
+        $rooms[] = makeRoom($room, 4, false, 'LB,UB,LB,UB', $floorLevel);
     }
 
     return $rooms;

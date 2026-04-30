@@ -194,3 +194,16 @@ applies rule-based weights as a fallback.
 | Admin settings          | `settings.php`                         |
 | Student registration    | `signup.php`                           |
 | Admin explanation       | `help.php`                             |
+
+---
+
+## 10. 2026-04-30 Policy Update
+
+This update supersedes the older Low-urgency/backfill wording above wherever
+there is any conflict.
+
+- Low-urgency students are now allocated inside their faculty-proximal halls instead of being sent to arbitrary spare halls.
+- Where a faculty maps to more than one hall, the first-listed hall is treated as the primary proximal hall and later halls act as spill-over.
+- Joshua Hall and Deborah Hall are treated as stair-access halls, not elevator halls.
+- Mobility-priority students (`Wheelchair User`, `Crutches/Walker`, `Artificial Limb`) whose faculties map to Joshua Hall or Deborah Hall are steered to the ground floor of the respective hall.
+- The main OR-Tools run now covers the full eligible cohort; Low-urgency students are no longer handled by a separate greedy backfill phase.

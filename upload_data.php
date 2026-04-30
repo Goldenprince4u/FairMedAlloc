@@ -77,8 +77,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_FILES['csv_file'])) {
             ? "INSERT INTO users (username, full_name, password_hash, must_change_password, role) VALUES (?, ?, ?, 1, 'student')"
             : "INSERT INTO users (username, full_name, password_hash, role) VALUES (?, ?, ?, 'student')";
         $stmt_user        = $conn->prepare($user_insert_sql);
-        $stmt_profile     = $conn->prepare("INSERT INTO student_profiles (user_id, level, department_id, gender, is_paid) VALUES (?, ?, ?, ?, ?)");
-        $stmt_dept_lookup = $conn->prepare("SELECT department_id FROM departments WHERE name LIKE ? LIMIT 1");
+        $stmt_profile         = $conn->prepare("INSERT INTO student_profiles (user_id, level, department_id, gender, has_special_needs, is_paid) VALUES (?, ?, ?, ?, ?, ?)");
+        $stmt_fac_lookup      = $conn->prepare("SELECT faculty_id FROM faculties WHERE LOWER(name) = LOWER(?) LIMIT 1");
+        $stmt_fac_insert      = $conn->prepare("INSERT INTO faculties (name) VALUES (?)");
+        $stmt_dept_lookup     = $conn->prepare("SELECT department_id FROM departments WHERE faculty_id = ? AND LOWER(name) = LOWER(?) LIMIT 1");
+        $stmt_dept_insert     = $conn->prepare("INSERT INTO departments (faculty_id, name) VALUES (?, ?)");
 
         // ── PHASE 1 + 3: Wrapped in a single atomic transaction ─────────────────
         // If the server crashes mid-import, the entire batch is rolled back so
@@ -95,17 +98,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_FILES['csv_file'])) {
                 $matric    = trim($row[0]);
                 $name      = trim($row[1]);
                 $level     = (int) trim($row[2]);
+                $faculty   = trim($row[3]);
                 $dept      = trim($row[4]);
                 $gender    = trim($row[5]);
-                $condition = trim($row[6]);
+                $condition = UrgencyScoreService::normalizeCondition(trim($row[6]));
                 $severity  = trim($row[7]);
-                $mobility  = trim($row[8]);
+                $mobility  = UrgencyScoreService::normalizeMobility(trim($row[8]));
                 $paid_str  = trim($row[9]);
 
-                if (empty($matric) || empty($name) || empty($dept) || empty($gender) || empty($condition) || empty($severity) || empty($mobility) || $paid_str === '')
+                if (empty($matric) || empty($name) || empty($faculty) || empty($dept) || empty($gender) || empty($condition) || empty($severity) || empty($mobility) || $paid_str === '')
                     continue;
 
                 $is_paid = (int) $paid_str === 1 ? 1 : 0;
+                $has_mobility_need = $mobility !== 'Normal Mobility' ? 1 : 0;
 
                 $stmt_check->bind_param("s", $matric);
                 $stmt_check->execute();
@@ -121,27 +126,42 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_FILES['csv_file'])) {
                 if ($stmt_user->execute()) {
                     $uid = $conn->insert_id;
 
-                    $dept_id    = 1;
-                    $search_dept = "%" . $dept . "%";
-                    $stmt_dept_lookup->bind_param("s", $search_dept);
+                    $faculty_id = null;
+                    $stmt_fac_lookup->bind_param("s", $faculty);
+                    $stmt_fac_lookup->execute();
+                    $res_fac = $stmt_fac_lookup->get_result();
+                    if ($res_fac->num_rows > 0) {
+                        $faculty_id = (int)$res_fac->fetch_assoc()['faculty_id'];
+                    } else {
+                        $stmt_fac_insert->bind_param("s", $faculty);
+                        $stmt_fac_insert->execute();
+                        $faculty_id = (int)$conn->insert_id;
+                    }
+
+                    $dept_id = 0;
+                    $stmt_dept_lookup->bind_param("is", $faculty_id, $dept);
                     $stmt_dept_lookup->execute();
                     $res_dept = $stmt_dept_lookup->get_result();
                     if ($res_dept->num_rows > 0) {
-                        $dept_id = $res_dept->fetch_assoc()['department_id'];
+                        $dept_id = (int)$res_dept->fetch_assoc()['department_id'];
+                    } else {
+                        $stmt_dept_insert->bind_param("is", $faculty_id, $dept);
+                        $stmt_dept_insert->execute();
+                        $dept_id = (int)$conn->insert_id;
                     }
 
-                    $stmt_profile->bind_param("iiisi", $uid, $level, $dept_id, $gender, $is_paid);
+                    $stmt_profile->bind_param("iiisii", $uid, $level, $dept_id, $gender, $has_mobility_need, $is_paid);
                     $stmt_profile->execute();
 
-                    $normalizedCondition = strtolower(trim($condition));
-                    if (!in_array($normalizedCondition, ['none', 'none / healthy', 'healthy'], true)) {
+                    if ($condition !== 'None' || $has_mobility_need === 1) {
                         $pending_medical[] = [
                             'id'            => $uid,
                             'condition'     => $condition,
                             'severity'      => $severity,
                             'mobility'      => $mobility,
                             'academic_level' => $level,
-                            'is_requested'  => (int)(strtolower(trim($mobility)) !== 'normal mobility' && trim($mobility) !== '0'),
+                            'has_special_needs' => $has_mobility_need,
+                            'is_requested'  => $has_mobility_need,
                         ];
                     }
                     $count++;
@@ -166,23 +186,24 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_FILES['csv_file'])) {
             }
 
             // ── PHASE 3: Insert medical records with resolved urgency scores ─────
-            $stmt_med = $conn->prepare("INSERT INTO medical_records (student_id, condition_category, condition_details, severity_level, urgency_score, mobility_status) VALUES (?, ?, ?, ?, ?, ?)");
+            $stmt_med = $conn->prepare("INSERT INTO medical_records (student_id, condition_category, condition_details, severity_level, urgency_score, mobility_status, is_requested_mobility) VALUES (?, ?, ?, ?, ?, ?, ?)");
             foreach ($pending_medical as $s) {
                 $uid       = $s['id'];
                 $condition = $s['condition'];
                 $severity  = $s['severity'];
                 $mobility  = $s['mobility'];
+                $isRequested = (int)($s['is_requested'] ?? 0);
                 $score     = isset($batch_scores[$uid])
                     ? (float) $batch_scores[$uid]
                     : UrgencyScoreService::calculateFallbackScore(['condition' => $condition, 'mobility' => $mobility, 'severity' => $severity]);
 
                 $details = "{$condition} (Imported via CSV)";
-                $stmt_med->bind_param("isssds", $uid, $condition, $details, $severity, $score, $mobility);
+                $stmt_med->bind_param("isssdsi", $uid, $condition, $details, $severity, $score, $mobility, $isRequested);
                 $stmt_med->execute();
             }
 
             $conn->commit();
-            $msg      = "Processed: {$count} students registered. Duplicates skipped: {$duplicates}. Imported payment status was preserved, and eligible students will be considered in the next admin batch.";
+            $msg      = "Processed: {$count} students registered. Duplicates skipped: {$duplicates}. Payment, mobility, and department data were preserved for allocation.";
             $msg_type = 'success';
 
         } catch (Exception $e) {
@@ -232,8 +253,8 @@ require_once 'includes/header.php';
                     style="font-size:2.5rem;color:var(--c-text-muted);margin-bottom:1rem;"></i>
                 <h3 style="margin-bottom:0.5rem;">Upload Student CSV File</h3>
                 <p class="text-muted" style="margin-bottom:1.75rem;font-size:0.9rem;">Drag &amp; drop your CSV file
-                    here, or click to browse. Imported payment status and student records will be picked up during the
-                    next admin allocation batch.</p>
+                    here, or click to browse. Imported payment status, mobility support, and department records are
+                    preserved exactly for allocation.</p>
 
                 <form method="post" enctype="multipart/form-data" id="csv-upload-form">
                     <?php csrf_field(); ?>
