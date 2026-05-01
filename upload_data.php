@@ -26,6 +26,7 @@ session_start();
 require_once 'db_config.php';
 require_once 'includes/security_helper.php';
 require_once 'includes/UrgencyScoreService.php';
+require_once 'includes/Logger.php';
 // Auth Guard: admin only
 if (!isset($_SESSION['logged_in']) || ($_SESSION['role'] ?? '') !== 'admin') {
     header("Location: admin_login.php");
@@ -205,6 +206,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_FILES['csv_file'])) {
             $conn->commit();
             $msg      = "Processed: {$count} students registered. Duplicates skipped: {$duplicates}. Payment, mobility, and department data were preserved for allocation.";
             $msg_type = 'success';
+            
+            // Log successful import
+            Logger::info("CSV import completed: {$count} students imported, {$duplicates} duplicates skipped");
+            log_admin_action($conn, (int)$_SESSION['user_id'], "Bulk CSV import: $count students registered, $duplicates duplicates");
 
         } catch (Exception $e) {
             $conn->rollback();
@@ -213,6 +218,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_FILES['csv_file'])) {
             }
             $msg      = "Import failed and was rolled back: " . htmlspecialchars($e->getMessage()) . ". No records were written.";
             $msg_type = 'error';
+            
+            // Log the failure
+            Logger::error("CSV import failed", $e);
         }
     } // end mime check
 } // end POST

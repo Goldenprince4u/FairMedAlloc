@@ -1,3 +1,27 @@
+<?php
+// ── Security Headers ─────────────────────────────────────────────────────────
+// Content-Security-Policy:
+//   script-src 'unsafe-inline' — required for the inline theme-toggle script
+//     in this file and ad-hoc page scripts; tighten with nonces in a future pass.
+//   style-src + font-src cdnjs.cloudflare.com — Font Awesome CDN.
+//   connect-src 'self' — restricts fetch() / XHR to same origin only.
+//   frame-ancestors 'none' — prevents the app being embedded in iframes
+//     (clickjacking protection, equivalent to X-Frame-Options: DENY).
+if (!headers_sent()) {
+    header("Content-Security-Policy: "
+        . "default-src 'self'; "
+        . "script-src 'self' 'unsafe-inline'; "
+        . "style-src 'self' https://cdnjs.cloudflare.com 'unsafe-inline'; "
+        . "font-src 'self' https://cdnjs.cloudflare.com; "
+        . "img-src 'self' data:; "
+        . "connect-src 'self'; "
+        . "frame-ancestors 'none';"
+    );
+    header("X-Frame-Options: DENY");
+    header("X-Content-Type-Options: nosniff");
+    header("Referrer-Policy: strict-origin-when-cross-origin");
+}
+?>
 <!DOCTYPE html>
 <html lang="en">
 <head>

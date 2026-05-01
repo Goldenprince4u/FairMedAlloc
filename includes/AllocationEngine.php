@@ -3,16 +3,22 @@
  * Allocation Engine
  * =================
  * Core logic for assigning students to hostels based on fairness constraints.
+ * Includes performance monitoring to identify slow queries and bottlenecks.
  */
 require_once __DIR__ . '/DbHelper.php';
+require_once __DIR__ . '/PerformanceMonitor.php';
+require_once __DIR__ . '/Logger.php';
+
 class AllocationEngine {
     private const ALGORITHM_VERSION = 'allocation_engine_v3';
 
     private $conn;
     private $allocationsHasAlgorithmVersion = null;
+    private $monitor;
 
     public function __construct($db_connection) {
         $this->conn = $db_connection;
+        $this->monitor = new PerformanceMonitor();
     }
 
     /**
@@ -55,7 +61,11 @@ class AllocationEngine {
             
             $sql .= " ORDER BY m.urgency_score DESC";
             
-            $result = $this->conn->query($sql);
+            // Measure query execution time
+            $result = $this->monitor->query('fetch_unallocated_students', function() use ($sql) {
+                return $this->conn->query($sql);
+            }, 2000); // warn if > 2 seconds
+            
             $students = $result->fetch_all(MYSQLI_ASSOC);
             $allocated_count = 0;
 
@@ -82,8 +92,10 @@ class AllocationEngine {
                 $result_data = $this->predictBatchScores($batch_payload);
                 $scores_map = $result_data['results'] ?? [];
                 $prediction_mode = $result_data['mode'] ?? 'XGBoost';
+                Logger::info("ML service score prediction successful for " . count($batch_payload) . " students");
             } catch (Throwable $e) {
-                error_log('[FairMedAlloc] Score refresh skipped: ' . $e->getMessage());
+                Logger::warning("ML service unavailable, falling back to stored urgency scores: " . $e->getMessage());
+                // Use stored scores from database - already loaded in $students array
             }
 
             // Update students array with latest scores
@@ -115,7 +127,11 @@ class AllocationEngine {
                           WHERE r.occupied_count < r.capacity
                             AND h.is_postgrad = 0
                             AND h.is_foundation = 0";
-            $roomResult = $this->conn->query($roomQuery);
+            
+            $roomResult = $this->monitor->query('fetch_available_rooms', function() use ($roomQuery) {
+                return $this->conn->query($roomQuery);
+            }, 2000); // warn if > 2 seconds
+            
             $rooms = $roomResult->fetch_all(MYSQLI_ASSOC);
             
             foreach ($rooms as &$r) {
@@ -184,7 +200,8 @@ class AllocationEngine {
                     } else {
                         $solver_mode = 'PHP Greedy Fallback';
                         $solver_status = 'FALLBACK';
-                        error_log('[FairMedAlloc] OR-Tools solver unavailable, using PHP fallback allocator. Solver output: ' . (string)$solver_output);
+                        Logger::warning("OR-Tools solver unavailable, using PHP greedy fallback allocator");
+                        Logger::info("Solver output: " . substr($solver_output, 0, 500));
                         $assignments = $this->buildFallbackAssignments($students, $rooms, $prox_threshold, $medium_threshold);
                     }
                 } else {

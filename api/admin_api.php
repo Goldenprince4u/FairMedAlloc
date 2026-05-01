@@ -10,6 +10,7 @@ session_start();
 require_once '../db_config.php';
 require_once '../includes/security_helper.php';
 require_once '../includes/DbHelper.php';
+require_once '../includes/Logger.php';
 
 // All responses from this file will be JSON-formatted
 header('Content-Type: application/json');
@@ -76,7 +77,14 @@ function sendJsonResponse(array $payload, int $statusCode = 200): void {
     while (ob_get_level() > 0) {
         ob_end_clean();
     }
+    
+    // Ensure response always has 'success' key for consistency
+    if (!isset($payload['success']) && isset($payload['status'])) {
+        $payload['success'] = ($payload['status'] === 'success');
+    }
+    
     echo json_encode($payload);
+    exit;
 }
 
 // --------------------------------------------------------------------------
@@ -173,8 +181,35 @@ function handleManualAssign($conn) {
     $student_id = (int)($_POST['student_id'] ?? 0);
     $room_id    = (int)($_POST['room_id'] ?? 0);
 
+    // Input validation: IDs must be positive
     if ($room_id <= 0 || $student_id <= 0) {
         sendJsonResponse(['status' => 'error', 'message' => 'Invalid Data'], 400);
+        return;
+    }
+
+    // Validate student exists before proceeding
+    $student_check = $conn->prepare("SELECT user_id FROM users WHERE user_id = ?");
+    $student_check->bind_param("i", $student_id);
+    $student_check->execute();
+    if ($student_check->get_result()->num_rows === 0) {
+        Logger::warning("Manual assignment attempt with non-existent student ID: {$student_id}");
+        sendJsonResponse(['status' => 'error', 'message' => 'Student not found'], 400);
+        return;
+    }
+
+    // Validate room exists and has capacity before proceeding
+    $room_check = $conn->prepare("SELECT r.room_id, r.capacity, r.occupied_count FROM rooms r WHERE r.room_id = ?");
+    $room_check->bind_param("i", $room_id);
+    $room_check->execute();
+    $room_validation = $room_check->get_result()->fetch_assoc();
+    if (!$room_validation) {
+        Logger::warning("Manual assignment attempt with non-existent room ID: {$room_id}");
+        sendJsonResponse(['status' => 'error', 'message' => 'Room not found'], 400);
+        return;
+    }
+    if ((int)$room_validation['occupied_count'] >= (int)$room_validation['capacity']) {
+        Logger::warning("Manual assignment attempt to full room: {$room_id}");
+        sendJsonResponse(['status' => 'error', 'message' => 'Selected room is already full'], 400);
         return;
     }
 

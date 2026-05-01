@@ -37,7 +37,9 @@ function payFees() {
         body:    JSON.stringify({ csrf_token: csrf.value })
     })
         .then(res => {
-            if (!res.ok) throw new Error(`HTTP ${res.status}`);
+            if (!res.ok) {
+                throw new Error(`HTTP ${res.status}: ${res.statusText}`);
+            }
             return res.json();
         })
         .then(data => {
@@ -53,10 +55,23 @@ function payFees() {
                 showPayMsg(data.message || 'Payment failed. Please try again.', false, msg);
             }
         })
-        .catch(() => {
+        .catch(err => {
+            console.error('[Payment Error]', err);
             btn.innerHTML = '<i class="fa-solid fa-credit-card mr-2"></i> Pay on Portal (Simulator) - &#x20A6;50,000';
             btn.disabled  = false;
-            showPayMsg('Network error. Check your connection and try again.', false, msg);
+            
+            // Provide specific error messages based on error type
+            let errorMsg = 'Network error. Check your connection and try again.';
+            if (err instanceof TypeError) {
+                errorMsg = 'Network connection failed. Please check your internet and try again.';
+            } else if (err.message.includes('JSON')) {
+                errorMsg = 'Server error: Invalid response. Please contact support.';
+            } else if (err.message.includes('HTTP 5')) {
+                errorMsg = 'Server error. Please try again in a moment.';
+            } else if (err.message.includes('HTTP 4')) {
+                errorMsg = 'Request failed. Please check your input and try again.';
+            }
+            showPayMsg(errorMsg, false, msg);
         });
 }
 
