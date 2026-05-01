@@ -359,6 +359,11 @@ class AllocationEngine {
             $this->conn->commit();
             $inTransaction = false;
 
+            // Log allocation completion statistics
+            $this->monitor->logStatistics();
+            Logger::info("Allocation completed: {$allocated_count}/{$allocated_count} students processed, "
+                . "Solver: $solver_mode, Status: $solver_status");
+
             return [
                 'status' => 'success',
                 'allocated' => $allocated_count,
@@ -374,6 +379,7 @@ class AllocationEngine {
             if ($inTransaction) {
                 $this->conn->rollback();
             }
+            Logger::error("Allocation process failed", $e);
             return [
                 'status' => 'error',
                 'message' => $e->getMessage()

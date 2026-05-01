@@ -180,11 +180,15 @@ function startAllocation() {
             `<span style="opacity:0.55;">&#9656; Still running… (${pingCount * 30}s elapsed — solver is working)</span>`);
     }, 30_000);
 
-    // AbortController: cancel only after 10 minutes (600 s).
-    // The solver itself is capped at 180 s inside allocate.py, so 600 s gives
-    // plenty of headroom for I/O, scoring, DB writes, and notification dispatch.
+    // AbortController: cancel only after 15 minutes (900 s).
+    // The solver itself is capped at 300 s inside allocate.py, plus:
+    // - Fetching students from DB (seconds)
+    // - XGBoost scoring (seconds)
+    // - CSV parsing and model building (seconds)
+    // - Bulk DB inserts + notifications (seconds)
+    // For large allocations (10k+), this headroom is necessary.
     const controller = new AbortController();
-    const networkTimeout = setTimeout(() => controller.abort(), 600_000);
+    const networkTimeout = setTimeout(() => controller.abort(), 900_000);
 
     fetch('api/admin_api.php?action=run_algorithm', {
         method : 'POST',
@@ -279,7 +283,7 @@ function rescoreAllScores() {
     }, 30_000);
 
     const controller  = new AbortController();
-    const networkTimeout = setTimeout(() => controller.abort(), 300_000); // 5 min cap
+    const networkTimeout = setTimeout(() => controller.abort(), 600_000); // 10 min cap for 15k students
 
     fetch('api/admin_api.php?action=rescore_all', {
         method : 'POST',

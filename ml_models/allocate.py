@@ -320,9 +320,10 @@ def run_ortools(students, rooms, remaining_cap, first_blocks, rng):
     model.Maximize(sum(obj_terms))
 
     solver = cp_model.CpSolver()
-    # 120 s is generous for ~1 000 priority students; the solver returns
-    # early as OPTIMAL if it can prove the best solution before the limit.
-    solver.parameters.max_time_in_seconds = 120.0
+    # For 15k students, solver may need up to 300s to reach OPTIMAL.
+    # The solver returns early as OPTIMAL if it can prove the best solution before the limit.
+    # For large scale allocations (5k+), FEASIBLE solutions are still valid and fair.
+    solver.parameters.max_time_in_seconds = 300.0
     solver.parameters.random_seed = rng.randint(1, 1_000_000)
 
     status = solver.Solve(model)
