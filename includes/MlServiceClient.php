@@ -24,13 +24,36 @@ class MlServiceClient {
     }
 
     private function request(string $method, string $path, ?array $payload = null): array {
-        $url = $this->baseUrl . $path;
+        $url        = $this->baseUrl . $path;
+        $maxRetries = 2;
+        $delayMs    = 200; // starts at 200 ms, doubles each attempt
 
-        if (function_exists('curl_init')) {
-            return $this->requestWithCurl($method, $url, $payload);
+        $lastException = null;
+
+        for ($attempt = 1; $attempt <= $maxRetries + 1; $attempt++) {
+            try {
+                if (function_exists('curl_init')) {
+                    return $this->requestWithCurl($method, $url, $payload);
+                }
+                return $this->requestWithStreams($method, $url, $payload);
+
+            } catch (Throwable $e) {
+                $lastException = $e;
+
+                if ($attempt <= $maxRetries) {
+                    Logger::warning(
+                        "ML service attempt {$attempt} failed ({$path}): " . $e->getMessage()
+                        . " — retrying in {$delayMs}ms"
+                    );
+                    usleep($delayMs * 1000);
+                    $delayMs *= 2; // exponential back-off: 200ms → 400ms
+                }
+            }
         }
 
-        return $this->requestWithStreams($method, $url, $payload);
+        // All attempts exhausted — let the caller decide how to handle
+        Logger::error("ML service unreachable after " . ($maxRetries + 1) . " attempts ({$path})", $lastException);
+        throw $lastException;
     }
 
     private function requestWithCurl(string $method, string $url, ?array $payload = null): array {
