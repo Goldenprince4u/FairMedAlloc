@@ -118,14 +118,20 @@ A **stabilization floor** is applied after the model score to ensure clinically
 critical conditions are never scored below a minimum threshold (e.g. a student
 with Sickle Cell Disease + High severity always scores ≥ 90).
 
+A **mobility score floor** of **76.0** is applied post-prediction: any student
+whose mobility status is `Wheelchair User`, `Crutches/Walker`, or `Artificial Limb`
+receives a minimum urgency score of 76.0, guaranteeing placement in the **High**
+urgency band.  The DB score cache is bypassed for these students so that a
+mobility status disclosed after initial registration is always picked up fresh.
+
 If the Python/model path fails, the system falls back to a PHP rule-based scorer.
 
 ### Step 3 — Classify Urgency Bands
 | Band | Score Range | Allocation Policy |
 |---|---|---|
-| **High** | ≥ 75 | Clinic-proximal rooms (Prophet Moses Blk 1–2 for males, Queen Esther Extension Blk 39 for females) |
+| **High** | ≥ 75 | Clinic-proximal rooms (Prophet Moses Blk 1–2 for males, Queen Esther Extension Blks 38–39 for females) |
 | **Medium** | 40–74 | First block of their faculty-proximal hostel |
-| **Low** | < 40 | Any valid remaining room of matching gender |
+| **Low** | < 40 | Faculty-proximal halls first; clinic-proximal overflow when those are full |
 
 ### Step 4 — OR-Tools CP-SAT Solver
 The engine passes all eligible students and all available rooms to `allocate.py`,
@@ -138,15 +144,22 @@ which builds a **Constraint Programming model**:
 - **Each student** is assigned to at most one room.
 
 The solver **maximises a weighted objective** where:
-- High-urgency students in their matching clinic room get +5,000,000
-- Medium-urgency in first block of faculty-proximal hostel get +1,500,000
-- Medium-urgency in Prophet Moses Block 2 get +1,200,000
-- Medium-urgency in any other block of faculty-proximal hostel get +400,000
-- Low-urgency students get no bonus but face no hard ban — they freely fill
-  remaining capacity after priority students are placed.
 
-A small random tie-break (0–99) is added to each variable so equally-weighted
-options are varied across runs.
+| Condition                                           | Bonus      |
+|-----------------------------------------------------|------------|
+| High → matching clinic-proximal room                | +5,000,000 |
+| Mobility-priority → Joshua/Deborah ground floor     | +2,200,000 |
+| Medium → first block of faculty-proximal hostel     | +1,500,000 |
+| Medium → Prophet Moses Block 2 (Group A males)      | +1,200,000 |
+| Low → primary faculty-proximal hostel               | +900,000   |
+| Low → secondary faculty-proximal hostel             | +450,000   |
+| Medium → any later block of faculty-proximal hostel | +400,000   |
+| Medium or Low → clinic-proximal room (overflow)     | +150,000   |
+| Any other gender-matching room (last resort)        | +0         |
+
+A small random tie-break (0–99) is added per variable to vary equally-weighted
+options across runs.  All students — High, Medium, and Low — are handled in a
+**single OR-Tools CP-SAT pass** with no separate greedy phase.
 
 ### Step 5 — Write Results to Database
 For each assigned student the engine:
@@ -197,8 +210,9 @@ boolean variables. The solver typically returns `FEASIBLE` (a valid, good-qualit
 allocation) within the time limit. `OPTIMAL` means no better assignment exists.
 
 If OR-Tools is unavailable or the output file is not produced, the engine
-automatically falls back to the **PHP Greedy Fallback** allocator, which
-implements the same priority rules in a deterministic greedy pass.
+automatically falls back to the **PHP Greedy Fallback** allocator in
+`AllocationEngine.php`, which mirrors the same priority rules.
+This fallback is only triggered if Python itself is not available on the server.
 
 The active solver backend is controlled by:
 ```sql
@@ -214,9 +228,10 @@ SELECT setting_value FROM settings WHERE setting_key = 'allocation_solver_backen
 |---|---|
 | **Prophet Moses Hall Block 1 (Male)** | Hard reserve — High-urgency males ONLY. Never backfilled. |
 | **Prophet Moses Hall Block 2 (Male)** | High-urgency males first; Medium males may use this block once Block 1 is full |
-| **Queen Esther Extension Block 39 (Female)** | Clinic-proximal — High-urgency females first |
+| **Queen Esther Extension Blocks 38–39 (Female)** | Clinic-proximal — High-urgency females first; Medium/Low overflow allowed |
 | **Faculty Proximal (Medium urgency)** | Assigned to first block of their faculty's designated hostel |
-| **Low urgency** | Fill any remaining valid room with matching gender |
+| **Low urgency** | Faculty-proximal halls first (900 K/450 K bonus); clinic-proximal overflow (150 K); then any valid room |
+| **Joshua Hall / Deborah Hall upper floor** | Mobility-priority students restricted to ground floor (floor 0) only — no elevator |
 | **Postgrad/Foundation rooms** | Completely excluded from undergraduate allocation |
 
 ### Faculty → Hostel Mapping (Medium urgency)
@@ -283,23 +298,22 @@ A student is **eligible** for allocation if:
 
 ## 11. Expected Run Times
 
-The solver uses a **hybrid approach** — OR-Tools CP-SAT runs on High + Medium urgency
-students only (the medically important subset), while a fast greedy algorithm fills
-remaining capacity for Low urgency students. This cuts the variable count from
-~14 million (full cohort) down to ~500 K, dramatically reducing runtime.
+All students (High, Medium, and Low urgency) are handled in a **single
+OR-Tools CP-SAT pass**.  The weight ladder steers placement without a
+separate greedy phase, so the solver sees the full cohort but with large
+bonus differentials that guarantee priority ordering.
 
-| Cohort Size | Eligible High/Medium | XGBoost Scoring | OR-Tools Phase | Greedy Phase | DB Writes | **Total** |
-|---|---|---|---|---|---|---|
-| 100 students | ~12 | ~3s | ~5s (**OPTIMAL**) | <1s | ~1s | **~15s** ✅ measured |
-| 500 students | ~60 | ~5s | ~15s | ~1s | ~3s | **~25s** |
-| 1,000 students | ~120 | ~8s | ~30s | ~2s | ~5s | **~45s** |
-| 7,000 students | ~800 | ~20s | ~60s | ~5s | ~15s | **~2 min** |
+| Cohort Size | XGBoost Scoring | OR-Tools Phase | DB Writes | **Total** |
+|---|---|---|---|---|
+| 100 students | ~3s | ~5s (**OPTIMAL**) | ~1s | **~10s** |
+| 500 students | ~5s | ~20s | ~3s | **~30s** |
+| 1,000 students | ~8s | ~40s | ~5s | **~55s** |
+| 7,000 students | ~20s | ~90s | ~15s | **~2–3 min** |
 
 - The browser keeps the connection alive for up to **10 minutes**.
 - PHP has **no execution time limit** (`set_time_limit(0)`) for this endpoint.
-- OR-Tools is capped at **120 seconds** for the priority cohort — the greedy phase has no cap.
-- A "still running…" ping appears every 30 seconds so the admin knows it hasn't hung.
-- For 7,000 students, expect **~2 minutes** total — well within the browser window.
+- OR-Tools is capped at **120 seconds** and returns the best valid solution found.
+- A "still running…" ping appears every 30 seconds so the admin knows it hasn’t hung.
 
 ---
 

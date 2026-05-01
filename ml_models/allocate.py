@@ -83,10 +83,10 @@ def is_male_clinic_room(room):
 
 
 def is_female_clinic_room(room):
-    """Queen Esther Extension Hall Blocks 33, 34 — female clinic-proximal space."""
+    """Queen Esther Extension Hall Blocks 38, 39 — female clinic-proximal space."""
     return (
         room.get('hostel_name', '') == CLINIC_PROXIMAL_FEMALE_HOSTEL
-        and room.get('block_name', '') in {'33', '34'}
+        and room.get('block_name', '') in {'38', '39'}
         and room.get('gender', '') == 'Female'
     )
 
@@ -191,44 +191,20 @@ def placement_bonus(student, room, first_blocks):
     Soft-preference bonus for each (student, room) pair.
 
     Priority ladder (descending bonus):
-      5 000 000  High student → matching clinic room
-      1 500 000  Medium student → first block of faculty-proximal hostel
-      1 200 000  Medium student → Prophet Moses Block 2
-        400 000  Medium student → any other block of faculty-proximal hostel
-              0  Low urgency / backfill
-    """
-    is_high   = student_is_high(student)
-    is_medium = student_is_medium(student)
-
-    if is_high and clinic_room_matches_gender(student, room):
-        return 5_000_000
-
-    if is_medium and room_in_faculty_proximal_hostel(student, room):
-        if is_primary_male_high_room(room):
-            return 0
-        if (room.get('hostel_name', '') == 'Prophet Moses Hall'
-                and room.get('block_name', '') == '2'):
-            return 1_200_000
-        if room_is_first_block(room, first_blocks):
-            return 1_500_000
-        return 400_000
-
-    return 0
-
-
-def placement_bonus(student, room, first_blocks):
-    """
-    Soft-preference bonus for each (student, room) pair.
-
-    Priority ladder (descending bonus):
-      5 000 000  High student -> matching clinic room
+      5 000 000  High student -> matching clinic-proximal room
       2 200 000  Mobility-priority student -> Joshua/Deborah ground floor
       1 500 000  Medium student -> first block of faculty-proximal hostel
-      1 200 000  Medium student -> Prophet Moses Block 2
+      1 200 000  Medium student -> Prophet Moses Hall Block 2
         900 000  Low student -> primary faculty-proximal hostel
         450 000  Low student -> secondary faculty-proximal hostel
         400 000  Medium student -> any other block of faculty-proximal hostel
-              0  Other spill-over
+        150 000  Medium or Low -> clinic-proximal room (overflow when proximal full)
+              0  Any other gender-matching room (last resort)
+
+    Only Prophet Moses Hall Block 1 is hard-excluded for non-High students
+    (enforced as a hard filter in run_ortools, not here).
+    All other rooms — including clinic-proximal — are reachable by any student
+    when their preferred halls are at capacity.
     """
     is_high = student_is_high(student)
     is_medium = student_is_medium(student)
@@ -254,21 +230,30 @@ def placement_bonus(student, room, first_blocks):
     if is_low and rank is not None:
         return 900_000 if rank == 0 else 450_000
 
+    # Overflow: Medium or Low student reaching a clinic-proximal room because
+    # all faculty-proximal blocks are full. Preferred over any other room.
+    if (is_medium or is_low) and is_clinic_room(room) and not is_primary_male_high_room(room):
+        return 150_000
+
     return 0
 
 
 # ---------------------------------------------------------------------------
-# Phase 1 — OR-Tools CP-SAT for High + Medium urgency students
+# OR-Tools CP-SAT solver — runs for ALL students
 # ---------------------------------------------------------------------------
 
 def run_ortools(students, rooms, remaining_cap, first_blocks, rng):
     """
-    Runs the CP-SAT solver on all students.
+    Runs the CP-SAT solver on ALL students (High, Medium, and Low urgency).
 
     Uses SPARSE variable creation:
       - Variables are only created for gender-compatible pairs.
-      - Variables for Block-1-Prophet-Moses are skipped for non-High students.
-      - Variables for Low urgency students are restricted to faculty proximal halls.
+      - Variables for Block-1-Prophet-Moses are skipped for non-High students
+        (the only absolute hard exclusion).
+      - Mobility-priority students in Joshua/Deborah Hall are restricted to
+        floor 0 only (the only two-floor hostels; no elevator, stairs only).
+      - All other students may reach any gender-matching room; placement bonuses
+        in the objective function steer them to preferred halls first.
       - Variables for rooms with 0 remaining capacity are skipped.
     """
     if not students:
@@ -297,9 +282,6 @@ def run_ortools(students, rooms, remaining_cap, first_blocks, rng):
                 if room.get('hostel_name', '') in ('Joshua Hall', 'Deborah Hall'):
                     if str(room.get('floor_level', '-1')) != '0':
                         continue
-            # Hard filter 4: Low urgency students must be in faculty proximal halls
-            if is_low and proximal_hostels and room.get('hostel_name', '') not in proximal_hostels:
-                continue
             # Skip rooms already at capacity
             if remaining_cap.get(room['id'], 0) <= 0:
                 continue
@@ -368,72 +350,6 @@ def run_ortools(students, rooms, remaining_cap, first_blocks, rng):
 
 
 # ---------------------------------------------------------------------------
-# Phase 2 — Greedy backfill for Low urgency students
-# ---------------------------------------------------------------------------
-
-def run_greedy(backfill_students, rooms, remaining_cap, first_blocks, rng):
-    """
-    Fast greedy allocator for Low urgency students.
-
-    Low urgency students have no soft placement preferences — they simply
-    fill remaining valid capacity after High and Medium students are placed.
-    Shuffling the room list ensures students are spread across hostels rather
-    than all piling into the same block.
-    """
-    if not backfill_students:
-        return {}
-
-    # Group rooms by gender and shuffle for even distribution
-    rooms_by_gender = {}
-    for room in rooms:
-        g = room.get('gender', '')
-        rooms_by_gender.setdefault(g, []).append(room)
-    for g in rooms_by_gender:
-        rng.shuffle(rooms_by_gender[g])
-
-    assignments = {}
-    for student in backfill_students:
-        gender = student.get('gender', '')
-        proximal_hostels = get_faculty_proximal_hostels(student)
-        
-        candidate_rooms = rooms_by_gender.get(gender, [])
-        # Sort so that faculty proximal rooms appear first
-        candidate_rooms = sorted(candidate_rooms, key=lambda r: 0 if r.get('hostel_name', '') in proximal_hostels else 1)
-        
-        for room in candidate_rooms:
-            room_id = room['id']
-            # Strict proximal constraint for Low urgency
-            if room.get('hostel_name', '') not in proximal_hostels:
-                continue
-            
-            # Skip Block 1 Prophet Moses (hard reserve — never backfilled)
-            if is_primary_male_high_room(room):
-                continue
-            
-            # Mobility constraint on ground floor for Joshua/Deborah
-            if student.get('mobility', 'Normal Mobility') != 'Normal Mobility':
-                if room.get('hostel_name', '') in ('Joshua Hall', 'Deborah Hall'):
-                    if str(room.get('floor_level', '-1')) != '0':
-                        continue
-            
-            if remaining_cap.get(room_id, 0) > 0:
-                assignments[student['id']] = room_id
-                remaining_cap[room_id] -= 1
-                break
-
-    # Log any student we could not place (all rooms truly full)
-    assigned_ids = set(assignments.keys())
-    for student in backfill_students:
-        if student['id'] not in assigned_ids:
-            logging.error(
-                "Low-urgency student %s (gender=%s, faculty=%s) unassigned — no capacity remaining.",
-                student.get('id', '?'), student.get('gender', '?'), student.get('faculty', '?'),
-            )
-
-    return assignments
-
-
-# ---------------------------------------------------------------------------
 # Main entry point
 # ---------------------------------------------------------------------------
 
@@ -458,9 +374,11 @@ def allocate(students_csv, rooms_csv, output_csv):
         for room in rooms
     }
 
-    print(f"Total students to allocate: {len(students)} using full OR-Tools allocation")
+    print(f"Total students to allocate: {len(students)} using OR-Tools CP-SAT")
 
-    # --- Phase 1: OR-Tools CP-SAT for ALL students ---
+    # OR-Tools CP-SAT handles ALL students (High, Medium, Low) in one pass.
+    # Placement bonuses in the objective function guarantee priority ordering
+    # without a separate greedy phase.
     all_assignments, solver_status = run_ortools(students, rooms, remaining_cap, first_blocks, rng)
     print(f"Solver status: {solver_status}")
 

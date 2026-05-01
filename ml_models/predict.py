@@ -377,11 +377,39 @@ def calculate_score_fallback(student):
         return 0.0
 
 
+_MOBILITY_PRIORITY_STATUSES = {"Wheelchair User", "Crutches/Walker", "Artificial Limb"}
+_MOBILITY_SCORE_FLOOR = 76.0  # Guarantees High urgency band (threshold >= 75)
+
+
+def _apply_mobility_floor(score: float, student: dict) -> float:
+    """
+    If a student has a mobility-priority status, their urgency score must be
+    at least _MOBILITY_SCORE_FLOOR so that OR-Tools handles them in the High
+    band and the 2,200,000 ground-floor bonus steers them to Joshua/Deborah
+    ground floor. If XGBoost already scored them higher (e.g., comorbidity),
+    the higher score is kept.
+    """
+    mobility = normalize_mobility_value(student.get("mobility"))
+    if mobility in _MOBILITY_PRIORITY_STATUSES:
+        return max(score, _MOBILITY_SCORE_FLOOR)
+    return score
+
+
+def _student_has_mobility_priority(student: dict) -> bool:
+    return normalize_mobility_value(student.get("mobility")) in _MOBILITY_PRIORITY_STATUSES
+
+
 def score_student(student):
     if not isinstance(student, dict):
         student = {}
 
-    if "urgency_score" in student and student["urgency_score"] is not None:
+    # For mobility-priority students we intentionally bypass the DB cache.
+    # A student may have disclosed their mobility status after their first
+    # scoring pass, so the stored urgency_score could be stale (Low band).
+    # Forcing a fresh computation ensures the mobility floor is applied.
+    has_mobility_priority = _student_has_mobility_priority(student)
+
+    if not has_mobility_priority and "urgency_score" in student and student["urgency_score"] is not None:
         try:
             value = float(student["urgency_score"])
             condition = normalize_condition_value(student.get("condition", "None"))
@@ -398,11 +426,13 @@ def score_student(student):
     if _use_ml_model:
         try:
             score = calculate_score_pickle(student)
+            score = _apply_mobility_floor(score, student)
             return {"score": score, "tier": calculate_tier(score), "strategy": "xgboost_model"}
         except Exception as exc:
             logging.error("XGBoost prediction failed, falling back to rules: %s", exc)
 
     score = calculate_score_fallback(student)
+    score = _apply_mobility_floor(score, student)
     return {"score": score, "tier": calculate_tier(score), "strategy": "fallback"}
 
 

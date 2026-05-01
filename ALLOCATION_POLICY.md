@@ -50,9 +50,10 @@ through to the next best available room rather than failing the allocation.
 
 ### Female clinic-proximal space
 
-| Block | Hostel                      | Rule                                                     |
-|-------|-----------------------------|----------------------------------------------------------|
-| 39    | Queen Esther Extension Hall  | High females first (+5 M), then Low backfill             |
+| Block | Hostel                       | Rule                                                              |
+|-------|------------------------------|-------------------------------------------------------------------|
+| 38    | Queen Esther Extension Hall  | High females first (+5 M), then Medium/Low overflow (+150 K)      |
+| 39    | Queen Esther Extension Hall  | High females first (+5 M), then Medium/Low overflow (+150 K)      |
 
 ---
 
@@ -116,47 +117,56 @@ number of the hostel — it sits beside the porters' lodge.
 
 ## 6. Low-Urgency Students
 
-Low-urgency students receive no placement bonus.  The solver places them in
-whatever gender-matched capacity remains after all High and Medium students
-have been seated.
+Low-urgency students receive **proximity bonuses** that steer them to their
+faculty-proximal halls before filling any other available space:
 
-**Key point:** Low-urgency students are *not* banned from priority blocks.
-Once all High/Medium students are placed, remaining capacity in clinic
-blocks, first-blocks, or any other block is freely available to Low
-students.  This ensures no bed is ever left empty while eligible students
-still need housing.
+| Destination                                | Bonus    |
+|--------------------------------------------|----------|
+| Primary faculty-proximal hostel (rank 0)   | +900,000 |
+| Secondary faculty-proximal hostel (rank 1) | +450,000 |
+| Clinic-proximal room (overflow only)       | +150,000 |
+| Any other gender-matching room             | +0       |
+
+The overflow bonus (150 K) ensures that when a faculty-proximal hall is
+completely full, Low students flow into clinic-proximal rooms rather than
+sitting unallocated.  No bed is ever left empty while an eligible student
+needs housing.
 
 The **only** block from which Low-urgency students are permanently excluded
 is **Prophet Moses Hall Block 1** (hard-reserved for High urgency males).
 
 ---
 
-## 7. Backfill Rule — Option B (Soft Constraints)
+## 7. Soft-Constraint Weight Ladder
 
-The solver uses **weight-based soft preferences** rather than hard bans for
-all priority rules except gender matching and Block 1 reservation.
+The solver uses **weight-based soft preferences** for all placement rules
+except gender matching, Block 1 reservation, and the Joshua/Deborah
+ground-floor mobility constraint.
 
-### Weight ladder
+### Full weight table
 
-| Condition                                         | Bonus      |
-|---------------------------------------------------|------------|
-| High → matching clinic room                       | +5,000,000 |
-| Medium → first block of faculty-proximal hostel   | +1,500,000 |
-| Medium → Prophet Moses Hall Block 2 (Group A M)   | +1,200,000 |
-| Medium → any later block of faculty-proximal hostel | +400,000  |
-| Low → any remaining capacity (backfill)           | +0         |
+| Condition                                          | Bonus      |
+|----------------------------------------------------|------------|
+| High → matching clinic-proximal room               | +5,000,000 |
+| Mobility-priority → Joshua/Deborah ground floor    | +2,200,000 |
+| Medium → first block of faculty-proximal hostel    | +1,500,000 |
+| Medium → Prophet Moses Hall Block 2 (Group A male) | +1,200,000 |
+| Low → primary faculty-proximal hostel (rank 0)     | +900,000   |
+| Low → secondary faculty-proximal hostel (rank 1)   | +450,000   |
+| Medium → any later block of faculty-proximal hostel| +400,000   |
+| Medium or Low → clinic-proximal room (overflow)    | +150,000   |
+| Any other gender-matching room (last resort)       | +0         |
 
-The weight gap between levels is so large that a Low student's maximum
-score contribution (`score × 100 ≈ 10,000`) cannot compete with any
-priority bonus.  Priority students will therefore always be placed first.
-After that, the solver fills every remaining bed with Low students — zero
-wasted capacity.
+The gap between tiers is large enough that a student's base urgency
+contribution (`score × 100 ≈ 10,000`) cannot override any placement bonus.
+Priority students are always placed first; remaining capacity is filled by
+Lower-band students — zero wasted beds.
 
-### Hard constraints (only two remain)
+### Hard constraints (three total)
 
-1. **Gender match** — absolute, enforced for every (student, room) pair.
-2. **Prophet Moses Hall Block 1** — exclusively for High-urgency males.
-   Partially empty beds here are *not* backfilled.
+1. **Gender match** — absolute for every (student, room) pair.
+2. **Prophet Moses Hall Block 1** — exclusively for High-urgency males.  Never backfilled.
+3. **Joshua Hall / Deborah Hall upper floor** — mobility-priority students (`Wheelchair User`, `Crutches/Walker`, `Artificial Limb`) may **only** be assigned to floor 0 (ground floor) in these two hostels.  All other hostels are single-storey so this constraint does not apply.
 
 ---
 
@@ -197,13 +207,17 @@ applies rule-based weights as a fallback.
 
 ---
 
-## 10. 2026-04-30 Policy Update
+## 10. Policy Update History
 
-This update supersedes the older Low-urgency/backfill wording above wherever
-there is any conflict.
-
+### 2026-04-30
 - Low-urgency students are now allocated inside their faculty-proximal halls instead of being sent to arbitrary spare halls.
-- Where a faculty maps to more than one hall, the first-listed hall is treated as the primary proximal hall and later halls act as spill-over.
-- Joshua Hall and Deborah Hall are treated as stair-access halls, not elevator halls.
-- Mobility-priority students (`Wheelchair User`, `Crutches/Walker`, `Artificial Limb`) whose faculties map to Joshua Hall or Deborah Hall are steered to the ground floor of the respective hall.
-- The main OR-Tools run now covers the full eligible cohort; Low-urgency students are no longer handled by a separate greedy backfill phase.
+- Joshua Hall and Deborah Hall are the only two-storey hostels (staircase access only; no elevator). All other hostels are single-storey ground-floor structures.
+- Mobility-priority students (`Wheelchair User`, `Crutches/Walker`, `Artificial Limb`) are restricted to ground floor (floor 0) when placed in Joshua Hall or Deborah Hall.
+- The main OR-Tools run now covers the **full eligible cohort** — the separate greedy backfill phase has been removed entirely.
+
+### 2026-05-01
+- **Mobility score floor:** `predict.py` now guarantees a minimum urgency score of **76.0** for any mobility-priority student, placing them in the **High** urgency band regardless of the XGBoost model output. The DB score cache is bypassed for these students to prevent stale Low scores from persisting after a mobility status update.
+- **Clinic-proximal overflow:** Medium and Low students may now spill into clinic-proximal rooms (+150,000 bonus) when all faculty-proximal blocks are at capacity, ensuring zero empty beds.
+- **Low-urgency proximity bonuses:** +900,000 for primary proximal hall, +450,000 for secondary — replacing the old hard filter that left Engineering/Law students unallocated when Joshua/Deborah was full.
+- **Queen Esther Hall block numbering:** Blocks extended to 1–37 (adding blocks 33–37 with 28 rooms each, 116 beds/block).  Queen Esther Extension Hall renumbered to blocks 38–42; blocks 38 and 39 are clinic-proximal.
+- `run_greedy()` deleted from `allocate.py`; duplicate `placement_bonus()` definition removed.

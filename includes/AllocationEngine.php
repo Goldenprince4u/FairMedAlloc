@@ -705,10 +705,9 @@ class AllocationEngine {
                     }
                 }
 
-                if ($studentBand === 'Low') {
-                    if (!empty($facultyHostels) && !in_array($room['hostel_name'] ?? '', $facultyHostels, true)) {
-                        continue;
-                    }
+                if ($studentBand === 'Low' && empty($facultyHostels)) {
+                    // No faculty mapping found — allow any gender-matching room
+                    // rather than leaving the student unplaced.
                 }
 
                 $weight = $this->calculateFallbackPlacementWeight($student, $room, $studentBand, $firstBlocks, $facultyHostels);
@@ -777,7 +776,7 @@ class AllocationEngine {
 
     private function isFemaleClinicRoom(array $room): bool {
         return ($room['hostel_name'] ?? '') === 'Queen Esther Extension Hall'
-            && in_array((string)($room['block_name'] ?? ''), ['33', '34'], true)
+            && in_array((string)($room['block_name'] ?? ''), ['38', '39'], true)
             && ($room['gender'] ?? '') === 'Female';
     }
 
@@ -817,7 +816,16 @@ class AllocationEngine {
                 $bonus = 900000;
             } elseif ($rank === 1) {
                 $bonus = 450000;
+            } elseif ($this->clinicRoomMatchesGender($student, $room)
+                   && !($room['is_primary_male_high'] ?? false)) {
+                // Overflow: proximal halls are full; allow clinic-proximal as next best.
+                $bonus = 150000;
             }
+        } elseif (in_array($studentBand, ['Medium', 'Low'], true)
+               && $this->clinicRoomMatchesGender($student, $room)
+               && !($room['is_primary_male_high'] ?? false)) {
+            // Overflow for Medium students when proximal blocks are full.
+            $bonus = 150000;
         }
 
         return $base + $bonus - (int)$room['id'];

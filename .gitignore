@@ -26,3 +26,9 @@ ml_models/label_encoders.json
 db_config.php
 ml_models/site-packages/
 ml_models/venv/
+
+# DB export dumps — large, regenerated on demand
+fairmedalloc_export.sql
+
+# Scratch / one-off test scripts
+scratch/

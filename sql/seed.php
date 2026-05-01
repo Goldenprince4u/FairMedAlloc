@@ -320,6 +320,28 @@ function buildQueenEstherRooms(): array
     return $rooms;
 }
 
+/**
+ * Queen Esther Hall blocks 33-37 — 28 rooms per block.
+ * Room 1: 8-bed corner (LB,UB,LB,UB,LB,UB,LB,UB).
+ * Rooms 2-28: 4-bed standard (LB,UB,LB,UB).
+ * All rooms are ground floor (single-storey blocks).
+ * Capacity per block: 8 + (27 × 4) = 116.
+ */
+function buildQueenEstherLargeBlockRooms(): array
+{
+    $rooms = [];
+
+    for ($room = 1; $room <= 28; $room++) {
+        if ($room === 1) {
+            $rooms[] = makeRoom($room, 8, true, 'LB,UB,LB,UB,LB,UB,LB,UB');
+            continue;
+        }
+        $rooms[] = makeRoom($room, 4, false, 'LB,UB,LB,UB');
+    }
+
+    return $rooms;
+}
+
 function buildDeborahRooms(): array
 {
     $rooms = [];
@@ -456,6 +478,7 @@ function buildHostelSeedPlan(array $facultyIds): array
         ];
     }
 
+    // Blocks 1-32: 24 rooms, corners at 1,12,13,24 (rooms 1&24=4 beds, 12&13=6 beds), others=3 beds.
     for ($block = 1; $block <= 32; $block++) {
         $hostels[] = [
             'name' => 'Queen Esther Hall',
@@ -470,7 +493,24 @@ function buildHostelSeedPlan(array $facultyIds): array
         ];
     }
 
-    for ($block = 1; $block <= 5; $block++) {
+    // Blocks 33-37: 28 rooms, Room 1=8 beds corner, all others=4 beds. Capacity=116 per block.
+    for ($block = 33; $block <= 37; $block++) {
+        $hostels[] = [
+            'name' => 'Queen Esther Hall',
+            'block_name' => (string) $block,
+            'gender_allowed' => 'Female',
+            'proximal_faculty_id' => null,
+            'is_proximal' => false,
+            'is_postgrad' => false,
+            'is_foundation' => false,
+            'total_capacity' => 116,
+            'rooms' => buildQueenEstherLargeBlockRooms(),
+        ];
+    }
+
+    // Queen Esther Extension Hall: blocks 38–42 (continuing QE Hall's sequence).
+    // Blocks 38 and 39 are clinic-proximal.
+    for ($block = 38; $block <= 42; $block++) {
         $hostels[] = [
             'name' => 'Queen Esther Extension Hall',
             'block_name' => (string) $block,
