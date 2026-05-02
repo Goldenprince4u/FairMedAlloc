@@ -1,7 +1,9 @@
 <?php
 /**
  * Run Allocation
- * Triggers the allocation algorithm.
+ * ==============
+ * Async job queue UI — queues a background job and polls for progress.
+ * Supports large datasets (5,000 – 15,000+ students) without HTTP timeouts.
  */
 session_start();
 require_once 'db_config.php';
@@ -13,13 +15,76 @@ if (!isset($_SESSION['logged_in']) || ($_SESSION['role'] ?? '') !== 'admin') {
 }
 
 // Fetch Allocation Status (Open vs Locked)
-$stmt = $conn->query("SELECT setting_value FROM settings WHERE setting_key = 'allocation_status'");
-$status_row = $stmt->fetch_assoc();
-$is_locked = ($status_row['setting_value'] ?? 'open') === 'locked';
+$stmt      = $conn->query("SELECT setting_value FROM settings WHERE setting_key = 'allocation_status'");
+$status_row = $stmt ? $stmt->fetch_assoc() : null;
+$is_locked  = ($status_row['setting_value'] ?? 'open') === 'locked';
+
+// Fetch most recent job for resume UI — guarded in case migration hasn't run yet
+$recent_job = null;
+try {
+    $jq = $conn->query(
+        "SELECT job_id, status, progress_percent, progress_stage,
+                total_students, allocated_students, result_data, error_message,
+                created_at, started_at, completed_at
+           FROM allocation_jobs
+          ORDER BY created_at DESC LIMIT 1"
+    );
+    if ($jq && $jq->num_rows > 0) {
+        $recent_job = $jq->fetch_assoc();
+        if (!empty($recent_job['result_data'])) {
+            $recent_job['result'] = json_decode($recent_job['result_data'], true) ?? [];
+        }
+    }
+} catch (Throwable $e) {
+    // Table may not exist yet — run sql/run_migrations.php first
+    $recent_job = null;
+}
 
 $page_title = "Run Allocation | FairMedAlloc";
 require_once 'includes/header.php';
 ?>
+
+<style>
+/* ── Async Progress UI Styles ───────────────────────────────────────────── */
+.progress-wrap { margin-top: 1.25rem; }
+.progress-bar-track {
+    background: rgba(255,255,255,0.08);
+    border-radius: 999px;
+    height: 10px;
+    overflow: hidden;
+    margin: 0.75rem 0 0.35rem;
+}
+.progress-bar-fill {
+    height: 100%;
+    border-radius: 999px;
+    background: linear-gradient(90deg, var(--c-accent), var(--c-primary));
+    transition: width 0.6s ease;
+    width: 0%;
+}
+.progress-label {
+    display: flex;
+    justify-content: space-between;
+    font-size: 0.75rem;
+    color: rgba(255,255,255,0.55);
+    font-family: monospace;
+}
+.job-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    padding: 0.2rem 0.65rem;
+    border-radius: 999px;
+    font-size: 0.72rem;
+    font-weight: 700;
+    letter-spacing: 0.03em;
+}
+.badge-queued   { background: rgba(255,195,0,0.18);  color: #ffc300; }
+.badge-running  { background: rgba(0,120,255,0.18);  color: #5b9ef7; }
+.badge-completed{ background: rgba(0,200,100,0.18);  color: #40e08c; }
+.badge-failed   { background: rgba(255,60,60,0.18);  color: #ff6b6b; }
+
+#job-history-row { margin-top: 1.5rem; font-size: 0.82rem; opacity: 0.7; }
+</style>
 
 <div class="app-shell">
     <?php require_once 'includes/nav.php'; ?>
@@ -30,7 +95,7 @@ require_once 'includes/header.php';
         <div class="page-header">
             <div class="page-header-info">
                 <h1>Run Algorithm</h1>
-                <p class="text-muted">Execute the fairness-aware hostel allocation process.</p>
+                <p class="text-muted">Fairness-aware hostel allocation — supports 15,000+ students via background queue.</p>
             </div>
             <a href="admin_dashboard.php" class="btn btn-outline" id="run-back-btn">
                 <i class="fa-solid fa-arrow-left"></i> Dashboard
@@ -39,20 +104,28 @@ require_once 'includes/header.php';
 
         <div class="grid grid-cols-2">
 
-            <!-- Control Panel -->
+            <!-- ── Control Panel ─────────────────────────────────────────── -->
             <div class="card" style="padding:2rem;">
                 <div class="form-section-title" style="margin-bottom:1.25rem;">
-                    <span class="form-section-icon" style="background:rgba(0,33,71,0.08);color:var(--c-primary);"><i class="fa-solid fa-sliders"></i></span>
+                    <span class="form-section-icon" style="background:rgba(0,33,71,0.08);color:var(--c-primary);">
+                        <i class="fa-solid fa-sliders"></i>
+                    </span>
                     Control Panel
                 </div>
+
                 <p class="text-muted" style="font-size:0.875rem;margin-bottom:1rem;">This process will:</p>
                 <ul class="list-instructions">
-                    <li>Fetch eligible students imported through Data Import and students whose portal payment has been confirmed through the pay simulator.</li>
+                    <li>Fetch eligible students (paid &amp; unallocated) from the database.</li>
                     <li>Recalculate urgency scores via the configured XGBoost model.</li>
-                    <li>Strongly prioritise High urgency students for clinic-proximal space; if that space is full they fall through to the next available valid room. Apply the current Medium urgency faculty rule.</li>
-                    <li>Run the OR-Tools CP-SAT solver to assign rooms.</li>
-                    <li>Use randomness only to break ties between equally valid room options, then write audit logs and notify each student of the result.</li>
+                    <li>Strongly prioritise High urgency students for clinic-proximal space.</li>
+                    <li>Run the OR-Tools CP-SAT solver (falls back to greedy for large batches).</li>
+                    <li>Write audit logs and notify each student of the result.</li>
                 </ul>
+
+                <div class="alert" style="margin-top:1.25rem;background:rgba(0,120,255,0.08);border:1px solid rgba(91,158,247,0.3);color:#5b9ef7;font-size:0.82rem;padding:0.75rem 1rem;border-radius:8px;">
+                    <i class="fa-solid fa-bolt"></i>
+                    <strong>Async mode:</strong> The job runs in the background — you can safely close this tab or navigate away. The page polls for progress automatically.
+                </div>
 
                 <?php if ($is_locked): ?>
                     <div class="alert alert-danger" style="margin-top:1.5rem;">
@@ -62,11 +135,13 @@ require_once 'includes/header.php';
                         <i class="fa-solid fa-lock"></i> Session Locked
                     </button>
                 <?php else: ?>
+                    <!-- Hidden CSRF form -->
                     <form id="run-allocation-form" class="hidden">
                         <?php csrf_field(); ?>
                     </form>
+
                     <button class="btn btn-primary w-full" id="start-alloc-btn"
-                            onclick="startAllocation()"
+                            onclick="queueAllocation()"
                             style="margin-top:1.5rem;padding:0.875rem;">
                         <i class="fa-solid fa-play"></i> Start Allocation Engine
                     </button>
@@ -76,14 +151,39 @@ require_once 'includes/header.php';
                         <i class="fa-solid fa-rotate"></i> Recalculate All Urgency Scores
                     </button>
                 <?php endif; ?>
+
+                <!-- Recent job resumption notice -->
+                <?php if ($recent_job && in_array($recent_job['status'], ['queued','running'])): ?>
+                <div id="job-history-row">
+                    <i class="fa-solid fa-clock-rotate-left"></i>
+                    A job (<strong>#<?= (int)$recent_job['job_id'] ?></strong>) is currently
+                    <span class="job-badge badge-<?= htmlspecialchars($recent_job['status']) ?>">
+                        <?= ucfirst(htmlspecialchars($recent_job['status'])) ?>
+                    </span>
+                    — resuming progress display automatically.
+                </div>
+                <?php endif; ?>
             </div>
 
-            <!-- Process Log -->
+            <!-- ── Process Log ─────────────────────────────────────────────── -->
             <div class="card-console">
                 <div style="font-size:0.875rem;font-weight:700;color:rgba(255,255,255,0.9);margin-bottom:1.25rem;padding-bottom:0.875rem;border-bottom:1px solid rgba(255,255,255,0.1);display:flex;align-items:center;gap:0.5rem;">
                     <i class="fa-solid fa-terminal" style="color:var(--c-accent);"></i> Process Log
+                    <span id="job-status-badge" style="margin-left:auto;"></span>
                 </div>
-                <div id="console" style="font-size:0.78rem;font-family:monospace;line-height:1.85;color:rgba(255,255,255,0.7);">
+
+                <!-- Progress bar (hidden until job starts) -->
+                <div class="progress-wrap" id="progress-wrap" style="display:none;">
+                    <div class="progress-bar-track">
+                        <div class="progress-bar-fill" id="progress-fill"></div>
+                    </div>
+                    <div class="progress-label">
+                        <span id="progress-stage-label">Initializing…</span>
+                        <span id="progress-pct-label">0%</span>
+                    </div>
+                </div>
+
+                <div id="console" style="font-size:0.78rem;font-family:monospace;line-height:1.85;color:rgba(255,255,255,0.7);margin-top:1rem;">
                     <div style="opacity:0.4;">Waiting to start&hellip;</div>
                 </div>
             </div>
@@ -93,10 +193,35 @@ require_once 'includes/header.php';
 </div>
 
 <script>
-/* ─── Shared helpers ─────────────────────────────────────────── */
-let _elapsedInterval = null;
+/* ═══════════════════════════════════════════════════════════════════════
+   FairMedAlloc — Async Allocation UI
+   ═══════════════════════════════════════════════════════════════════════ */
 
-function startElapsedTimer(logEl) {
+const POLL_INTERVAL_MS  = 2500;   // poll every 2.5 s while running
+const POLL_IDLE_MS      = 8000;   // slow poll after completion for 60 s
+const MAX_IDLE_POLLS    = 8;      // stop auto-polling after this many idle cycles
+
+let _elapsedInterval = null;
+let _pollTimer       = null;
+let _currentJobId    = null;
+let _pollCount       = 0;
+let _idlePollCount   = 0;
+
+// ── Boot: resume an active job if one exists ─────────────────────────────────
+<?php if ($recent_job && in_array($recent_job['status'], ['queued','running'])): ?>
+window.addEventListener('DOMContentLoaded', () => {
+    _currentJobId = <?= (int)$recent_job['job_id'] ?>;
+    logLine(document.getElementById('console'),
+        `&#9654; Resuming progress for Job #${_currentJobId}…`, '#5b9ef7');
+    showProgressBar();
+    startElapsedTimer();
+    schedulePoll();
+});
+<?php endif; ?>
+
+/* ── Helpers ───────────────────────────────────────────────────────────────── */
+
+function startElapsedTimer() {
     const startTime = Date.now();
     _elapsedInterval = setInterval(() => {
         const secs = Math.floor((Date.now() - startTime) / 1000);
@@ -112,51 +237,78 @@ function stopElapsedTimer() {
 }
 
 function logLine(logEl, msg, color) {
+    const now = new Date().toLocaleTimeString('en-GB', { hour12: false });
     const div = document.createElement('div');
-    div.style.marginBottom = '0.5rem';
+    div.style.marginBottom = '0.4rem';
     if (color) div.style.color = color;
-    div.innerHTML = msg;
+    div.innerHTML = `<span style="opacity:0.4;font-size:0.7em;">[${now}]</span> ${msg}`;
     logEl.appendChild(div);
     logEl.scrollTop = logEl.scrollHeight;
 }
 
-function resetButtons(runBtn, rescoreBtn) {
+function showProgressBar() {
+    const wrap = document.getElementById('progress-wrap');
+    if (wrap) wrap.style.display = 'block';
+}
+
+function updateProgressBar(stage, percent) {
+    const fill  = document.getElementById('progress-fill');
+    const stage_el = document.getElementById('progress-stage-label');
+    const pct_el   = document.getElementById('progress-pct-label');
+    if (fill)     fill.style.width = percent + '%';
+    if (stage_el) stage_el.textContent = stage || 'Working…';
+    if (pct_el)   pct_el.textContent   = percent + '%';
+}
+
+function setJobBadge(status) {
+    const el = document.getElementById('job-status-badge');
+    if (!el) return;
+    const map = {
+        queued:    ['badge-queued',    '&#9676; Queued'],
+        running:   ['badge-running',   '&#9679; Running'],
+        completed: ['badge-completed', '&#10003; Completed'],
+        failed:    ['badge-failed',    '&#10007; Failed'],
+    };
+    const [cls, label] = map[status] ?? ['badge-queued', status];
+    el.innerHTML = `<span class="job-badge ${cls}">${label}</span>`;
+}
+
+function resetButtons() {
     stopElapsedTimer();
-    if (runBtn)     { runBtn.disabled     = false; runBtn.innerHTML     = '<i class="fa-solid fa-play"></i> Start Allocation Engine'; }
+    const runBtn    = document.getElementById('start-alloc-btn');
+    const rescoreBtn = document.getElementById('rescore-btn');
+    if (runBtn)     { runBtn.disabled = false; runBtn.innerHTML = '<i class="fa-solid fa-play"></i> Start Allocation Engine'; }
     if (rescoreBtn) { rescoreBtn.disabled = false; rescoreBtn.innerHTML = '<i class="fa-solid fa-rotate"></i> Recalculate All Urgency Scores'; }
+}
+
+function getCSRF() {
+    const el = document.querySelector('#run-allocation-form input[name="csrf_token"]');
+    return el ? el.value : '';
 }
 
 async function parseApiJson(response) {
     const text = (await response.text()).trim();
-    if (!response.ok) {
-        throw new Error(`HTTP ${response.status} ${response.statusText}`);
-    }
-
-    try {
-        return JSON.parse(text);
-    } catch (err) {
-        const compact = text.replace(/\s+/g, ' ').slice(0, 220);
-        throw new Error(`Invalid JSON response from server: ${compact || 'empty response'}`);
-    }
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    try { return JSON.parse(text); }
+    catch { throw new Error(`Invalid JSON: ${text.slice(0, 200)}`); }
 }
 
-/* ─── Allocation ─────────────────────────────────────────────── */
-function startAllocation() {
+/* ── Queue Allocation ──────────────────────────────────────────────────────── */
+
+async function queueAllocation() {
     const logEl     = document.getElementById('console');
     const runBtn    = document.getElementById('start-alloc-btn');
-    const rescoreBtn= document.getElementById('rescore-btn');
-    const csrf      = document.querySelector('#run-allocation-form input[name="csrf_token"]');
+    const rescoreBtn = document.getElementById('rescore-btn');
+    const csrf      = getCSRF();
 
     if (!csrf) {
-        logEl.innerHTML = '<div style="color:var(--c-danger);">Security token missing. Reload the page and try again.</div>';
+        logEl.innerHTML = '<div style="color:var(--c-danger);">Security token missing. Reload the page.</div>';
         return;
     }
 
-    // Disable buttons
-    if (runBtn)     { runBtn.disabled     = true; runBtn.innerHTML     = '<i class="fa-solid fa-spinner fa-spin"></i> Running…'; }
+    if (runBtn)     { runBtn.disabled = true;     runBtn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Queuing…'; }
     if (rescoreBtn) { rescoreBtn.disabled = true; }
 
-    // Clear console and show live header
     logEl.innerHTML = `
         <div style="display:flex;align-items:center;gap:0.75rem;margin-bottom:0.75rem;color:var(--c-warning);font-weight:700;">
             <i class="fa-solid fa-circle-notch fa-spin"></i>
@@ -166,94 +318,128 @@ function startAllocation() {
             </span>
         </div>`;
 
-    logLine(logEl, '&#9654; Engine started — fetching students, scoring via XGBoost, and running the solver…');
-    logLine(logEl,
-        '<span style="opacity:0.5;font-style:italic;">The page will update automatically when the solver finishes. Do not reload.</span>');
+    try {
+        const resp = await fetch('api/admin_api.php?action=queue_allocation', {
+            method : 'POST',
+            headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+            body   : new URLSearchParams({ csrf_token: csrf }),
+        });
+        const data = await parseApiJson(resp);
 
-    startElapsedTimer(logEl);
-
-    // Add a "still working" ping every 30 s so the admin knows it hasn't hung
-    let pingCount = 0;
-    const pingInterval = setInterval(() => {
-        pingCount++;
-        logLine(logEl,
-            `<span style="opacity:0.55;">&#9656; Still running… (${pingCount * 30}s elapsed — solver is working)</span>`);
-    }, 30_000);
-
-    // AbortController: cancel only after 15 minutes (900 s).
-    // The solver itself is capped at 300 s inside allocate.py, plus:
-    // - Fetching students from DB (seconds)
-    // - XGBoost scoring (seconds)
-    // - CSV parsing and model building (seconds)
-    // - Bulk DB inserts + notifications (seconds)
-    // For large allocations (10k+), this headroom is necessary.
-    const controller = new AbortController();
-    const networkTimeout = setTimeout(() => controller.abort(), 900_000);
-
-    fetch('api/admin_api.php?action=run_algorithm', {
-        method : 'POST',
-        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-        body   : new URLSearchParams({ csrf_token: csrf.value }),
-        signal : controller.signal,
-        // keepalive tells the browser not to tear down the connection when the
-        // user switches tabs — important for a long-running background task.
-        keepalive: true,
-    })
-    .then(parseApiJson)
-    .then(data => {
-        clearInterval(pingInterval);
-        clearTimeout(networkTimeout);
-        resetButtons(runBtn, rescoreBtn);
-
-        if (data.status === 'success') {
-            // Show scoring backend actually used
-            if (data.prediction_mode) {
-                logLine(logEl, `&#10003; Urgency scoring: ${data.prediction_mode}`, 'var(--c-success)');
-            }
-            // Show solver actually used + its optimality status
-            if (data.solver_mode) {
-                const solverLabel = data.solver_mode;
-                const optLabel = data.optimal ? 'OPTIMAL' : 'FEASIBLE (time-limit reached — still a valid allocation)';
-                logLine(logEl, `&#10003; Solver: ${solverLabel} — ${optLabel}`, 'var(--c-success)');
-            }
-            if (data.total === 0) {
-                logLine(logEl, '&#9888; No eligible students found (check that students are marked as paid).', 'var(--c-warning)');
-            } else {
-                logLine(logEl, `&#10003; Allocated: ${data.allocated} of ${data.total} eligible students`, 'var(--c-success)');
-            }
-            logLine(logEl, '<strong>&#187; ALLOCATION CYCLE COMPLETE &#171;</strong>', 'var(--c-success)');
+        if (data.job_id) {
+            _currentJobId = data.job_id;
+            logLine(logEl, `&#9654; Job #${_currentJobId} created — worker started in background.`, '#5b9ef7');
             logLine(logEl,
-                '<span style="font-size:0.72rem;opacity:0.6;">Audit logs written. Students can now view their status on the dashboard.</span>');
+                '<span style="opacity:0.5;font-style:italic;">You can safely close this tab. Progress will resume when you return.</span>');
+            showProgressBar();
+            setJobBadge('queued');
+            startElapsedTimer();
+            schedulePoll();
         } else {
-            logLine(logEl, `&#10007; Error: ${data.message}`, 'var(--c-danger)');
-            logLine(logEl,
-                '<span style="font-size:0.72rem;opacity:0.6;">Check that Python, OR-Tools, the XGBoost dependencies, and shell execution are available to Apache.</span>');
+            logLine(logEl, `&#10007; Failed to queue job: ${data.message ?? 'Unknown error'}`, 'var(--c-danger)');
+            resetButtons();
         }
-    })
-    .catch(err => {
-        clearInterval(pingInterval);
-        clearTimeout(networkTimeout);
-        resetButtons(runBtn, rescoreBtn);
-
-        if (err.name === 'AbortError') {
-            logLine(logEl,
-                '&#10007; The request timed out after 10 minutes. The server may still be running — check the allocation results page before retrying.',
-                'var(--c-danger)');
-        } else {
-            logLine(logEl, `&#10007; Network Error: ${err.message}`, 'var(--c-danger)');
-        }
-    });
+    } catch (err) {
+        logLine(logEl, `&#10007; Network error: ${err.message}`, 'var(--c-danger)');
+        resetButtons();
+    }
 }
 
-/* ─── Rescore ────────────────────────────────────────────────── */
-function rescoreAllScores() {
-    const logEl     = document.getElementById('console');
-    const runBtn    = document.getElementById('start-alloc-btn');
-    const rescoreBtn= document.getElementById('rescore-btn');
-    const csrf      = document.querySelector('#run-allocation-form input[name="csrf_token"]');
+/* ── Polling ───────────────────────────────────────────────────────────────── */
+
+function schedulePoll(delay = POLL_INTERVAL_MS) {
+    clearTimeout(_pollTimer);
+    _pollTimer = setTimeout(pollJobStatus, delay);
+}
+
+async function pollJobStatus() {
+    if (!_currentJobId) return;
+
+    const logEl = document.getElementById('console');
+
+    try {
+        const resp = await fetch(`api/admin_api.php?action=job_status&job_id=${_currentJobId}`);
+        const data = await parseApiJson(resp);
+
+        const jobStatus = data.job_status ?? 'unknown';
+        setJobBadge(jobStatus);
+        updateProgressBar(data.progress_stage, data.progress_percent ?? 0);
+
+        if (jobStatus === 'running' || jobStatus === 'queued') {
+            _pollCount++;
+
+            // Log meaningful stage changes (not every tick)
+            if (_pollCount % 3 === 1 && data.progress_stage) {
+                logLine(logEl,
+                    `&#9656; ${data.progress_stage} (${data.progress_percent ?? 0}%)`,
+                    'rgba(255,255,255,0.55)');
+            }
+
+            schedulePoll(POLL_INTERVAL_MS);
+
+        } else if (jobStatus === 'completed') {
+            stopElapsedTimer();
+            updateProgressBar('Completed', 100);
+            resetButtons();
+            renderCompletionResult(logEl, data);
+
+        } else if (jobStatus === 'failed') {
+            stopElapsedTimer();
+            resetButtons();
+            logLine(logEl,
+                `&#10007; Job #${_currentJobId} failed: ${data.error_message ?? 'Unknown error'}`,
+                'var(--c-danger)');
+            logLine(logEl,
+                '<span style="font-size:0.72rem;opacity:0.6;">Check that Python, OR-Tools, and XGBoost dependencies are available to Apache/PHP.</span>');
+            updateProgressBar('Failed', data.progress_percent ?? 0);
+        }
+    } catch (err) {
+        // Transient network error — keep polling
+        logLine(logEl, `<span style="opacity:0.4;">&#9656; Poll error (will retry): ${err.message}</span>`);
+        schedulePoll(POLL_INTERVAL_MS * 2);
+    }
+}
+
+function renderCompletionResult(logEl, data) {
+    const res = data.result ?? {};
+
+    if (res.prediction_mode) {
+        logLine(logEl, `&#10003; Urgency scoring: ${res.prediction_mode}`, 'var(--c-success)');
+    }
+    if (res.solver_mode) {
+        const optLabel = res.optimal
+            ? 'OPTIMAL'
+            : 'FEASIBLE (time-limit reached — still a valid allocation)';
+        logLine(logEl, `&#10003; Solver: ${res.solver_mode} — ${optLabel}`, 'var(--c-success)');
+    }
+
+    const total     = data.total_students     || res.total     || 0;
+    const allocated = data.allocated_students || res.allocated || 0;
+
+    if (total === 0) {
+        logLine(logEl,
+            '&#9888; No eligible students found (check that students are marked as paid).',
+            'var(--c-warning)');
+    } else {
+        logLine(logEl,
+            `&#10003; Allocated: <strong>${allocated}</strong> of <strong>${total}</strong> eligible students`,
+            'var(--c-success)');
+    }
+
+    logLine(logEl, '<strong>&#187; ALLOCATION CYCLE COMPLETE &#171;</strong>', 'var(--c-success)');
+    logLine(logEl,
+        '<span style="font-size:0.72rem;opacity:0.6;">Audit logs written. Students can now view their status on the dashboard.</span>');
+}
+
+/* ── Rescore (synchronous — scores only, no allocation) ────────────────────── */
+async function rescoreAllScores() {
+    const logEl      = document.getElementById('console');
+    const runBtn     = document.getElementById('start-alloc-btn');
+    const rescoreBtn = document.getElementById('rescore-btn');
+    const csrf       = getCSRF();
 
     if (!csrf) {
-        logEl.innerHTML = '<div style="color:var(--c-danger);">Security token missing. Reload the page and try again.</div>';
+        logEl.innerHTML = '<div style="color:var(--c-danger);">Security token missing. Reload the page.</div>';
         return;
     }
 
@@ -273,56 +459,52 @@ function rescoreAllScores() {
     logLine(logEl, '&#9654; Invoking <em>predict.py</em> against the XGBoost <code>.pkl</code> model…');
     logLine(logEl, '<span style="opacity:0.5;font-style:italic;">Please keep this page open while scoring completes.</span>');
 
-    startElapsedTimer(logEl);
+    startElapsedTimer();
 
     let pingCount = 0;
     const pingInterval = setInterval(() => {
         pingCount++;
-        logLine(logEl,
-            `<span style="opacity:0.55;">&#9656; Still scoring… (${pingCount * 30}s elapsed)</span>`);
+        logLine(logEl, `<span style="opacity:0.55;">&#9656; Still scoring… (${pingCount * 30}s elapsed)</span>`);
     }, 30_000);
 
-    const controller  = new AbortController();
-    const networkTimeout = setTimeout(() => controller.abort(), 600_000); // 10 min cap for 15k students
+    const controller     = new AbortController();
+    const networkTimeout = setTimeout(() => controller.abort(), 600_000);
 
-    fetch('api/admin_api.php?action=rescore_all', {
-        method : 'POST',
-        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-        body   : new URLSearchParams({ csrf_token: csrf.value }),
-        signal : controller.signal,
-        keepalive: true,
-    })
-    .then(parseApiJson)
-    .then(data => {
+    try {
+        const resp = await fetch('api/admin_api.php?action=rescore_all', {
+            method : 'POST',
+            headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+            body   : new URLSearchParams({ csrf_token: csrf }),
+            signal : controller.signal,
+            keepalive: true,
+        });
+        const data = await parseApiJson(resp);
+
         clearInterval(pingInterval);
         clearTimeout(networkTimeout);
-        resetButtons(runBtn, rescoreBtn);
+        stopElapsedTimer();
+        resetButtons();
 
         if (data.status === 'success') {
             logLine(logEl, `&#10003; Rescored medical records: ${data.rescored}`, 'var(--c-success)');
-            if (data.mode) {
-                logLine(logEl, `&#10003; XGBoost score mode: ${data.mode}`, 'var(--c-success)');
-            }
+            if (data.mode) logLine(logEl, `&#10003; XGBoost score mode: ${data.mode}`, 'var(--c-success)');
             logLine(logEl, '<strong>&#187; RESCORE COMPLETE &#171;</strong>', 'var(--c-success)');
         } else {
             logLine(logEl, `&#10007; Error: ${data.message}`, 'var(--c-danger)');
         }
-    })
-    .catch(err => {
+    } catch (err) {
         clearInterval(pingInterval);
         clearTimeout(networkTimeout);
-        resetButtons(runBtn, rescoreBtn);
+        stopElapsedTimer();
+        resetButtons();
 
         if (err.name === 'AbortError') {
-            logLine(logEl,
-                '&#10007; Request timed out after 5 minutes. Check the ML service logs.',
-                'var(--c-danger)');
+            logLine(logEl, '&#10007; Request timed out. Check the ML service logs.', 'var(--c-danger)');
         } else {
             logLine(logEl, `&#10007; Network Error: ${err.message}`, 'var(--c-danger)');
         }
-    });
+    }
 }
 </script>
 </body>
 </html>
-

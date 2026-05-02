@@ -15,6 +15,9 @@ class AllocationEngine {
     private $conn;
     private $allocationsHasAlgorithmVersion = null;
     private $monitor;
+    private $progressCallback = null;
+    /** Optional job_id: if set, total_students is persisted to allocation_jobs */
+    private ?int $jobId = null;
 
     public function __construct($db_connection) {
         $this->conn = $db_connection;
@@ -22,13 +25,42 @@ class AllocationEngine {
     }
 
     /**
-     * Run the full allocation process
+     * Bind this engine run to an allocation_jobs row.
+     * When set, the engine updates total_students after counting eligible students.
      */
-    public function run(?int $single_student_id = null) {
+    public function setJobId(int $job_id): void {
+        $this->jobId = $job_id;
+    }
+
+    /**
+     * Update progress by invoking the callback
+     */
+    private function updateProgress(?callable $callback, string $stage, int $percent) {
+        if ($callback && is_callable($callback)) {
+            try {
+                call_user_func($callback, [
+                    'stage' => $stage,
+                    'percent' => max(0, min(100, $percent))
+                ]);
+            } catch (Throwable $e) {
+                Logger::warning("Progress callback failed: " . $e->getMessage());
+            }
+        }
+    }
+
+    /**
+     * Run the full allocation process
+     * 
+     * @param int|null $single_student_id Optional single student to allocate
+     * @param callable|null $progressCallback Optional callback for progress updates
+     *        Called as: $progressCallback(['stage' => str, 'percent' => int])
+     */
+    public function run(?int $single_student_id = null, ?callable $progressCallback = null) {
         $inTransaction = false;
 
         try {
             // 1. Sync Occupancy (Safety Check)
+            $this->updateProgress($progressCallback, 'Syncing occupancy', 5);
             $this->syncRoomOccupancy();
 
             // 2. Fetch ONLY NEW students (Not yet allocated) AND who have paid
@@ -68,11 +100,27 @@ class AllocationEngine {
             
             $students = $result->fetch_all(MYSQLI_ASSOC);
             $allocated_count = 0;
+            $total_students  = count($students);
 
             if (empty($students)) {
                 $this->conn->commit();
                 return ['status' => 'success', 'allocated' => 0, 'total' => 0];
             }
+
+            // Persist student count to jobs table so the UI can show "X / total" early
+            if ($this->jobId !== null) {
+                $jid = (int)$this->jobId;
+                $this->conn->query(
+                    "UPDATE allocation_jobs
+                        SET total_students   = $total_students,
+                            progress_stage   = 'Fetched $total_students students',
+                            progress_percent = 15,
+                            updated_at       = NOW()
+                      WHERE job_id = $jid"
+                );
+            }
+
+            $this->updateProgress($progressCallback, 'Fetched ' . $total_students . ' students', 15);
 
             $batch_payload = [];
             foreach ($students as $student) {
@@ -86,6 +134,9 @@ class AllocationEngine {
                     'is_requested' => (bool)$student['is_requested']
                 ];
             }
+            
+            $this->updateProgress($progressCallback, 'Scoring students with XGBoost', 20);
+            
             $scores_map = [];
             $prediction_mode = 'Stored Medical Scores';
             try {
@@ -173,6 +224,8 @@ class AllocationEngine {
                     fputcsv($fp_rooms, [$r['id'], $r['hostel_id'], $r['gender'], $r['faculty_target'], $r['is_proximal'] ? 1 : 0, $r['has_elevator'] ? 1 : 0, $r['available_capacity'], $r['hostel_name'], $r['block_name'], $r['floor_level']]);
                 }
                 fclose($fp_rooms);
+
+                $this->updateProgress($progressCallback, 'Running OR-Tools solver', 30);
 
                 // 6. Execute OR-Tools allocate.py
                 $assignments = [];
@@ -321,6 +374,8 @@ class AllocationEngine {
                 }
             }
 
+            $this->updateProgress($progressCallback, 'Writing allocation results', 80);
+
             // Execute Bulk Inserts
             if (!empty($bulk_allocations)) {
                 $insert_cols = $has_algorithm_version_col ? 
@@ -358,6 +413,8 @@ class AllocationEngine {
             // Commit the transaction
             $this->conn->commit();
             $inTransaction = false;
+
+            $this->updateProgress($progressCallback, 'Allocation complete', 100);
 
             // Log allocation completion statistics
             $this->monitor->logStatistics();
@@ -646,23 +703,32 @@ class AllocationEngine {
             return 0;
         }
 
-        $updated = 0;
-        $stmt = $this->conn->prepare("UPDATE medical_records SET urgency_score = ? WHERE student_id = ?");
-        if (!$stmt) {
-            throw new Exception('Unable to prepare the urgency score update statement.');
-        }
-
+        // Build a single bulk UPDATE with a CASE expression.
+        // This avoids N round-trips to MySQL for large datasets (5k-15k students).
+        $cases  = '';
+        $ids    = [];
         foreach ($scores_map as $student_id => $score) {
-            $student_id = (int)$student_id;
-            $score = (float)$score;
-            $stmt->bind_param("di", $score, $student_id);
-            if ($stmt->execute()) {
-                $updated++;
-            }
+            $sid    = (int)$student_id;
+            $sc     = round((float)$score, 6);
+            $cases .= " WHEN student_id = $sid THEN $sc";
+            $ids[]  = $sid;
         }
-        $stmt->close();
 
-        return $updated;
+        if (empty($ids)) {
+            return 0;
+        }
+
+        $id_list = implode(',', $ids);
+        $sql = "UPDATE medical_records
+                   SET urgency_score = CASE $cases ELSE urgency_score END
+                 WHERE student_id IN ($id_list)";
+
+        $ok = $this->conn->query($sql);
+        if (!$ok) {
+            throw new Exception('Bulk urgency score update failed: ' . $this->conn->error);
+        }
+
+        return $this->conn->affected_rows;
     }
 
     private function buildFallbackAssignments(array $students, array $rooms, float $proxThreshold, float $mediumThreshold): array {

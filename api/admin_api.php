@@ -42,6 +42,16 @@ switch ($action) {
         handleRunAlgorithm($conn);
         break;
 
+    // ── Async queue actions ───────────────────────────────────────────────────
+    case 'queue_allocation':
+        handleQueueAllocation($conn);
+        break;
+
+    case 'job_status':
+        handleJobStatus($conn);
+        break;
+    // ─────────────────────────────────────────────────────────────────────────
+
     case 'rescore_all':
         handleRescoreAll($conn);
         break;
@@ -92,7 +102,146 @@ function sendJsonResponse(array $payload, int $statusCode = 200): void {
 // --------------------------------------------------------------------------
 
 /**
+ * Queue an allocation job and immediately fire the background worker.
+ *
+ * Returns the job_id immediately so the UI can start polling job_status.
+ * The actual engine run happens in worker_allocation.php which is launched
+ * via proc_open so it does NOT block this HTTP response.
+ */
+function handleQueueAllocation($conn) {
+    if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
+        sendJsonResponse(['status' => 'error', 'message' => 'POST required'], 405);
+        return;
+    }
+    check_csrf();
+
+    // Prevent duplicate jobs: if a job is already queued or running, return it.
+    $existing = $conn->query(
+        "SELECT job_id, status, progress_percent, progress_stage
+           FROM allocation_jobs
+          WHERE status IN ('queued','running')
+          ORDER BY created_at DESC LIMIT 1"
+    );
+    if ($existing && $existing->num_rows > 0) {
+        $row = $existing->fetch_assoc();
+        sendJsonResponse([
+            'status'   => 'queued',
+            'job_id'   => (int)$row['job_id'],
+            'message'  => 'A job is already in progress.',
+            'job_status' => $row['status']
+        ]);
+        return;
+    }
+
+    $admin_id = (int)$_SESSION['user_id'];
+    $stmt = $conn->prepare(
+        "INSERT INTO allocation_jobs (job_type, status, created_by_admin_id)
+         VALUES ('allocation', 'queued', ?)"
+    );
+    $stmt->bind_param('i', $admin_id);
+    if (!$stmt->execute()) {
+        sendJsonResponse(['status' => 'error', 'message' => 'Could not create job record.'], 500);
+        return;
+    }
+    $job_id = (int)$conn->insert_id;
+    $stmt->close();
+
+    log_admin_action($conn, $admin_id, "Queued allocation job #$job_id");
+
+    // Fire the worker in the background (non-blocking).
+    dispatchWorker($job_id);
+
+    sendJsonResponse([
+        'status'  => 'queued',
+        'job_id'  => $job_id,
+        'message' => 'Allocation job queued and worker started.'
+    ]);
+}
+
+/**
+ * Launch worker_allocation.php as a background process.
+ * Uses proc_open so the HTTP response is NOT held open.
+ */
+function dispatchWorker(int $job_id): void {
+    $php   = PHP_BINARY;
+    $script = dirname(__DIR__) . DIRECTORY_SEPARATOR . 'worker_allocation.php';
+
+    if (!file_exists($script)) {
+        Logger::error("dispatchWorker: worker script not found at $script");
+        return;
+    }
+
+    if (DIRECTORY_SEPARATOR === '\\') {
+        // Windows: start.exe /B runs the process detached from the current console
+        $cmd = 'start /B "" ' . escapeshellarg($php) . ' ' . escapeshellarg($script)
+             . ' --job-id=' . $job_id . ' > NUL 2>&1';
+        pclose(popen($cmd, 'r'));
+    } else {
+        // Linux / macOS
+        $cmd = escapeshellarg($php) . ' ' . escapeshellarg($script)
+             . ' --job-id=' . (int)$job_id . ' > /dev/null 2>&1 &';
+        exec($cmd);
+    }
+}
+
+/**
+ * Return the current status of a queued/running/completed allocation job.
+ * Called by the UI's polling loop every ~2 seconds.
+ */
+function handleJobStatus($conn) {
+    $job_id = (int)($_GET['job_id'] ?? 0);
+    if ($job_id <= 0) {
+        sendJsonResponse(['status' => 'error', 'message' => 'Invalid job_id'], 400);
+        return;
+    }
+
+    $stmt = $conn->prepare(
+        "SELECT job_id, status, progress_stage, progress_percent,
+                total_students, allocated_students,
+                result_data, error_message,
+                created_at, started_at, completed_at
+           FROM allocation_jobs
+          WHERE job_id = ?
+          LIMIT 1"
+    );
+    $stmt->bind_param('i', $job_id);
+    $stmt->execute();
+    $row = $stmt->get_result()->fetch_assoc();
+    $stmt->close();
+
+    if (!$row) {
+        sendJsonResponse(['status' => 'error', 'message' => 'Job not found'], 404);
+        return;
+    }
+
+    $payload = [
+        'status'           => 'success',
+        'job_id'           => (int)$row['job_id'],
+        'job_status'       => $row['status'],
+        'progress_stage'   => $row['progress_stage']   ?? '',
+        'progress_percent' => (int)$row['progress_percent'],
+        'total_students'   => (int)$row['total_students'],
+        'allocated_students' => (int)$row['allocated_students'],
+        'created_at'       => $row['created_at'],
+        'started_at'       => $row['started_at'],
+        'completed_at'     => $row['completed_at'],
+        'error_message'    => $row['error_message'] ?? '',
+    ];
+
+    // Decode result_data for the frontend when the job finished
+    if (!empty($row['result_data'])) {
+        $decoded = json_decode($row['result_data'], true);
+        if (is_array($decoded)) {
+            $payload['result'] = $decoded;
+        }
+    }
+
+    sendJsonResponse($payload);
+}
+
+/**
  * Invokes the core Allocation Engine to process mathematical hostel placements.
+ * NOTE: This is the SYNCHRONOUS path. For bulk data use queue_allocation instead.
  */
 function handleRunAlgorithm($conn) {
     if ($_SERVER["REQUEST_METHOD"] !== "POST") {
