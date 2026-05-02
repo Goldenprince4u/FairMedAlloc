@@ -87,12 +87,13 @@ function spawnWorker(int $job_id): void {
     
     if (DIRECTORY_SEPARATOR === '\\') {
         // Windows
-        $cmd = 'start /B "" ' . escapeshellarg($php) . ' ' . escapeshellarg($script)
-             . ' > NUL 2>&1';
+        $cmd = 'cmd /c start "" /B ' . escapeshellarg($php) . ' ' . escapeshellarg($script)
+             . ' --job-id=' . $job_id . ' > NUL 2>&1';
         pclose(popen($cmd, 'r'));
     } else {
         // Unix/Linux
-        $cmd = escapeshellarg($php) . ' ' . escapeshellarg($script) . ' > /dev/null 2>&1 &';
+        $cmd = escapeshellarg($php) . ' ' . escapeshellarg($script)
+             . ' --job-id=' . (int)$job_id . ' > /dev/null 2>&1 &';
         exec($cmd);
     }
 }

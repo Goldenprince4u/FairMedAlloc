@@ -435,7 +435,7 @@ function buildHostelSeedPlan(array $facultyIds): array
         'proximal_faculty_id' => null,
         'is_proximal' => false,
         'is_postgrad' => false,
-        'is_foundation' => false,
+        'is_foundation' => true,
         'total_capacity' => 112,
         'rooms' => buildBlock26Rooms(),
     ];
@@ -447,7 +447,7 @@ function buildHostelSeedPlan(array $facultyIds): array
         'proximal_faculty_id' => null,
         'is_proximal' => false,
         'is_postgrad' => false,
-        'is_foundation' => true,
+        'is_foundation' => false,
         'total_capacity' => 112,
         'rooms' => buildBlock26Rooms(),
     ];

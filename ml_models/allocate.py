@@ -37,6 +37,8 @@ FEMALE_FACULTY_PROXIMAL = {
 CLINIC_PROXIMAL_MALE_HOSTEL   = 'Prophet Moses Hall'
 CLINIC_PROXIMAL_FEMALE_HOSTEL = 'Queen Esther Extension Hall'
 MOBILITY_PRIORITY_STATUSES    = {'Wheelchair User', 'Crutches/Walker', 'Artificial Limb'}
+MEDIUM_MALE_ACCESS_BLOCK      = '27'
+GROUND_FLOOR_MEDIUM_HOSTELS   = {'Joshua Hall', 'Deborah Hall'}
 
 
 # ---------------------------------------------------------------------------
@@ -159,9 +161,30 @@ def mobility_ground_floor_target(student):
     return None
 
 
-def room_is_mobility_ground_floor_target(student, room):
+def room_is_mobility_ground_floor_target(student, room, first_blocks):
     return (
         mobility_ground_floor_target(student) == room.get('hostel_name', '')
+        and str(room.get('floor_level', '-1')) == '0'
+        and room_is_first_block(room, first_blocks)
+    )
+
+
+def room_is_medium_male_access_target(student, room):
+    return (
+        student_is_medium(student)
+        and student.get('gender', '') == 'Male'
+        and room.get('hostel_name', '') == 'Prophet Moses Extension Hall'
+        and room.get('block_name', '') == MEDIUM_MALE_ACCESS_BLOCK
+        and room_in_faculty_proximal_hostel(student, room)
+    )
+
+
+def room_is_medium_first_block_ground_floor_target(student, room, first_blocks):
+    return (
+        student_is_medium(student)
+        and room.get('hostel_name', '') in GROUND_FLOOR_MEDIUM_HOSTELS
+        and room_in_faculty_proximal_hostel(student, room)
+        and room_is_first_block(room, first_blocks)
         and str(room.get('floor_level', '-1')) == '0'
     )
 
@@ -192,9 +215,10 @@ def placement_bonus(student, room, first_blocks):
 
     Priority ladder (descending bonus):
       5 000 000  High student -> matching clinic-proximal room
-      2 200 000  Mobility-priority student -> Joshua/Deborah ground floor
+      2 200 000  Mobility-priority student -> Joshua/Deborah first-block ground floor
+      1 600 000  Medium male -> Prophet Moses Extension Hall Block 27
+      1 550 000  Medium student -> Joshua/Deborah first-block ground floor
       1 500 000  Medium student -> first block of faculty-proximal hostel
-      1 200 000  Medium student -> Prophet Moses Hall Block 2
         900 000  Low student -> primary faculty-proximal hostel
         450 000  Low student -> secondary faculty-proximal hostel
         400 000  Medium student -> any other block of faculty-proximal hostel
@@ -214,15 +238,16 @@ def placement_bonus(student, room, first_blocks):
     if is_high and clinic_room_matches_gender(student, room):
         return 5_000_000
 
-    if room_is_mobility_ground_floor_target(student, room):
+    if room_is_mobility_ground_floor_target(student, room, first_blocks):
         return 2_200_000
 
     if is_medium and room_in_faculty_proximal_hostel(student, room):
         if is_primary_male_high_room(room):
             return 0
-        if (room.get('hostel_name', '') == 'Prophet Moses Hall'
-                and room.get('block_name', '') == '2'):
-            return 1_200_000
+        if room_is_medium_male_access_target(student, room):
+            return 1_600_000
+        if room_is_medium_first_block_ground_floor_target(student, room, first_blocks):
+            return 1_550_000
         if room_is_first_block(room, first_blocks):
             return 1_500_000
         return 400_000

@@ -82,6 +82,7 @@ require_once 'includes/header.php';
 .badge-running  { background: rgba(0,120,255,0.18);  color: #5b9ef7; }
 .badge-completed{ background: rgba(0,200,100,0.18);  color: #40e08c; }
 .badge-failed   { background: rgba(255,60,60,0.18);  color: #ff6b6b; }
+.badge-cancelled{ background: rgba(180,180,180,0.18);color: #b0b0b0; }
 
 #job-history-row { margin-top: 1.5rem; font-size: 0.82rem; opacity: 0.7; }
 </style>
@@ -116,7 +117,7 @@ require_once 'includes/header.php';
                 <p class="text-muted" style="font-size:0.875rem;margin-bottom:1rem;">This process will:</p>
                 <ul class="list-instructions">
                     <li>Fetch eligible students (paid &amp; unallocated) from the database.</li>
-                    <li>Recalculate urgency scores via the configured XGBoost model.</li>
+                    <li>Recalculate urgency scores via the configured XGBoost model and policy calibration layer.</li>
                     <li>Strongly prioritise High urgency students for clinic-proximal space.</li>
                     <li>Run the OR-Tools CP-SAT solver (falls back to greedy for large batches).</li>
                     <li>Write audit logs and notify each student of the result.</li>
@@ -149,6 +150,13 @@ require_once 'includes/header.php';
                             onclick="rescoreAllScores()"
                             style="margin-top:0.875rem;padding:0.875rem;">
                         <i class="fa-solid fa-rotate"></i> Recalculate All Urgency Scores
+                    </button>
+                    <button class="btn w-full" id="cancel-job-btn"
+                            onclick="cancelCurrentJob()"
+                            style="display:none;margin-top:0.875rem;padding:0.875rem;
+                                   background:rgba(255,60,60,0.12);color:#ff6b6b;
+                                   border:1px solid rgba(255,60,60,0.3);">
+                        <i class="fa-solid fa-xmark"></i> Cancel Job
                     </button>
                 <?php endif; ?>
 
@@ -268,6 +276,7 @@ function setJobBadge(status) {
         running:   ['badge-running',   '&#9679; Running'],
         completed: ['badge-completed', '&#10003; Completed'],
         failed:    ['badge-failed',    '&#10007; Failed'],
+        cancelled: ['badge-cancelled', '&#9940; Cancelled'],
     };
     const [cls, label] = map[status] ?? ['badge-queued', status];
     el.innerHTML = `<span class="job-badge ${cls}">${label}</span>`;
@@ -275,10 +284,12 @@ function setJobBadge(status) {
 
 function resetButtons() {
     stopElapsedTimer();
-    const runBtn    = document.getElementById('start-alloc-btn');
+    const runBtn     = document.getElementById('start-alloc-btn');
     const rescoreBtn = document.getElementById('rescore-btn');
-    if (runBtn)     { runBtn.disabled = false; runBtn.innerHTML = '<i class="fa-solid fa-play"></i> Start Allocation Engine'; }
+    const cancelBtn  = document.getElementById('cancel-job-btn');
+    if (runBtn)     { runBtn.disabled = false;     runBtn.innerHTML = '<i class="fa-solid fa-play"></i> Start Allocation Engine'; }
     if (rescoreBtn) { rescoreBtn.disabled = false; rescoreBtn.innerHTML = '<i class="fa-solid fa-rotate"></i> Recalculate All Urgency Scores'; }
+    if (cancelBtn)  { cancelBtn.style.display = 'none'; }
 }
 
 function getCSRF() {
@@ -334,6 +345,9 @@ async function queueAllocation() {
             showProgressBar();
             setJobBadge('queued');
             startElapsedTimer();
+            // Show the cancel button now that a job is active
+            const cancelBtn = document.getElementById('cancel-job-btn');
+            if (cancelBtn) cancelBtn.style.display = 'block';
             schedulePoll();
         } else {
             logLine(logEl, `&#10007; Failed to queue job: ${data.message ?? 'Unknown error'}`, 'var(--c-danger)');
@@ -392,11 +406,55 @@ async function pollJobStatus() {
             logLine(logEl,
                 '<span style="font-size:0.72rem;opacity:0.6;">Check that Python, OR-Tools, and XGBoost dependencies are available to Apache/PHP.</span>');
             updateProgressBar('Failed', data.progress_percent ?? 0);
+
+        } else if (jobStatus === 'cancelled') {
+            stopElapsedTimer();
+            resetButtons();
+            updateProgressBar('Cancelled', data.progress_percent ?? 0);
+            logLine(logEl, `&#9940; Job #${_currentJobId} was cancelled by an administrator.`, '#b0b0b0');
         }
     } catch (err) {
         // Transient network error — keep polling
         logLine(logEl, `<span style="opacity:0.4;">&#9656; Poll error (will retry): ${err.message}</span>`);
         schedulePoll(POLL_INTERVAL_MS * 2);
+    }
+}
+
+/* ── Cancel Job ────────────────────────────────────────────────────────────── */
+
+async function cancelCurrentJob() {
+    if (!_currentJobId) return;
+    const csrf    = getCSRF();
+    const logEl   = document.getElementById('console');
+    const cancelBtn = document.getElementById('cancel-job-btn');
+
+    if (!csrf) { logLine(logEl, 'Security token missing. Reload page.', 'var(--c-danger)'); return; }
+    if (!confirm(`Cancel allocation Job #${_currentJobId}? This cannot be undone.`)) return;
+
+    if (cancelBtn) { cancelBtn.disabled = true; cancelBtn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Cancelling…'; }
+
+    try {
+        const resp = await fetch('api/admin_api.php?action=cancel_job', {
+            method : 'POST',
+            headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+            body   : new URLSearchParams({ csrf_token: csrf, job_id: _currentJobId }),
+        });
+        const data = await parseApiJson(resp);
+
+        if (data.status === 'success') {
+            clearTimeout(_pollTimer);
+            stopElapsedTimer();
+            setJobBadge('cancelled');
+            updateProgressBar('Cancelled', 0);
+            logLine(logEl, `&#9940; ${data.message}`, '#b0b0b0');
+            resetButtons();
+        } else {
+            logLine(logEl, `&#10007; Could not cancel: ${data.message}`, 'var(--c-danger)');
+            if (cancelBtn) { cancelBtn.disabled = false; cancelBtn.innerHTML = '<i class="fa-solid fa-xmark"></i> Cancel Job'; }
+        }
+    } catch (err) {
+        logLine(logEl, `&#10007; Network error: ${err.message}`, 'var(--c-danger)');
+        if (cancelBtn) { cancelBtn.disabled = false; cancelBtn.innerHTML = '<i class="fa-solid fa-xmark"></i> Cancel Job'; }
     }
 }
 
@@ -456,7 +514,7 @@ async function rescoreAllScores() {
         </div>`;
 
     logLine(logEl, '&#9654; Fetching all medical records…');
-    logLine(logEl, '&#9654; Invoking <em>predict.py</em> against the XGBoost <code>.pkl</code> model…');
+    logLine(logEl, '&#9654; Invoking <em>predict.py</em> for XGBoost scoring and policy calibration…');
     logLine(logEl, '<span style="opacity:0.5;font-style:italic;">Please keep this page open while scoring completes.</span>');
 
     startElapsedTimer();

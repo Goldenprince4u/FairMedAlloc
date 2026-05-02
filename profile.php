@@ -401,9 +401,18 @@ require_once 'includes/header.php';
                                    style="opacity:0.6;cursor:not-allowed;background:var(--c-bg-surface-2);">
                         </div>
 
+                        <div class="form-group" style="margin-bottom:0;">
+                            <label>Severity <span style="font-size:0.72rem;color:var(--c-text-muted);font-weight:400;">(locked)</span></label>
+                            <input type="text"
+                                   id="profile-severity"
+                                   value="<?php echo htmlspecialchars($student['severity_level'] ?? 'Low'); ?>"
+                                   disabled
+                                   style="opacity:0.6;cursor:not-allowed;background:var(--c-bg-surface-2);">
+                        </div>
+
                         <div class="form-group" style="margin-bottom:0;grid-column:1 / -1;">
                             <div class="text-xs text-muted" style="padding-top:0.25rem;">
-                                Medical condition and mobility status are locked after submission. Contact Student Affairs or the medical team if a verified update is required.
+                                Medical condition, mobility status, and severity are locked after submission. Contact Student Affairs or the medical team if a verified update is required.
                             </div>
                         </div>
 

@@ -50,6 +50,14 @@ switch ($action) {
     case 'job_status':
         handleJobStatus($conn);
         break;
+
+    case 'worker_health':
+        handleWorkerHealth($conn);
+        break;
+
+    case 'cancel_job':
+        handleCancelJob($conn);
+        break;
     // ─────────────────────────────────────────────────────────────────────────
 
     case 'rescore_all':
@@ -163,7 +171,7 @@ function handleQueueAllocation($conn) {
  * Uses proc_open so the HTTP response is NOT held open.
  */
 function dispatchWorker(int $job_id): void {
-    $php   = PHP_BINARY;
+    $php   = resolvePhpCliBinary();
     $script = dirname(__DIR__) . DIRECTORY_SEPARATOR . 'worker_allocation.php';
 
     if (!file_exists($script)) {
@@ -172,8 +180,9 @@ function dispatchWorker(int $job_id): void {
     }
 
     if (DIRECTORY_SEPARATOR === '\\') {
-        // Windows: start.exe /B runs the process detached from the current console
-        $cmd = 'start /B "" ' . escapeshellarg($php) . ' ' . escapeshellarg($script)
+        // Windows: launch explicitly through cmd.exe so the shell built-in
+        // `start` works reliably under Apache/mod_php as well as CLI.
+        $cmd = 'cmd /c start "" /B ' . escapeshellarg($php) . ' ' . escapeshellarg($script)
              . ' --job-id=' . $job_id . ' > NUL 2>&1';
         pclose(popen($cmd, 'r'));
     } else {
@@ -182,6 +191,44 @@ function dispatchWorker(int $job_id): void {
              . ' --job-id=' . (int)$job_id . ' > /dev/null 2>&1 &';
         exec($cmd);
     }
+}
+
+function resolvePhpCliBinary(): string {
+    $candidates = [];
+
+    if (defined('PHP_BINARY') && PHP_BINARY !== '') {
+        $candidates[] = PHP_BINARY;
+    }
+
+    if (defined('PHP_BINDIR') && PHP_BINDIR !== '') {
+        $binDir = rtrim((string)PHP_BINDIR, "\\/");
+        if (DIRECTORY_SEPARATOR === '\\') {
+            $candidates[] = $binDir . DIRECTORY_SEPARATOR . 'php.exe';
+            $candidates[] = $binDir . DIRECTORY_SEPARATOR . 'php-cli.exe';
+        } else {
+            $candidates[] = $binDir . DIRECTORY_SEPARATOR . 'php';
+        }
+    }
+
+    if (DIRECTORY_SEPARATOR === '\\') {
+        $candidates[] = 'C:\\xampp\\php\\php.exe';
+    } else {
+        $candidates[] = 'php';
+    }
+
+    foreach ($candidates as $candidate) {
+        if (!is_string($candidate) || trim($candidate) === '') {
+            continue;
+        }
+        if ($candidate === 'php') {
+            return $candidate;
+        }
+        if (file_exists($candidate)) {
+            return $candidate;
+        }
+    }
+
+    return DIRECTORY_SEPARATOR === '\\' ? 'php' : 'php';
 }
 
 /**
@@ -237,6 +284,107 @@ function handleJobStatus($conn) {
     }
 
     sendJsonResponse($payload);
+}
+
+/**
+ * Issue #10: Worker health check.
+ * Returns queue depth, running job count, and recent completion summary.
+ * GET /api/admin_api.php?action=worker_health
+ */
+function handleWorkerHealth($conn) {
+    $queued  = 0;
+    $running = 0;
+    $todayDone = 0;
+    $lastFailed = null;
+
+    $res = $conn->query(
+        "SELECT
+            SUM(status = 'queued')    AS queued,
+            SUM(status = 'running')   AS running,
+            SUM(status = 'completed' AND DATE(completed_at) = CURDATE()) AS today_done,
+            SUM(status = 'failed'    AND DATE(completed_at) = CURDATE()) AS today_failed
+         FROM allocation_jobs"
+    );
+    if ($res) {
+        $row       = $res->fetch_assoc();
+        $queued    = (int)($row['queued']      ?? 0);
+        $running   = (int)($row['running']     ?? 0);
+        $todayDone = (int)($row['today_done']  ?? 0);
+        $todayFailed = (int)($row['today_failed'] ?? 0);
+    }
+
+    // Most recent failed job message (if any)
+    $failRes = $conn->query(
+        "SELECT job_id, error_message, completed_at
+           FROM allocation_jobs
+          WHERE status = 'failed'
+          ORDER BY completed_at DESC LIMIT 1"
+    );
+    if ($failRes && $failRes->num_rows > 0) {
+        $lastFailed = $failRes->fetch_assoc();
+    }
+
+    sendJsonResponse([
+        'status'        => 'ok',
+        'worker_status' => ($running > 0) ? 'running' : (($queued > 0) ? 'busy' : 'idle'),
+        'queued_jobs'   => $queued,
+        'running_jobs'  => $running,
+        'today_completed' => $todayDone,
+        'today_failed'  => $todayFailed ?? 0,
+        'last_failure'  => $lastFailed,
+        'timestamp'     => date('c'),
+    ]);
+}
+
+/**
+ * Issue #18: Cancel a queued or running job.
+ * Only queued jobs can be safely cancelled immediately.
+ * Running jobs are marked cancelled — the worker honours it on next progress flush.
+ * POST /api/admin_api.php?action=cancel_job  {job_id: X, csrf_token: Y}
+ */
+function handleCancelJob($conn) {
+    if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
+        sendJsonResponse(['status' => 'error', 'message' => 'POST required'], 405);
+        return;
+    }
+    check_csrf();
+
+    $job_id = (int)($_POST['job_id'] ?? 0);
+    if ($job_id <= 0) {
+        sendJsonResponse(['status' => 'error', 'message' => 'Invalid job_id'], 400);
+        return;
+    }
+
+    // Only allow cancelling jobs that are queued or running
+    $stmt = $conn->prepare(
+        "UPDATE allocation_jobs
+            SET status        = 'cancelled',
+                completed_at  = NOW(),
+                updated_at    = NOW(),
+                error_message = 'Cancelled by administrator'
+          WHERE job_id = ?
+            AND status IN ('queued', 'running')"
+    );
+    $stmt->bind_param('i', $job_id);
+    $stmt->execute();
+    $affected = $stmt->affected_rows;
+    $stmt->close();
+
+    if ($affected === 0) {
+        sendJsonResponse([
+            'status'  => 'error',
+            'message' => 'Job not found or already in a terminal state (completed/failed/cancelled).'
+        ], 404);
+        return;
+    }
+
+    log_admin_action($conn, (int)$_SESSION['user_id'], "Cancelled allocation job #$job_id");
+    Logger::info("Admin cancelled Job #$job_id");
+
+    sendJsonResponse([
+        'status'  => 'success',
+        'message' => "Job #$job_id has been cancelled."
+    ]);
 }
 
 /**

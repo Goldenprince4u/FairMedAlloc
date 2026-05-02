@@ -270,6 +270,14 @@ class AllocationEngine {
                 }
             }
 
+            $assignments = $this->rebalanceAssignmentsByFacultyProximity(
+                $students,
+                $rooms,
+                $assignments,
+                $prox_threshold,
+                $medium_threshold
+            );
+
             $this->conn->begin_transaction();
             $inTransaction = true;
 
@@ -887,13 +895,15 @@ class AllocationEngine {
 
         if ($studentBand === 'High' && $this->clinicRoomMatchesGender($student, $room)) {
             $bonus = 5000000;
-        } elseif ($this->roomIsMobilityGroundFloorTarget($student, $room, $facultyHostels)) {
+        } elseif ($this->roomIsMobilityGroundFloorTarget($student, $room, $facultyHostels, $firstBlocks)) {
             $bonus = 2200000;
         } elseif ($studentBand === 'Medium' && in_array($room['hostel_name'] ?? '', $facultyHostels, true)) {
             if (($room['is_primary_male_high'] ?? false) === true) {
                 $bonus = 0;
-            } elseif (($room['hostel_name'] ?? '') === 'Prophet Moses Hall' && (string)($room['block_name'] ?? '') === '2') {
-                $bonus = 1200000;
+            } elseif ($this->roomIsMediumMaleAccessTarget($student, $room)) {
+                $bonus = 1600000;
+            } elseif ($this->roomIsMediumFirstBlockGroundFloorTarget($student, $room, $facultyHostels, $firstBlocks)) {
+                $bonus = 1550000;
             } elseif ($this->roomIsFirstBlock($room, $firstBlocks)) {
                 $bonus = 1500000;
             } else {
@@ -970,7 +980,7 @@ class AllocationEngine {
         );
     }
 
-    private function roomIsMobilityGroundFloorTarget(array $student, array $room, array $facultyHostels): bool {
+    private function roomIsMobilityGroundFloorTarget(array $student, array $room, array $facultyHostels, array $firstBlocks): bool {
         if (!$this->studentHasMobilityPriority($student)) {
             return false;
         }
@@ -984,7 +994,150 @@ class AllocationEngine {
 
         return $targetHostel !== null
             && ($room['hostel_name'] ?? '') === $targetHostel
-            && (int)($room['floor_level'] ?? -1) === 0;
+            && (int)($room['floor_level'] ?? -1) === 0
+            && $this->roomIsFirstBlock($room, $firstBlocks);
+    }
+
+    private function roomIsMediumMaleAccessTarget(array $student, array $room): bool {
+        return ($student['gender'] ?? '') === 'Male'
+            && ($room['gender'] ?? '') === 'Male'
+            && ($room['hostel_name'] ?? '') === 'Prophet Moses Extension Hall'
+            && (string)($room['block_name'] ?? '') === '27';
+    }
+
+    private function roomIsMediumFirstBlockGroundFloorTarget(array $student, array $room, array $facultyHostels, array $firstBlocks): bool {
+        return in_array($room['hostel_name'] ?? '', ['Joshua Hall', 'Deborah Hall'], true)
+            && in_array($room['hostel_name'] ?? '', $facultyHostels, true)
+            && (int)($room['floor_level'] ?? -1) === 0
+            && $this->roomIsFirstBlock($room, $firstBlocks);
+    }
+
+    private function rebalanceAssignmentsByFacultyProximity(array $students, array $rooms, array $assignments, float $proxThreshold, float $mediumThreshold): array {
+        if (empty($students) || empty($rooms)) {
+            return $assignments;
+        }
+
+        $roomsById = [];
+        $remainingCapacity = [];
+        $firstBlocks = $this->buildFirstBlocks($rooms);
+
+        foreach ($rooms as $room) {
+            $roomId = (int)($room['id'] ?? 0);
+            if ($roomId <= 0) {
+                continue;
+            }
+
+            $room['id'] = $roomId;
+            $room['block_number'] = $this->roomBlockNumber($room);
+            $room['is_primary_male_high'] = $this->isPrimaryMaleHighRoom($room);
+            $room['is_male_clinic'] = $this->isMaleClinicRoom($room);
+            $room['is_female_clinic'] = $this->isFemaleClinicRoom($room);
+            $roomsById[$roomId] = $room;
+            $remainingCapacity[$roomId] = (int)($room['available_capacity'] ?? 0);
+        }
+
+        foreach ($assignments as $studentId => $roomId) {
+            $roomKey = (int)$roomId;
+            if (isset($remainingCapacity[$roomKey])) {
+                $remainingCapacity[$roomKey] = max(0, $remainingCapacity[$roomKey] - 1);
+            }
+        }
+
+        usort($students, function (array $left, array $right) use ($proxThreshold, $mediumThreshold) {
+            $leftRank = $this->bandPriorityRank($this->studentUrgencyBand($left, $proxThreshold, $mediumThreshold));
+            $rightRank = $this->bandPriorityRank($this->studentUrgencyBand($right, $proxThreshold, $mediumThreshold));
+
+            if ($leftRank !== $rightRank) {
+                return $leftRank <=> $rightRank;
+            }
+
+            $scoreCompare = (float)($right['score'] ?? 0) <=> (float)($left['score'] ?? 0);
+            if ($scoreCompare !== 0) {
+                return $scoreCompare;
+            }
+
+            return (int)($left['id'] ?? 0) <=> (int)($right['id'] ?? 0);
+        });
+
+        for ($pass = 0; $pass < 3; $pass++) {
+            $changed = false;
+
+            foreach ($students as $student) {
+                $studentId = (int)($student['id'] ?? 0);
+                if ($studentId <= 0) {
+                    continue;
+                }
+
+                $band = $this->studentUrgencyBand($student, $proxThreshold, $mediumThreshold);
+                if ($band === 'High') {
+                    continue;
+                }
+
+                $facultyHostels = $this->getFacultyProximalHostels($student);
+                if (empty($facultyHostels)) {
+                    continue;
+                }
+
+                $currentRoomId = isset($assignments[$studentId]) ? (int)$assignments[$studentId] : null;
+                $currentRoom = ($currentRoomId !== null && isset($roomsById[$currentRoomId])) ? $roomsById[$currentRoomId] : null;
+                $currentWeight = $currentRoom !== null
+                    ? $this->calculateFallbackPlacementWeight($student, $currentRoom, $band, $firstBlocks, $facultyHostels)
+                    : PHP_INT_MIN;
+
+                $bestRoomId = $currentRoomId;
+                $bestWeight = $currentWeight;
+
+                foreach ($roomsById as $candidateRoomId => $candidateRoom) {
+                    if (!$this->roomMatchesStudentHardRules($student, $candidateRoom, $band)) {
+                        continue;
+                    }
+
+                    $openCapacity = $remainingCapacity[$candidateRoomId] ?? 0;
+                    if ($candidateRoomId !== $currentRoomId && $openCapacity <= 0) {
+                        continue;
+                    }
+
+                    $candidateWeight = $this->calculateFallbackPlacementWeight($student, $candidateRoom, $band, $firstBlocks, $facultyHostels);
+                    if ($candidateWeight > $bestWeight) {
+                        $bestWeight = $candidateWeight;
+                        $bestRoomId = $candidateRoomId;
+                    }
+                }
+
+                if ($bestRoomId !== null && $bestRoomId !== $currentRoomId) {
+                    if ($currentRoomId !== null && isset($remainingCapacity[$currentRoomId])) {
+                        $remainingCapacity[$currentRoomId]++;
+                    }
+                    $remainingCapacity[$bestRoomId] = max(0, ($remainingCapacity[$bestRoomId] ?? 0) - 1);
+                    $assignments[$studentId] = $bestRoomId;
+                    $changed = true;
+                }
+            }
+
+            if (!$changed) {
+                break;
+            }
+        }
+
+        return $assignments;
+    }
+
+    private function roomMatchesStudentHardRules(array $student, array $room, string $studentBand): bool {
+        if (($student['gender'] ?? '') !== ($room['gender'] ?? '')) {
+            return false;
+        }
+
+        if (($room['is_primary_male_high'] ?? $this->isPrimaryMaleHighRoom($room)) && $studentBand !== 'High') {
+            return false;
+        }
+
+        if ($this->studentHasMobilityPriority($student)
+            && in_array($room['hostel_name'] ?? '', ['Joshua Hall', 'Deborah Hall'], true)
+            && (int)($room['floor_level'] ?? -1) !== 0) {
+            return false;
+        }
+
+        return true;
     }
 
     private function allocationsSupportAlgorithmVersion(): bool {

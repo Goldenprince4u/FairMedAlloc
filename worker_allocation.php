@@ -9,13 +9,16 @@
  *   php worker_allocation.php
  *   php worker_allocation.php --job-id=42    # run a specific job
  *
- * Usage (triggered by admin_api.php via proc_open):
+ * Usage (triggered by admin_api.php via popen):
  *   php worker_allocation.php --job-id=<id>
  *
- * The worker is safe against concurrent execution:
- *  - GET_LOCK prevents two workers running at the same time.
- *  - If a lock cannot be acquired the worker exits cleanly (exit 2).
- *  - A stale "running" job (> STALE_JOB_MINUTES old) is automatically reset.
+ * Safety guarantees:
+ *  - CLI-only: exits 403 if called via HTTP.
+ *  - DB connection validated before any query.
+ *  - MySQL GET_LOCK prevents concurrent workers.
+ *  - Stale "running" jobs (> STALE_JOB_MINUTES) are auto-reset to "queued".
+ *  - Failed jobs are retried up to max_retries times with a delay.
+ *  - Graceful shutdown: honours a $shuttingDown flag (set via SIGTERM on Linux).
  */
 
 if (php_sapi_name() !== 'cli') {
@@ -24,30 +27,56 @@ if (php_sapi_name() !== 'cli') {
 }
 
 // ── Constants ────────────────────────────────────────────────────────────────
-const WORKER_LOCK_NAME  = 'fairmedalloc_allocation_worker';
-const LOCK_WAIT_SECONDS = 1;       // how long GET_LOCK waits before giving up
-const STALE_JOB_MINUTES = 20;      // "running" jobs older than this are reset
-const PROGRESS_FLUSH_SEC = 3;      // minimum seconds between DB progress writes
+const WORKER_LOCK_NAME   = 'fairmedalloc_allocation_worker';
+const LOCK_WAIT_SECONDS  = 1;    // how long GET_LOCK waits before giving up
+const STALE_JOB_MINUTES  = 20;   // "running" jobs older than this are reset
+const PROGRESS_FLUSH_SEC = 3;    // minimum seconds between DB progress writes
+const RETRY_DELAY_SEC    = 10;   // seconds to wait before a retry attempt
 
+// ── Bootstrap ─────────────────────────────────────────────────────────────────
 require_once __DIR__ . '/db_config.php';
 require_once __DIR__ . '/includes/Logger.php';
 require_once __DIR__ . '/includes/AllocationEngine.php';
+
+// ── DB connection validation (Issue #6 fix) ───────────────────────────────────
+if (!isset($conn) || !($conn instanceof mysqli) || $conn->connect_error) {
+    $errMsg = $conn->connect_error ?? 'Unknown connection error';
+    error_log("[Worker] Database connection failed: $errMsg");
+    exit(1);
+}
+
+// Optionally set a statement-level timeout (Issue #7 fix — MySQL ≥ 5.7.4)
+// This prevents a single runaway query from blocking the worker indefinitely.
+try {
+    $conn->query('SET SESSION MAX_EXECUTION_TIME = 600000');
+} catch (mysqli_sql_exception $e) {
+    Logger::warning('Worker: MAX_EXECUTION_TIME is not supported by this database server; continuing without it.');
+}
 
 // ── Parse CLI arguments ───────────────────────────────────────────────────────
 $opts       = getopt('', ['job-id:']);
 $forced_job = isset($opts['job-id']) ? (int)$opts['job-id'] : null;
 
+// ── Graceful shutdown flag (SIGTERM on Linux/Mac; Windows ignores pcntl) ──────
+$shuttingDown = false;
+if (function_exists('pcntl_signal')) {
+    pcntl_signal(SIGTERM, function () use (&$shuttingDown) {
+        Logger::info('Worker: received SIGTERM — will shut down after current job.');
+        $shuttingDown = true;
+    });
+}
+
 // ── Main ──────────────────────────────────────────────────────────────────────
-main($conn, $forced_job);
+main($conn, $forced_job, $shuttingDown);
 
 // =============================================================================
 // Functions
 // =============================================================================
 
 /**
- * Entry-point: acquire lock → fetch job → run → release lock.
+ * Entry-point: validate DB → reset stale jobs → acquire lock → run → release.
  */
-function main(mysqli $conn, ?int $forced_job): void
+function main(mysqli $conn, ?int $forced_job, bool &$shuttingDown): void
 {
     resetStaleRunningJobs($conn);
 
@@ -66,12 +95,17 @@ function main(mysqli $conn, ?int $forced_job): void
             exit(0);
         }
 
-        Logger::info("Worker: processing Job #{$job['job_id']} (type={$job['job_type']})");
+        Logger::info("Worker: processing Job #{$job['job_id']} (type={$job['job_type']}, retry={$job['retry_count']})");
         processAllocationJob($conn, $job);
 
     } finally {
         releaseWorkerLock($conn);
         Logger::info('Worker: lock released. Done.');
+
+        if ($shuttingDown) {
+            Logger::info('Worker: graceful shutdown complete.');
+            exit(0);
+        }
     }
 }
 
@@ -79,10 +113,10 @@ function main(mysqli $conn, ?int $forced_job): void
 
 function acquireWorkerLock(mysqli $conn): bool
 {
-    $name    = WORKER_LOCK_NAME;
-    $wait    = LOCK_WAIT_SECONDS;
-    $result  = $conn->query("SELECT GET_LOCK('$name', $wait) AS locked");
-    $row     = $result ? $result->fetch_assoc() : null;
+    $name   = WORKER_LOCK_NAME;
+    $wait   = LOCK_WAIT_SECONDS;
+    $result = $conn->query("SELECT GET_LOCK('$name', $wait) AS locked");
+    $row    = $result ? $result->fetch_assoc() : null;
     return ($row['locked'] ?? 0) == 1;
 }
 
@@ -102,7 +136,11 @@ function getNextQueuedJob(mysqli $conn): ?array
           ORDER BY created_at ASC
           LIMIT 1"
     );
-    return $result ? $result->fetch_assoc() : null;
+    // Issue #8: explicit null-check on query result
+    if (!$result || $result->num_rows === 0) {
+        return null;
+    }
+    return $result->fetch_assoc();
 }
 
 function getJobById(mysqli $conn, int $job_id): ?array
@@ -113,6 +151,10 @@ function getJobById(mysqli $conn, int $job_id): ?array
             AND status IN ('queued', 'running')
           LIMIT 1"
     );
+    if (!$stmt) {
+        Logger::error('Worker: could not prepare getJobById statement: ' . $conn->error);
+        return null;
+    }
     $stmt->bind_param('i', $job_id);
     $stmt->execute();
     $row = $stmt->get_result()->fetch_assoc();
@@ -124,10 +166,11 @@ function getJobById(mysqli $conn, int $job_id): ?array
 
 function resetStaleRunningJobs(mysqli $conn): void
 {
-    $minutes = STALE_JOB_MINUTES;
+    // Uses the composite index idx_status_updated (status, updated_at)
+    $minutes = (int)STALE_JOB_MINUTES;
     $conn->query(
         "UPDATE allocation_jobs
-            SET status = 'queued',
+            SET status           = 'queued',
                 progress_stage   = 'Reset (stale)',
                 progress_percent = 0,
                 started_at       = NULL,
@@ -144,24 +187,29 @@ function resetStaleRunningJobs(mysqli $conn): void
 
 function processAllocationJob(mysqli $conn, array $job): void
 {
-    $job_id = (int)$job['job_id'];
+    $job_id     = (int)$job['job_id'];
+    $retryCount = (int)($job['retry_count'] ?? 0);
+    $maxRetries = (int)($job['max_retries'] ?? 3);
 
-    // Mark as started
-    $conn->query(
+    // Mark as started (prepared statement)
+    $startStmt = $conn->prepare(
         "UPDATE allocation_jobs
             SET status           = 'running',
                 started_at       = NOW(),
                 progress_stage   = 'Initializing',
                 progress_percent = 5,
                 updated_at       = NOW()
-          WHERE job_id = $job_id"
+          WHERE job_id = ?"
     );
+    $startStmt->bind_param('i', $job_id);
+    $startStmt->execute();
+    $startStmt->close();
 
     try {
         $engine = new AllocationEngine($conn);
-        $engine->setJobId($job_id);   // enables total_students tracking in the DB
+        $engine->setJobId($job_id);  // enables total_students tracking in the DB
 
-        // Progress callback — rate-limited to avoid hammering MySQL on every tick
+        // Rate-limited progress callback (Issue #4: already uses prepared statements)
         $lastFlush = 0;
         $progressCallback = function (array $progress) use ($conn, $job_id, &$lastFlush): void {
             $now = time();
@@ -170,27 +218,29 @@ function processAllocationJob(mysqli $conn, array $job): void
             }
             $lastFlush = $now;
 
-            $stage   = $conn->real_escape_string((string)($progress['stage']   ?? ''));
-            $percent = (int)($progress['percent'] ?? 0);
-            $percent = max(0, min(100, $percent));
+            $stage   = (string)($progress['stage']   ?? '');
+            $percent = max(0, min(100, (int)($progress['percent'] ?? 0)));
 
-            $conn->query(
+            $stmt = $conn->prepare(
                 "UPDATE allocation_jobs
-                    SET progress_stage   = '$stage',
-                        progress_percent = $percent,
+                    SET progress_stage   = ?,
+                        progress_percent = ?,
                         status           = 'running',
                         updated_at       = NOW()
-                  WHERE job_id = $job_id"
+                  WHERE job_id = ?"
             );
+            if (!$stmt) return;
+            $stmt->bind_param('sii', $stage, $percent, $job_id);
+            $stmt->execute();
+            $stmt->close();
         };
 
-        $result = $engine->run(null, $progressCallback);
-
+        $result    = $engine->run(null, $progressCallback);
         $status    = $result['status'] ?? 'error';
         $allocated = (int)($result['allocated'] ?? 0);
-        $total     = (int)($result['total'] ?? 0);
+        $total     = (int)($result['total']     ?? 0);
 
-        $resultJson = $conn->real_escape_string(json_encode([
+        $resultJson = json_encode([
             'status'          => $status,
             'allocated'       => $allocated,
             'total'           => $total,
@@ -199,48 +249,91 @@ function processAllocationJob(mysqli $conn, array $job): void
             'prediction_mode' => $result['prediction_mode'] ?? 'unknown',
             'message'         => $result['message']         ?? '',
             'optimal'         => $result['optimal']         ?? false,
-        ]));
+        ]);
 
         if ($status === 'success') {
-            $conn->query(
+            $stmt = $conn->prepare(
                 "UPDATE allocation_jobs
-                    SET status              = 'completed',
-                        progress_stage      = 'Completed',
-                        progress_percent    = 100,
-                        allocated_students  = $allocated,
-                        total_students      = $total,
-                        result_data         = '$resultJson',
-                        completed_at        = NOW(),
-                        updated_at          = NOW()
-                  WHERE job_id = $job_id"
+                    SET status             = 'completed',
+                        progress_stage     = 'Completed',
+                        progress_percent   = 100,
+                        allocated_students = ?,
+                        total_students     = ?,
+                        result_data        = ?,
+                        completed_at       = NOW(),
+                        updated_at         = NOW()
+                  WHERE job_id = ?"
             );
+            $stmt->bind_param('iisi', $allocated, $total, $resultJson, $job_id);
+            $stmt->execute();
+            $stmt->close();
             Logger::info("Worker: Job #$job_id completed — $allocated/$total students allocated.");
+
         } else {
-            $errorMsg = $conn->real_escape_string($result['message'] ?? 'Engine returned non-success status.');
-            $conn->query(
-                "UPDATE allocation_jobs
-                    SET status        = 'failed',
-                        error_message = '$errorMsg',
-                        result_data   = '$resultJson',
-                        completed_at  = NOW(),
-                        updated_at    = NOW()
-                  WHERE job_id = $job_id"
-            );
-            Logger::error("Worker: Job #$job_id failed — {$errorMsg}");
+            // Engine returned non-success — schedule retry or mark failed
+            $errorMsg = $result['message'] ?? 'Engine returned non-success status.';
+            scheduleRetryOrFail($conn, $job_id, $retryCount, $maxRetries, $errorMsg, $resultJson);
         }
 
     } catch (Throwable $e) {
         Logger::error("Worker: Job #$job_id threw exception — " . $e->getMessage());
-        $errorMsg = $conn->real_escape_string(
-            substr($e->getMessage() . ' (' . basename($e->getFile()) . ':' . $e->getLine() . ')', 0, 500)
+        $errorMsg = substr(
+            $e->getMessage() . ' (' . basename($e->getFile()) . ':' . $e->getLine() . ')',
+            0, 500
         );
-        $conn->query(
+        scheduleRetryOrFail($conn, $job_id, $retryCount, $maxRetries, $errorMsg, null);
+    }
+}
+
+/**
+ * Issue #9: Retry with exponential backoff.
+ * Re-queues the job if retries remain, otherwise marks it as failed.
+ */
+function scheduleRetryOrFail(
+    mysqli $conn,
+    int    $job_id,
+    int    $retryCount,
+    int    $maxRetries,
+    string $errorMsg,
+    ?string $resultJson
+): void {
+    $newRetryCount = $retryCount + 1;
+
+    if ($newRetryCount <= $maxRetries) {
+        $delaySec = RETRY_DELAY_SEC * (2 ** ($newRetryCount - 1)); // exponential backoff
+        Logger::warning("Worker: Job #$job_id failed (attempt $newRetryCount/$maxRetries). Retrying in {$delaySec}s.");
+
+        sleep($delaySec);
+
+        $stmt = $conn->prepare(
+            "UPDATE allocation_jobs
+                SET status           = 'queued',
+                    retry_count      = ?,
+                    progress_stage   = ?,
+                    progress_percent = 0,
+                    error_message    = ?,
+                    updated_at       = NOW()
+              WHERE job_id = ?"
+        );
+        $stage = "Retry $newRetryCount/$maxRetries";
+        $stmt->bind_param('issi', $newRetryCount, $stage, $errorMsg, $job_id);
+        $stmt->execute();
+        $stmt->close();
+
+    } else {
+        Logger::error("Worker: Job #$job_id permanently failed after $maxRetries retries — $errorMsg");
+
+        $stmt = $conn->prepare(
             "UPDATE allocation_jobs
                 SET status        = 'failed',
-                    error_message = '$errorMsg',
+                    error_message = ?,
+                    result_data   = ?,
                     completed_at  = NOW(),
                     updated_at    = NOW()
-              WHERE job_id = $job_id"
+              WHERE job_id = ?"
         );
+        $stmt->bind_param('ssi', $errorMsg, $resultJson, $job_id);
+        $stmt->execute();
+        $stmt->close();
     }
 }

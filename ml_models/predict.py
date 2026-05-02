@@ -42,6 +42,20 @@ PICKLE_FEATURE_KEYS = [
     "severity_score",
 ]
 
+HIGH_URGENCY_THRESHOLD = 75.0
+MEDIUM_URGENCY_THRESHOLD = 40.0
+MOBILITY_PRIORITY_STATUSES = {"Wheelchair User", "Crutches/Walker", "Artificial Limb"}
+MEDICAL_MOBILITY_HIGH_FLOORS = {
+    "Artificial Limb": 82.0,
+    "Crutches/Walker": 84.0,
+    "Wheelchair User": 88.0,
+}
+MOBILITY_ONLY_MEDIUM_FLOORS = {
+    "Artificial Limb": {1: 46.0, 2: 52.0, 3: 60.0},
+    "Crutches/Walker": {1: 52.0, 2: 60.0, 3: 68.0},
+    "Wheelchair User": {1: 58.0, 2: 66.0, 3: 74.0},
+}
+
 _model = None
 _use_ml_model = False
 _model_source = None
@@ -115,9 +129,9 @@ def model_descriptor():
 
 
 def calculate_tier(score):
-    if score >= 70:
+    if score >= HIGH_URGENCY_THRESHOLD:
         return "High"
-    if score >= 40:
+    if score >= MEDIUM_URGENCY_THRESHOLD:
         return "Medium"
     return "Low"
 
@@ -279,6 +293,10 @@ def build_pickle_feature_vector(student):
 
     if features["mobility_score"] < 0:
         mobility = normalize_mobility_value(student.get("mobility"))
+        if mobility == "Normal Mobility":
+            condition_as_mobility = normalize_condition_value(student.get("condition"))
+            if condition_as_mobility in MOBILITY_PRIORITY_STATUSES:
+                mobility = condition_as_mobility
         features["mobility_score"] = {
             "Normal Mobility": 0,
             "Artificial Limb": 1,
@@ -377,26 +395,50 @@ def calculate_score_fallback(student):
         return 0.0
 
 
-_MOBILITY_PRIORITY_STATUSES = {"Wheelchair User", "Crutches/Walker", "Artificial Limb"}
-_MOBILITY_SCORE_FLOOR = 76.0  # Guarantees High urgency band (threshold >= 75)
-
-
-def _apply_mobility_floor(score: float, student: dict) -> float:
+def calibrate_policy_score(score: float, student: dict) -> float:
     """
-    If a student has a mobility-priority status, their urgency score must be
-    at least _MOBILITY_SCORE_FLOOR so that OR-Tools handles them in the High
-    band and the 2,200,000 ground-floor bonus steers them to Joshua/Deborah
-    ground floor. If XGBoost already scored them higher (e.g., comorbidity),
-    the higher score is kept.
+    Apply the hostel-policy calibration layer after the raw model score.
+
+    Policy summary:
+      - high-severity medical cases are guaranteed into the High band
+      - medical + mobility cases are guaranteed into the High band
+      - mobility-only cases are intentionally kept inside the Medium band,
+        preserving their relative severity while reserving clinic-proximal
+        space for stronger medical need
     """
-    mobility = normalize_mobility_value(student.get("mobility"))
-    if mobility in _MOBILITY_PRIORITY_STATUSES:
-        return max(score, _MOBILITY_SCORE_FLOOR)
-    return score
+    score = max(0.0, min(float(score), 100.0))
+    condition = normalize_condition_value(student.get("condition", "None"))
+    mobility = normalize_mobility_value(student.get("mobility", "Normal Mobility"))
+    if condition in MOBILITY_PRIORITY_STATUSES and mobility == "Normal Mobility":
+        mobility = condition
+
+    severity = max(1, min(normalize_severity_value(student.get("severity", "Low")), 3))
+    has_mobility_priority = mobility in MOBILITY_PRIORITY_STATUSES
+    has_medical_condition = condition not in {
+        "None",
+        "Mobility",
+        "Wheelchair User",
+        "Crutches/Walker",
+        "Artificial Limb",
+    }
+
+    if has_medical_condition and has_mobility_priority:
+        score = max(score, MEDICAL_MOBILITY_HIGH_FLOORS.get(mobility, 82.0))
+    elif has_medical_condition and severity >= 3:
+        score = max(score, 78.0)
+    elif has_mobility_priority:
+        floor = MOBILITY_ONLY_MEDIUM_FLOORS.get(mobility, {}).get(severity, MEDIUM_URGENCY_THRESHOLD)
+        score = max(score, floor)
+        score = min(score, HIGH_URGENCY_THRESHOLD - 1.0)
+
+    return max(0.0, min(score, 100.0))
 
 
 def _student_has_mobility_priority(student: dict) -> bool:
-    return normalize_mobility_value(student.get("mobility")) in _MOBILITY_PRIORITY_STATUSES
+    mobility = normalize_mobility_value(student.get("mobility"))
+    if mobility in MOBILITY_PRIORITY_STATUSES:
+        return True
+    return normalize_condition_value(student.get("condition")) in MOBILITY_PRIORITY_STATUSES
 
 
 def score_student(student):
@@ -405,8 +447,8 @@ def score_student(student):
 
     # For mobility-priority students we intentionally bypass the DB cache.
     # A student may have disclosed their mobility status after their first
-    # scoring pass, so the stored urgency_score could be stale (Low band).
-    # Forcing a fresh computation ensures the mobility floor is applied.
+    # scoring pass, so the stored urgency_score could be stale and miss the
+    # latest policy calibration.
     has_mobility_priority = _student_has_mobility_priority(student)
 
     if not has_mobility_priority and "urgency_score" in student and student["urgency_score"] is not None:
@@ -419,6 +461,7 @@ def score_student(student):
             # call on every allocation run unnecessarily.
             if value > 0 or condition == "None":
                 score = max(0.0, min(value, 100.0))
+                score = calibrate_policy_score(score, student)
                 return {"score": score, "tier": calculate_tier(score), "strategy": "stored"}
         except (TypeError, ValueError):
             pass
@@ -426,13 +469,13 @@ def score_student(student):
     if _use_ml_model:
         try:
             score = calculate_score_pickle(student)
-            score = _apply_mobility_floor(score, student)
+            score = calibrate_policy_score(score, student)
             return {"score": score, "tier": calculate_tier(score), "strategy": "xgboost_model"}
         except Exception as exc:
             logging.error("XGBoost prediction failed, falling back to rules: %s", exc)
 
     score = calculate_score_fallback(student)
-    score = _apply_mobility_floor(score, student)
+    score = calibrate_policy_score(score, student)
     return {"score": score, "tier": calculate_tier(score), "strategy": "fallback"}
 
 

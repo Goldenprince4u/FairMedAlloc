@@ -11,6 +11,19 @@
 require_once __DIR__ . '/MlServiceClient.php';
 
 class UrgencyScoreService {
+    private const HIGH_URGENCY_THRESHOLD = 75.0;
+    private const MEDIUM_URGENCY_THRESHOLD = 40.0;
+    private const MEDICAL_MOBILITY_HIGH_FLOORS = [
+        'Artificial Limb' => 82.0,
+        'Crutches/Walker' => 84.0,
+        'Wheelchair User' => 88.0,
+    ];
+    private const MOBILITY_ONLY_MEDIUM_FLOORS = [
+        'Artificial Limb' => [1 => 46.0, 2 => 52.0, 3 => 60.0],
+        'Crutches/Walker' => [1 => 52.0, 2 => 60.0, 3 => 68.0],
+        'Wheelchair User' => [1 => 58.0, 2 => 66.0, 3 => 74.0],
+    ];
+
     private $timeout;
     private $baseUrl;
 
@@ -72,7 +85,7 @@ class UrgencyScoreService {
         if (isset($student['urgency_score']) && $student['urgency_score'] !== null) {
             $value = (float)$student['urgency_score'];
             if ($value > 0) {
-                return min(max($value, 0.0), 100.0);
+                return self::stabilizeScore($student, $value);
             }
         }
 
@@ -114,14 +127,14 @@ class UrgencyScoreService {
         $score = max($score, $mobilityScore);
         $score += ($severity * 5.0);
 
-        return min(max($score, 0.0), 100.0);
+        return self::stabilizeScore($student, $score);
     }
 
     public static function tierFromScore(float $score): string {
-        if ($score >= 70) {
+        if ($score >= self::HIGH_URGENCY_THRESHOLD) {
             return 'High';
         }
-        if ($score >= 40) {
+        if ($score >= self::MEDIUM_URGENCY_THRESHOLD) {
             return 'Medium';
         }
         return 'Low';
@@ -317,38 +330,27 @@ class UrgencyScoreService {
         $condition = self::normalizeCondition($student['condition'] ?? 'None');
         $mobility = self::normalizeMobility($student['mobility'] ?? ($student['mobility_status'] ?? 'Normal Mobility'));
         $severity = self::normalizeSeverityValue($student['severity'] ?? ($student['severity_level'] ?? 'Low'));
-        $requestedMobility = isset($student['is_requested'])
-            ? (bool)$student['is_requested']
-            : ((int)($student['is_requested_mobility'] ?? ($student['has_special_needs'] ?? 0)) === 1);
-
-        $severityIndex = max(0, min($severity, 3));
-        $floor = 0.0;
-
-        $highRiskFloors = [0 => 0.0, 1 => 55.0, 2 => 78.0, 3 => 90.0];
-        $mediumRiskFloors = [
-            'Asthma' => [0 => 0.0, 1 => 28.0, 2 => 48.0, 3 => 74.0],
-            'Respiratory' => [0 => 0.0, 1 => 28.0, 2 => 48.0, 3 => 74.0],
-            'Visual Impairment' => [0 => 0.0, 1 => 34.0, 2 => 52.0, 3 => 78.0],
-            'Ulcer' => [0 => 0.0, 1 => 22.0, 2 => 44.0, 3 => 68.0],
-            'Orthopaedic' => [0 => 0.0, 1 => 46.0, 2 => 68.0, 3 => 88.0],
-            'Physical Disability' => [0 => 0.0, 1 => 52.0, 2 => 74.0, 3 => 90.0],
-            'Other' => [0 => 0.0, 1 => 18.0, 2 => 32.0, 3 => 50.0],
-        ];
-
-        if (in_array($condition, ['Sickle Cell', 'Cardiac', 'Cardiovascular', 'Epilepsy', 'Diabetes'], true)) {
-            $floor = max($floor, $highRiskFloors[$severityIndex] ?? 0.0);
-        } elseif (isset($mediumRiskFloors[$condition])) {
-            $floor = max($floor, $mediumRiskFloors[$condition][$severityIndex] ?? 0.0);
+        if (in_array($condition, ['Wheelchair User', 'Crutches/Walker', 'Artificial Limb'], true)
+            && $mobility === 'Normal Mobility') {
+            $mobility = $condition;
         }
 
-        if ($condition === 'Physical Disability' || $mobility === 'Wheelchair User') {
-            $floor = max($floor, $requestedMobility ? 92.0 : 85.0);
-        } elseif (in_array($mobility, ['Crutches/Walker', 'Artificial Limb'], true)) {
-            $mobilityFloors = [0 => 0.0, 1 => 48.0, 2 => 64.0, 3 => 82.0];
-            $floor = max($floor, $mobilityFloors[$severityIndex] ?? 48.0);
+        $severityIndex = max(1, min($severity, 3));
+        $hasMobilityPriority = in_array($mobility, ['Wheelchair User', 'Crutches/Walker', 'Artificial Limb'], true);
+        $hasMedicalCondition = !in_array($condition, ['None', 'Mobility', 'Wheelchair User', 'Crutches/Walker', 'Artificial Limb'], true);
+
+        if ($hasMedicalCondition && $hasMobilityPriority) {
+            $score = max($score, self::MEDICAL_MOBILITY_HIGH_FLOORS[$mobility] ?? 82.0);
+        } elseif ($hasMedicalCondition && $severityIndex >= 3) {
+            $score = max($score, 78.0);
+        } elseif ($hasMobilityPriority) {
+            $mobilityFloor = self::MOBILITY_ONLY_MEDIUM_FLOORS[$mobility][$severityIndex]
+                ?? self::MEDIUM_URGENCY_THRESHOLD;
+            $score = max($score, $mobilityFloor);
+            $score = min($score, self::HIGH_URGENCY_THRESHOLD - 1.0);
         }
 
-        return min(max($score, $floor), 100.0);
+        return min(max($score, 0.0), 100.0);
     }
 
     private function extractJsonResponse(string $output): ?array {

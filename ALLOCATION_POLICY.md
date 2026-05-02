@@ -1,223 +1,208 @@
 # Allocation Policy
 
-This document is the authoritative record of the hostel-allocation policy
-implemented in FairMedAlloc.  Keep it in sync with `ml_models/allocate.py`
-and `ALLOCATION_POLICY.md` whenever a policy change is made.
+This document is the authoritative description of the allocation policy implemented in FairMedAlloc.
 
----
+## Final Policy Statement
 
-## 1. Payment Gate
+1. The XGBoost model produces the base urgency score.
+2. The application applies a policy calibration layer to that score.
+3. The allocator bands students from the calibrated score and assigns rooms from those bands.
+4. High-severity medical cases and medical plus mobility cases are clinic-proximal priorities.
+5. Mobility-only cases remain Medium by default unless Student Affairs later approves a manual relocation.
 
-Only students with cleared payment are eligible for allocation.
+## Eligibility
 
-Payment is recognised in either of these ways:
+Only paid students who are still unallocated are considered.
 
-- imported university portal data with `student_profiles.is_paid = 1`
-- a local pay-simulator record with `payments.status = 'paid'`
+Payment is recognized through:
 
----
+- `student_profiles.is_paid = 1`
+- or a `payments.status = 'paid'` record
 
-## 2. Urgency Bands
+## Urgency Bands
 
-| Band   | Score Range                                                              |
-|--------|--------------------------------------------------------------------------|
-| High   | ≥ `urgency_threshold_proximal` (default 75)                              |
-| Medium | ≥ `urgency_threshold_medium` (default 40) and below the High threshold   |
-| Low    | Below the Medium threshold                                               |
+| Band | Score range |
+|---|---:|
+| High | 75-100 |
+| Medium | 40-74 |
+| Low | 0-39 |
 
-Thresholds are configurable in **Settings → Core Parameters**.
+## Scoring Policy
 
-Both the medical **condition** and the **mobility status** feed the XGBoost
-urgency score.  A wheelchair or crutch declaration **alone** (with no
-separate diagnosis) is sufficient to generate a medical record and trigger
-priority scoring.
+### Base score
 
----
+The model scores students from structured medical features:
 
-## 3. High-Urgency — Clinic-Proximal Placement
+- medical-condition flags
+- mobility score
+- severity score
 
-Students in the **High** urgency band receive a +5,000,000 objective-weight
-bonus for clinic-proximal rooms, guaranteeing they are seated there before
-any other student.  If those rooms are completely full, the solver falls
-through to the next best available room rather than failing the allocation.
+### Calibration layer
+
+The application then calibrates the raw score using the following operational rules.
+
+#### Mobility-only
+
+- Mobility-only students remain in the Medium band by default.
+- Their final score still reflects severity and mobility type, but is capped below the High threshold.
+- They do not automatically receive clinic-proximal placement.
+
+#### High-severity medical
+
+- A student with a medical condition and `High` severity is lifted into the High band if the raw model score was lower.
+
+#### Medical plus mobility
+
+- A student with both a medical condition and a mobility-priority status is lifted into the High band.
+
+### Why calibration exists
+
+The model does not know about:
+
+- clinic-proximal halls
+- accessibility-safe block choices
+- stairs in Joshua and Deborah
+- Student Affairs manual review
+
+Those are policy concerns, not model concerns.
+
+## High-Band Placement
+
+High-band students receive the strongest clinic-proximal priority.
 
 ### Male clinic-proximal space
 
-| Block | Hostel             | Rule                                                                     |
-|-------|--------------------|--------------------------------------------------------------------------|
-| 1     | Prophet Moses Hall | **Hard-reserved exclusively for High-urgency males — never backfilled** |
-| 2     | Prophet Moses Hall | High males first (+5 M), then Medium Group A (+1.2 M), then Low backfill |
+- Prophet Moses Hall Block 1
+- Prophet Moses Hall Block 2
+
+Rule:
+
+- Prophet Moses Hall Block 1 is High-only and never backfilled.
 
 ### Female clinic-proximal space
 
-| Block | Hostel                       | Rule                                                              |
-|-------|------------------------------|-------------------------------------------------------------------|
-| 38    | Queen Esther Extension Hall  | High females first (+5 M), then Medium/Low overflow (+150 K)      |
-| 39    | Queen Esther Extension Hall  | High females first (+5 M), then Medium/Low overflow (+150 K)      |
+- Queen Esther Extension Hall Block 38
+- Queen Esther Extension Hall Block 39
 
----
+## Medium-Band Placement
 
-## 4. Faculty-Proximal Hostel Mapping
+Medium students are placed into faculty-proximal halls with additional accessibility-aware targeting.
 
-Each student is mapped to one or more **faculty-proximal** hostels based on
-their faculty and gender.  This mapping drives Medium-urgency placement (§5)
-and provides bonus weight for Low-urgency proximity tie-breaking.
+### Standard medium rule
 
-### Group A — Humanities, Management, Natural & Social Sciences, Computing
+- Use the first block of the faculty-proximal hostel.
 
-| Gender | Faculty-Proximal Hostels                          |
-|--------|---------------------------------------------------|
-| Male   | Prophet Moses Hall · Prophet Moses Extension Hall |
-| Female | Queen Esther Hall · Queen Esther Extension Hall   |
+### Group A male override
 
-**Faculties in this group:**
+For Humanities, Management Sciences, Natural Sciences, Social Sciences, and Computing:
+
+- keep Prophet Moses Extension Hall Block 26 as foundation-only
+- do not target Prophet Moses Hall Block 1
+- steer medium males to Prophet Moses Extension Hall Block 27
+
+This is the preferred medium-priority male target under the current accessibility policy.
+
+### Joshua and Deborah rule
+
+Where the faculty-proximal hall is Joshua Hall or Deborah Hall:
+
+- target the first block ground floor
+
+This applies because those halls are the stair-sensitive two-storey halls in the system.
+
+## Low-Band Placement
+
+Low-band students:
+
+- prefer their faculty-proximal halls first
+- may use clinic-proximal overflow if proximal capacity is exhausted
+- may use any remaining valid room as a last resort
+
+## Mobility Restrictions
+
+Mobility-priority statuses:
+
+- `Wheelchair User`
+- `Crutches/Walker`
+- `Artificial Limb`
+
+Hard rule:
+
+- if a mobility-priority student is placed in Joshua Hall or Deborah Hall, the room must be on ground floor
+
+## Solver Weight Ladder
+
+| Rule | Bonus |
+|---|---:|
+| High -> clinic-proximal room | 5,000,000 |
+| Mobility-priority -> Joshua/Deborah first-block ground floor | 2,200,000 |
+| Medium male -> Prophet Moses Extension Hall Block 27 | 1,600,000 |
+| Medium -> Joshua/Deborah first-block ground floor | 1,550,000 |
+| Medium -> first block of faculty-proximal hostel | 1,500,000 |
+| Low -> primary faculty-proximal hostel | 900,000 |
+| Low -> secondary faculty-proximal hostel | 450,000 |
+| Medium -> later faculty-proximal block | 400,000 |
+| Medium or Low -> clinic-proximal overflow | 150,000 |
+
+## Hard Constraints
+
+1. Gender must match the hostel.
+2. Prophet Moses Hall Block 1 is High-only.
+3. Mobility-priority students in Joshua Hall and Deborah Hall must stay on ground floor.
+
+## Faculty Mapping
+
+### Group A
+
+Faculties:
+
 - Faculty of Humanities
 - Faculty of Management Sciences
 - Faculty of Natural Sciences
 - Faculty of Social Sciences
 - Faculty of Computing and Digital Technology
 
-### Group B — Engineering, Law, Built Environment Studies
+Targets:
 
-| Gender | Faculty-Proximal Hostels |
-|--------|--------------------------|
-| Male   | Joshua Hall              |
-| Female | Deborah Hall             |
+- Male: Prophet Moses Hall, Prophet Moses Extension Hall
+- Female: Queen Esther Hall, Queen Esther Extension Hall
 
-**Faculties in this group:**
+### Group B
+
+Faculties:
+
 - Faculty of Engineering
 - Faculty of Law
 - Faculty of Built Environment Studies
 
-### Group C — Basic Medical Sciences
+Targets:
 
-| Gender | Faculty-Proximal Hostels          |
-|--------|-----------------------------------|
-| Male   | Joshua Hall                       |
-| Female | Deborah Hall · Queen Esther Hall  |
+- Male: Joshua Hall
+- Female: Deborah Hall
 
----
+### Group C
 
-## 5. Medium-Urgency — Faculty-Proximal Placement
+Faculty:
 
-Students in the **Medium** urgency band receive graded objective-weight
-bonuses that steer them to the best available faculty-proximal room:
+- Faculty of Basic Medical Sciences
 
-| Room                                                   | Bonus     | Rationale                                             |
-|--------------------------------------------------------|-----------|-------------------------------------------------------|
-| First block of faculty-proximal hostel (Block 1 side)  | +1,500,000 | Ideal — closest to porters' lodge                   |
-| Prophet Moses Hall Block 2 (Group A males)             | +1,200,000 | Block 1 is hard-reserved; Block 2 is the next best  |
-| Any later block of the faculty-proximal hostel         | +400,000   | Same hostel, further from porters' lodge             |
-| Any other room                                         | +0         | Backfill / spill-over only                           |
+Targets:
 
-**First-block rule:** the first block is always the numerically lowest block
-number of the hostel — it sits beside the porters' lodge.
+- Male: Joshua Hall
+- Female: Deborah Hall, Queen Esther Hall
 
----
+## Data and Migration Notes
 
-## 6. Low-Urgency Students
+To make the medium-priority male override reachable, Prophet Moses Extension Hall Block 27 must be available to undergraduate allocation.
 
-Low-urgency students receive **proximity bonuses** that steer them to their
-faculty-proximal halls before filling any other available space:
+Relevant files:
 
-| Destination                                | Bonus    |
-|--------------------------------------------|----------|
-| Primary faculty-proximal hostel (rank 0)   | +900,000 |
-| Secondary faculty-proximal hostel (rank 1) | +450,000 |
-| Clinic-proximal room (overflow only)       | +150,000 |
-| Any other gender-matching room             | +0       |
+- `sql/seed.php`
+- `sql/20260502c_enable_pme_block27_for_undergrad.sql`
 
-The overflow bonus (150 K) ensures that when a faculty-proximal hall is
-completely full, Low students flow into clinic-proximal rooms rather than
-sitting unallocated.  No bed is ever left empty while an eligible student
-needs housing.
+## Implementation Entry Points
 
-The **only** block from which Low-urgency students are permanently excluded
-is **Prophet Moses Hall Block 1** (hard-reserved for High urgency males).
-
----
-
-## 7. Soft-Constraint Weight Ladder
-
-The solver uses **weight-based soft preferences** for all placement rules
-except gender matching, Block 1 reservation, and the Joshua/Deborah
-ground-floor mobility constraint.
-
-### Full weight table
-
-| Condition                                          | Bonus      |
-|----------------------------------------------------|------------|
-| High → matching clinic-proximal room               | +5,000,000 |
-| Mobility-priority → Joshua/Deborah ground floor    | +2,200,000 |
-| Medium → first block of faculty-proximal hostel    | +1,500,000 |
-| Medium → Prophet Moses Hall Block 2 (Group A male) | +1,200,000 |
-| Low → primary faculty-proximal hostel (rank 0)     | +900,000   |
-| Low → secondary faculty-proximal hostel (rank 1)   | +450,000   |
-| Medium → any later block of faculty-proximal hostel| +400,000   |
-| Medium or Low → clinic-proximal room (overflow)    | +150,000   |
-| Any other gender-matching room (last resort)       | +0         |
-
-The gap between tiers is large enough that a student's base urgency
-contribution (`score × 100 ≈ 10,000`) cannot override any placement bonus.
-Priority students are always placed first; remaining capacity is filled by
-Lower-band students — zero wasted beds.
-
-### Hard constraints (three total)
-
-1. **Gender match** — absolute for every (student, room) pair.
-2. **Prophet Moses Hall Block 1** — exclusively for High-urgency males.  Never backfilled.
-3. **Joshua Hall / Deborah Hall upper floor** — mobility-priority students (`Wheelchair User`, `Crutches/Walker`, `Artificial Limb`) may **only** be assigned to floor 0 (ground floor) in these two hostels.  All other hostels are single-storey so this constraint does not apply.
-
----
-
-## 8. Scoring Model
-
-The XGBoost `.pkl` model expects a fixed 9-feature vector:
-
-| Feature                 | Source                                                    |
-|-------------------------|-----------------------------------------------------------|
-| `has_asthma`            | `condition_category` == "Asthma" or "Respiratory"        |
-| `has_epilepsy`          | `condition_category` == "Epilepsy"                       |
-| `has_ulcer`             | `condition_category` == "Ulcer"                          |
-| `has_sickle_cell`       | `condition_category` == "Sickle Cell Disease"            |
-| `has_cardiac_issue`     | `condition_category` == "Cardiovascular" / "Cardiac"     |
-| `has_visual_impairment` | `condition_category` == "Visual Impairment"              |
-| `has_physical_disability` | `condition_category` == "Physical Disability" / "Orthopaedic" |
-| `mobility_score`        | `mobility_status` mapped 0–3                             |
-| `severity_score`        | `severity_level` mapped Low=1 / Medium=2 / High=3        |
-
-The model is **never mutated** by the application.  `predict.py` acts as a
-pure adapter, mapping web-app inputs to this fixed schema.  If the model
-cannot score a record, `UrgencyScoreService::calculateFallbackScore()`
-applies rule-based weights as a fallback.
-
----
-
-## 9. Implementation Entry Points
-
-| Layer                   | File                                   |
-|-------------------------|----------------------------------------|
-| PHP orchestration       | `includes/AllocationEngine.php`        |
-| OR-Tools CP-SAT solver  | `ml_models/allocate.py`                |
-| XGBoost scoring adapter | `ml_models/predict.py`                 |
-| PHP scoring fallback    | `includes/UrgencyScoreService.php`     |
-| Admin settings          | `settings.php`                         |
-| Student registration    | `signup.php`                           |
-| Admin explanation       | `help.php`                             |
-
----
-
-## 10. Policy Update History
-
-### 2026-04-30
-- Low-urgency students are now allocated inside their faculty-proximal halls instead of being sent to arbitrary spare halls.
-- Joshua Hall and Deborah Hall are the only two-storey hostels (staircase access only; no elevator). All other hostels are single-storey ground-floor structures.
-- Mobility-priority students (`Wheelchair User`, `Crutches/Walker`, `Artificial Limb`) are restricted to ground floor (floor 0) when placed in Joshua Hall or Deborah Hall.
-- The main OR-Tools run now covers the **full eligible cohort** — the separate greedy backfill phase has been removed entirely.
-
-### 2026-05-01
-- **Mobility score floor:** `predict.py` now guarantees a minimum urgency score of **76.0** for any mobility-priority student, placing them in the **High** urgency band regardless of the XGBoost model output. The DB score cache is bypassed for these students to prevent stale Low scores from persisting after a mobility status update.
-- **Clinic-proximal overflow:** Medium and Low students may now spill into clinic-proximal rooms (+150,000 bonus) when all faculty-proximal blocks are at capacity, ensuring zero empty beds.
-- **Low-urgency proximity bonuses:** +900,000 for primary proximal hall, +450,000 for secondary — replacing the old hard filter that left Engineering/Law students unallocated when Joshua/Deborah was full.
-- **Queen Esther Hall block numbering:** Blocks extended to 1–37 (adding blocks 33–37 with 28 rooms each, 116 beds/block).  Queen Esther Extension Hall renumbered to blocks 38–42; blocks 38 and 39 are clinic-proximal.
-- `run_greedy()` deleted from `allocate.py`; duplicate `placement_bonus()` definition removed.
+- Scoring bridge: `includes/UrgencyScoreService.php`
+- Raw model adapter: `ml_models/predict.py`
+- Solver: `ml_models/allocate.py`
+- PHP fallback allocator: `includes/AllocationEngine.php`

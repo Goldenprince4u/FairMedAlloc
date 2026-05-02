@@ -48,15 +48,14 @@ $role = $_SESSION['role'] ?? 'student';
                         <details class="faq-item" id="faq-admin-policy">
                             <summary>What is the current allocation policy?</summary>
                             <div class="faq-answer">
-                                <strong>High</strong> urgency students remain clinic-priority regardless of faculty. <strong>Medium</strong> urgency students are steered to their faculty-proximal halls, while <strong>Low</strong> urgency students are now kept inside their faculty-proximal hall set instead of being sent to arbitrary spare halls. For mobility-priority students mapped to <strong>Joshua Hall</strong> or <strong>Deborah Hall</strong>, the allocator targets the <strong>ground floor</strong> because those halls are stair-access, not elevator-access.
+                                <strong>High</strong> urgency students are clinic-priority regardless of faculty. <strong>Medium</strong> urgency students are steered to faculty-proximal halls, with <strong>Prophet Moses Extension Hall Block 27</strong> used for Group A males and <strong>first-block ground-floor rooms</strong> used in <strong>Joshua Hall</strong> and <strong>Deborah Hall</strong>. <strong>Mobility-only</strong> cases are Medium by default, while <strong>high-severity medical</strong> and <strong>medical + mobility</strong> cases are treated as High.
                             </div>
                         </details>
 
                         <details class="faq-item" id="faq-admin-score">
                             <summary>How are urgency scores calculated?</summary>
                             <div class="faq-answer">
-                                The system uses a weighted formula:<br>
-                                <strong>Base (10)</strong> + <strong>Condition Weight</strong> (Sickle Cell/Epilepsy/Diabetes/Cardiovascular: +90, Neurological: +70, Physical Disability: +65, Visual Impairment: +60, Asthma/Respiratory: +50, Ulcer: +30, Other: +20) + <strong>Severity</strong> (Low: +5, Medium: +10, High: +15). Capped at 100. Wheelchair users receive an additional +10 boost.
+                                The system first asks the <strong>XGBoost model</strong> for a base urgency score from the student's condition, severity, and mobility profile. It then applies a <strong>policy calibration layer</strong> so that mobility-only cases stay in the <strong>Medium</strong> band by default, while <strong>high-severity medical</strong> and <strong>medical + mobility</strong> cases are lifted into the <strong>High</strong> band when clinic-priority placement is justified. If Python is unavailable, a PHP fallback scorer mirrors the same policy.
                             </div>
                         </details>
 

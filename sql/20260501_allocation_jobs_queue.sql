@@ -9,6 +9,7 @@ CREATE TABLE IF NOT EXISTS allocation_jobs (
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     started_at TIMESTAMP NULL,
     completed_at TIMESTAMP NULL,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     progress_stage VARCHAR(64),
     progress_percent INT DEFAULT 0,
     total_students INT DEFAULT 0,
@@ -19,6 +20,7 @@ CREATE TABLE IF NOT EXISTS allocation_jobs (
     FOREIGN KEY (created_by_admin_id) REFERENCES users(user_id) ON DELETE SET NULL,
     INDEX idx_status (status),
     INDEX idx_created_at (created_at),
+    INDEX idx_status_updated (status, updated_at),
     INDEX idx_admin (created_by_admin_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 

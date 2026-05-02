@@ -87,6 +87,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
             // sufficient to warrant a medical record and priority consideration.
             $condition = trim($_POST['medical_condition']);
             $mobility  = UrgencyScoreService::normalizeMobility((string)($_POST['mobility'] ?? '0'));
+            $severityInput = trim((string)($_POST['severity_level'] ?? 'Low'));
             $has_condition = ($condition && $condition !== 'None / Healthy');
             $has_mobility  = ($mobility !== 'Normal Mobility');
 
@@ -110,6 +111,13 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
                 } elseif (in_array($mobility, ['Artificial Limb', 'Crutches/Walker'], true)) {
                     if ($severity !== 'High') $severity = 'Medium';
                 }
+
+                $severityMap = [
+                    'low' => 'Low',
+                    'medium' => 'Medium',
+                    'high' => 'High',
+                ];
+                $severity = $severityMap[strtolower($severityInput)] ?? 'Low';
 
                 $scorePayload = [
                     'id'            => $new_id,
@@ -281,6 +289,18 @@ require_once 'includes/header.php';
                             crutch declaration <strong>alone</strong> is enough to
                             trigger priority scoring — no medical condition required.
                         </div>
+                    </div>
+                </div>
+
+                <div class="form-group mb-4">
+                    <label class="text-sm fw-700 mb-2">Condition Severity</label>
+                    <select name="severity_level" id="severityLevel" class="input-auth" required>
+                        <option value="Low">Low</option>
+                        <option value="Medium">Medium</option>
+                        <option value="High">High</option>
+                    </select>
+                    <div class="text-xs text-muted mt-2">
+                        Choose the level that best describes how serious the condition is for your daily routine.
                     </div>
                 </div>
 
