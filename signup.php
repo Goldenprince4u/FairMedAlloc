@@ -1,20 +1,4 @@
 <?php
-/**
- * signup.php -- Student Registration
- * ==================================
- * Handles new student account creation:
- *   1. Validates & sanitizes all form inputs.
- *   2. Checks for duplicate matric numbers.
- *   3. Inserts into: users, student_profiles, medical_records (if applicable).
- *   4. Auto-logs the student in on success and redirects to dashboard.
- *
- * Security measures applied:
- *   - CSRF token validation on every POST.
- *   - Prepared statements for all DB queries (prevents SQL injection).
- *   - Password hashing with PASSWORD_DEFAULT (bcrypt).
- *   - Server-side email format validation.
- *   - Minimum password length enforced server-side.
- */
 session_start();
 require_once 'db_config.php';
 require_once 'includes/security_helper.php';
@@ -24,147 +8,176 @@ $msg = "";
 $msg_type = "";
 
 if ($_SERVER["REQUEST_METHOD"] == "POST") {
-    // --- Security Gate: Validate CSRF Token ---
-    // Prevents Cross-Site Request Forgery attacks.
     check_csrf();
 
-    // --- Sanitize All Inputs Before Processing ---
-    // sanitize_input() trims, strips slashes, and encodes HTML special chars.
-    $matric = sanitize_input($_POST['matric_no']);
-    $email  = sanitize_input($_POST['email']);
-    $name   = sanitize_input($_POST['full_name']);
-    $pass   = $_POST['password'];           // Not sanitized â€” password_hash() handles raw value.
+    $matric = sanitize_input($_POST['matric_no'] ?? '');
+    $email  = sanitize_input($_POST['email'] ?? '');
+    $name   = sanitize_input($_POST['full_name'] ?? '');
+    $pass   = $_POST['password'] ?? '';
     $level  = (int)($_POST['level'] ?? 100);
-    $role   = 'student';                    // Role is always 'student' on this page; never trust user input for role.
+    $role   = 'student';
 
-    // --- Server-side Email Format Validation ---
-    // The HTML `type="email"` is client-only and can be bypassed. Always re-check on the server.
-    if (!filter_var($_POST['email'], FILTER_VALIDATE_EMAIL)) {
+    if (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
         $msg = "Please provide a valid email address.";
         $msg_type = "error";
-    }
-    // --- Duplicate Matric Number Check ---
-    // Matric is the unique student identifier; reject if already registered.
-    elseif (($check = $conn->prepare("SELECT user_id FROM users WHERE username = ?")) &&
-            $check->bind_param("s", $matric) &&
-            $check->execute() &&
-            $check->get_result()->num_rows > 0) {
-        $msg = "Matric number already exists.";
-        $msg_type = "error";
-    } elseif (strlen($_POST['password']) < 8) {
-        // --- Password Length Check (Server-side Enforcement) ---
-        // The client-side minlength attribute is cosmetic only; enforce again here.
+    } elseif (strlen($pass) < 8) {
         $msg = "Password must be at least 8 characters long.";
         $msg_type = "error";
     } else {
-        // --- Hash the Password (bcrypt via PASSWORD_DEFAULT) ---
-        // Never store plain-text passwords. password_hash generates a secure salted hash.
-        $hash = password_hash($pass, PASSWORD_DEFAULT);
-        
-        // --- 1. Create Core User Account ---
-        // Insert standard authentication credentials into the main users table.
-        $stmt = $conn->prepare("INSERT INTO users (username, full_name, email, password_hash, role) VALUES (?, ?, ?, ?, ?)");
-        $stmt->bind_param("sssss", $matric, $name, $email, $hash, $role);
-        
-        if ($stmt->execute()) {
-            // Capture the new user_id for use in related profile/medical tables.
-            $new_id = $conn->insert_id;
-            
-            // --- 2. Create Student Academic Profile ---
-            // Links the new user to their faculty, department, and level of study.
-            $dept_id = (int)$_POST['department'];
-            $gen = sanitize_input($_POST['gender']);
-            
-            $specialNeedsFlag = 0;
-            $stmt2 = $conn->prepare("INSERT INTO student_profiles (user_id, level, department_id, gender, has_special_needs) VALUES (?, ?, ?, ?, ?)");
-            $stmt2->bind_param("iiisi", $new_id, $level, $dept_id, $gen, $specialNeedsFlag);
-            $stmt2->execute();
+        $check = DbHelper::prepare($conn, "SELECT user_id FROM users WHERE username = ?", 'student signup duplicate check');
 
-            // --- 3. Process Medical Record ---
-            // A record is created if the student declares a medical condition OR
-            // a non-zero mobility status (wheelchair, crutches, artificial limb).
-            // Both inputs feed the XGBoost urgency score, so either one alone is
-            // sufficient to warrant a medical record and priority consideration.
-            $condition = trim($_POST['medical_condition']);
-            $mobility  = UrgencyScoreService::normalizeMobility((string)($_POST['mobility'] ?? '0'));
-            $severityInput = trim((string)($_POST['severity_level'] ?? 'Low'));
-            $has_condition = ($condition && $condition !== 'None / Healthy');
-            $has_mobility  = ($mobility !== 'Normal Mobility');
+        if (!$check) {
+            $msg = "Account creation is temporarily unavailable. Please try again shortly.";
+            $msg_type = "error";
+        } else {
+            $check->bind_param("s", $matric);
+            $check->execute();
+            $exists = $check->get_result()->num_rows > 0;
+            $check->close();
 
-            if ($has_condition || $has_mobility) {
-                // Use a generic condition label when only mobility is declared.
-                $record_condition = $has_condition ? $condition : 'Physical Disability';
-                $details          = $has_condition
-                    ? "$condition (Self-Reported)"
-                    : "Mobility Support Required (Self-Reported)";
+            if ($exists) {
+                $msg = "Matric number already exists.";
+                $msg_type = "error";
+            } else {
+                $hash = password_hash($pass, PASSWORD_DEFAULT);
+                $dept_id = (int)($_POST['department'] ?? 0);
+                $gen = sanitize_input($_POST['gender'] ?? '');
+                $new_id = 0;
 
-                $severity = 'Low';
-                if ($has_condition && in_array($condition, ['Sickle Cell Disease', 'Epilepsy', 'Cardiovascular', 'Asthma'])) {
-                    $severity = 'High';
-                } elseif ($has_condition && in_array($condition, ['Visual Impairment', 'Physical Disability'])) {
-                    $severity = 'Medium';
-                }
-
-                // Mobility level can independently raise the severity band.
-                if ($mobility === 'Wheelchair User') {
-                    $severity = 'High';          // Wheelchair → always High
-                } elseif (in_array($mobility, ['Artificial Limb', 'Crutches/Walker'], true)) {
-                    if ($severity !== 'High') $severity = 'Medium';
-                }
-
-                $severityMap = [
-                    'low' => 'Low',
-                    'medium' => 'Medium',
-                    'high' => 'High',
-                ];
-                $severity = $severityMap[strtolower($severityInput)] ?? 'Low';
-
-                $scorePayload = [
-                    'id'            => $new_id,
-                    'condition'     => $record_condition,
-                    'mobility'      => $mobility,
-                    'severity'      => $severity,
-                    'academic_level'=> $level,
-                    'has_special_needs' => (int)$has_mobility,
-                    'is_requested'  => (int)$has_mobility,
-                ];
+                $conn->begin_transaction();
 
                 try {
-                    $scoreService = new UrgencyScoreService();
-                    $scoreResult  = $scoreService->scoreStudent($scorePayload);
-                    $score        = (float)$scoreResult['score'];
-                } catch (Exception $e) {
-                    error_log('[FairMedAlloc] Signup scoring fell back to PHP rules: ' . $e->getMessage());
-                    $score = UrgencyScoreService::calculateFallbackScore($scorePayload);
+                    $userStmt = DbHelper::prepare(
+                        $conn,
+                        "INSERT INTO users (username, full_name, email, password_hash, role) VALUES (?, ?, ?, ?, ?)",
+                        'student signup user insert'
+                    );
+                    if (!$userStmt) {
+                        throw new RuntimeException('Unable to create the student account.');
+                    }
+                    $userStmt->bind_param("sssss", $matric, $name, $email, $hash, $role);
+                    if (!$userStmt->execute()) {
+                        throw new RuntimeException('Unable to create the student account.');
+                    }
+                    $new_id = (int)$conn->insert_id;
+                    $userStmt->close();
+
+                    $specialNeedsFlag = 0;
+                    $profileStmt = DbHelper::prepare(
+                        $conn,
+                        "INSERT INTO student_profiles (user_id, level, department_id, gender, has_special_needs) VALUES (?, ?, ?, ?, ?)",
+                        'student signup profile insert'
+                    );
+                    if (!$profileStmt) {
+                        throw new RuntimeException('Unable to save the student profile.');
+                    }
+                    $profileStmt->bind_param("iiisi", $new_id, $level, $dept_id, $gen, $specialNeedsFlag);
+                    if (!$profileStmt->execute()) {
+                        throw new RuntimeException('Unable to save the student profile.');
+                    }
+                    $profileStmt->close();
+
+                    $condition = trim($_POST['medical_condition'] ?? '');
+                    $mobility  = UrgencyScoreService::normalizeMobility((string)($_POST['mobility'] ?? '0'));
+                    $severityInput = trim((string)($_POST['severity_level'] ?? 'Low'));
+                    $has_condition = ($condition && $condition !== 'None / Healthy');
+                    $has_mobility  = ($mobility !== 'Normal Mobility');
+
+                    if ($has_condition || $has_mobility) {
+                        $record_condition = $has_condition ? $condition : 'Physical Disability';
+                        $details = $has_condition
+                            ? "$condition (Self-Reported)"
+                            : "Mobility Support Required (Self-Reported)";
+
+                        $severity = 'Low';
+                        if ($has_condition && in_array($condition, ['Sickle Cell Disease', 'Epilepsy', 'Cardiovascular', 'Asthma'], true)) {
+                            $severity = 'High';
+                        } elseif ($has_condition && in_array($condition, ['Visual Impairment', 'Physical Disability'], true)) {
+                            $severity = 'Medium';
+                        }
+
+                        if ($mobility === 'Wheelchair User') {
+                            $severity = 'High';
+                        } elseif (in_array($mobility, ['Artificial Limb', 'Crutches/Walker'], true) && $severity !== 'High') {
+                            $severity = 'Medium';
+                        }
+
+                        $severityMap = [
+                            'low' => 'Low',
+                            'medium' => 'Medium',
+                            'high' => 'High',
+                        ];
+                        $severity = $severityMap[strtolower($severityInput)] ?? $severity;
+
+                        $scorePayload = [
+                            'id' => $new_id,
+                            'condition' => $record_condition,
+                            'mobility' => $mobility,
+                            'severity' => $severity,
+                            'academic_level' => $level,
+                            'has_special_needs' => (int)$has_mobility,
+                            'is_requested' => (int)$has_mobility,
+                        ];
+
+                        try {
+                            $scoreService = new UrgencyScoreService();
+                            $scoreResult  = $scoreService->scoreStudent($scorePayload);
+                            $score        = (float)$scoreResult['score'];
+                        } catch (Exception $e) {
+                            error_log('[FairMedAlloc] Signup scoring fell back to PHP rules: ' . $e->getMessage());
+                            $score = UrgencyScoreService::calculateFallbackScore($scorePayload);
+                        }
+
+                        $specialNeedsFlag = (int)$has_mobility;
+                        $updateProfileStmt = DbHelper::prepare(
+                            $conn,
+                            "UPDATE student_profiles SET has_special_needs = ? WHERE user_id = ?",
+                            'student signup profile update'
+                        );
+                        if (!$updateProfileStmt) {
+                            throw new RuntimeException('Unable to update mobility details.');
+                        }
+                        $updateProfileStmt->bind_param("ii", $specialNeedsFlag, $new_id);
+                        if (!$updateProfileStmt->execute()) {
+                            throw new RuntimeException('Unable to update mobility details.');
+                        }
+                        $updateProfileStmt->close();
+
+                        $medicalStmt = DbHelper::prepare(
+                            $conn,
+                            "INSERT INTO medical_records (student_id, condition_category, condition_details, severity_level, urgency_score, mobility_status, is_requested_mobility) VALUES (?, ?, ?, ?, ?, ?, ?)",
+                            'student signup medical insert'
+                        );
+                        if (!$medicalStmt) {
+                            throw new RuntimeException('Unable to save the medical record.');
+                        }
+                        $medicalStmt->bind_param("isssdsi", $new_id, $record_condition, $details, $severity, $score, $mobility, $specialNeedsFlag);
+                        if (!$medicalStmt->execute()) {
+                            throw new RuntimeException('Unable to save the medical record.');
+                        }
+                        $medicalStmt->close();
+                    }
+
+                    $conn->commit();
+
+                    session_regenerate_id(true);
+                    $_SESSION['logged_in']   = true;
+                    $_SESSION['user_id']     = $new_id;
+                    $_SESSION['role']        = $role;
+                    $_SESSION['username']    = $matric;
+                    $_SESSION['full_name']   = $name;
+                    $_SESSION['profile_pic'] = 'default.png';
+                    $_SESSION['must_change_password'] = false;
+
+                    header("Location: student_dashboard.php");
+                    exit();
+                } catch (Throwable $e) {
+                    $conn->rollback();
+                    error_log('[FairMedAlloc] Signup failed: ' . $e->getMessage());
+                    $msg = "Error creating account. Please try again.";
+                    $msg_type = "error";
                 }
-
-                $specialNeedsFlag = (int)$has_mobility;
-                $updateProfile = $conn->prepare("UPDATE student_profiles SET has_special_needs = ? WHERE user_id = ?");
-                $updateProfile->bind_param("ii", $specialNeedsFlag, $new_id);
-                $updateProfile->execute();
-
-                $stmt_med = $conn->prepare("INSERT INTO medical_records (student_id, condition_category, condition_details, severity_level, urgency_score, mobility_status, is_requested_mobility) VALUES (?, ?, ?, ?, ?, ?, ?)");
-                $stmt_med->bind_param("isssdsi", $new_id, $record_condition, $details, $severity, $score, $mobility, $specialNeedsFlag);
-                $stmt_med->execute();
             }
-
-            // --- 4. Auto-Login After Registration ---
-            // Immediately populate the session so the student lands on their dashboard.
-            $_SESSION['logged_in']   = true;
-            $_SESSION['user_id']     = $new_id;
-            $_SESSION['role']        = $role;
-            $_SESSION['username']    = $matric;
-            $_SESSION['full_name']   = $name;
-            $_SESSION['profile_pic'] = 'default.png';
-            $_SESSION['must_change_password'] = false;
-
-            // Redirect to the student dashboard after successful registration.
-            header("Location: student_dashboard.php");
-            exit();
-        } else {
-            // Database insertion failure â€” surface a generic error (do not expose DB details).
-            $msg = "Error creating account. Please try again.";
-            $msg_type = "error";
         }
     }
 }
@@ -174,7 +187,6 @@ require_once 'includes/header.php';
 ?>
 
 <div class="auth-container">
-    <!-- Left: Brand Panel -->
     <div class="auth-left">
         <div class="brand-content">
             <h1 class="auth-headline">Student<br>Registration</h1>
@@ -191,7 +203,6 @@ require_once 'includes/header.php';
         </div>
     </div>
 
-    <!-- Right: Form -->
     <div class="auth-right">
         <div class="auth-box animate-fade-in">
             <div class="mb-8">
@@ -202,7 +213,7 @@ require_once 'includes/header.php';
 
             <?php if($msg): ?>
                 <div class="alert <?php echo $msg_type == 'error' ? 'alert-danger' : 'alert-success'; ?>">
-                    <?php echo htmlspecialchars($msg); ?>
+                    <?php echo htmlspecialchars($msg, ENT_QUOTES, 'UTF-8'); ?>
                 </div>
             <?php endif; ?>
 
@@ -247,7 +258,7 @@ require_once 'includes/header.php';
                             <?php
                             $fac_query = $conn->query("SELECT faculty_id, name FROM faculties ORDER BY name ASC");
                             while($f = $fac_query->fetch_assoc()) {
-                                echo '<option value="'.$f['faculty_id'].'">'.htmlspecialchars($f['name']).'</option>';
+                                echo '<option value="'.$f['faculty_id'].'">'.htmlspecialchars($f['name'], ENT_QUOTES, 'UTF-8').'</option>';
                             }
                             ?>
                         </select>
@@ -287,7 +298,7 @@ require_once 'includes/header.php';
                         <div class="text-xs text-muted mt-2">
                             Select if you require mobility support. A wheelchair or
                             crutch declaration <strong>alone</strong> is enough to
-                            trigger priority scoring — no medical condition required.
+                            trigger priority scoring - no medical condition required.
                         </div>
                     </div>
                 </div>
@@ -349,8 +360,8 @@ function toggleSignupPw() {
     var isHidden = input.type === 'password';
     input.type = isHidden ? 'text' : 'password';
     if (icon) {
-        icon.classList.toggle('fa-eye',       !isHidden);
-        icon.classList.toggle('fa-eye-slash',  isHidden);
+        icon.classList.toggle('fa-eye', !isHidden);
+        icon.classList.toggle('fa-eye-slash', isHidden);
     }
 }
 </script>

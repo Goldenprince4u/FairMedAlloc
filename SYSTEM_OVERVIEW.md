@@ -71,7 +71,7 @@ These are the same bands the allocator uses.
 5. Solve placement through OR-Tools.
 6. Write allocations, audit logs, and notifications.
 
-The PHP fallback allocator mirrors the same weight policy when OR-Tools is unavailable.
+The allocation flow prefers OR-Tools and falls back to a compact PHP allocator if the Python solver stack is unavailable.
 
 ## Placement Policy
 
@@ -80,7 +80,7 @@ The PHP fallback allocator mirrors the same weight policy when OR-Tools is unava
 - High students are strongly prioritized for clinic-proximal rooms.
 - Male clinic-proximal space is Prophet Moses Hall Blocks 1 and 2.
 - Female clinic-proximal space is Queen Esther Extension Hall Blocks 38 and 39.
-- Prophet Moses Hall Block 1 remains hard-reserved for High-urgency males only.
+- Prophet Moses Hall Block 1 is prioritized for High-urgency but can be backfilled using faculty proximity if empty.
 
 ### Medium
 

@@ -9,7 +9,8 @@ require_once __DIR__ . '/DbHelper.php';
 require_once __DIR__ . '/PerformanceMonitor.php';
 require_once __DIR__ . '/Logger.php';
 
-class AllocationEngine {
+class AllocationEngine
+{
     private const ALGORITHM_VERSION = 'allocation_engine_v3';
 
     private $conn;
@@ -19,7 +20,8 @@ class AllocationEngine {
     /** Optional job_id: if set, total_students is persisted to allocation_jobs */
     private ?int $jobId = null;
 
-    public function __construct($db_connection) {
+    public function __construct($db_connection)
+    {
         $this->conn = $db_connection;
         $this->monitor = new PerformanceMonitor();
     }
@@ -28,14 +30,16 @@ class AllocationEngine {
      * Bind this engine run to an allocation_jobs row.
      * When set, the engine updates total_students after counting eligible students.
      */
-    public function setJobId(int $job_id): void {
+    public function setJobId(int $job_id): void
+    {
         $this->jobId = $job_id;
     }
 
     /**
      * Update progress by invoking the callback
      */
-    private function updateProgress(?callable $callback, string $stage, int $percent) {
+    private function updateProgress(?callable $callback, string $stage, int $percent)
+    {
         if ($callback && is_callable($callback)) {
             try {
                 call_user_func($callback, [
@@ -55,7 +59,8 @@ class AllocationEngine {
      * @param callable|null $progressCallback Optional callback for progress updates
      *        Called as: $progressCallback(['stage' => str, 'percent' => int])
      */
-    public function run(?int $single_student_id = null, ?callable $progressCallback = null) {
+    public function run(?int $single_student_id = null, ?callable $progressCallback = null)
+    {
         $inTransaction = false;
 
         try {
@@ -86,37 +91,42 @@ class AllocationEngine {
                               AND py.status = 'paid'
                         )
                     )";
-            
+
             if ($single_student_id !== null) {
-                $sql .= " AND p.user_id = " . (int)$single_student_id;
+                $sql .= " AND p.user_id = " . (int) $single_student_id;
             }
-            
+
             $sql .= " ORDER BY m.urgency_score DESC";
-            
+
             // Measure query execution time
-            $result = $this->monitor->query('fetch_unallocated_students', function() use ($sql) {
+            $result = $this->monitor->query('fetch_unallocated_students', function () use ($sql) {
                 return $this->conn->query($sql);
             }, 2000); // warn if > 2 seconds
-            
+
+            if (!$result) {
+                throw new Exception('Failed to fetch eligible students: ' . $this->conn->error);
+            }
+
             $students = $result->fetch_all(MYSQLI_ASSOC);
             $allocated_count = 0;
-            $total_students  = count($students);
+            $total_students = count($students);
 
             if (empty($students)) {
-                $this->conn->commit();
+                // No transaction has been opened yet â€” do not call commit().
                 return ['status' => 'success', 'allocated' => 0, 'total' => 0];
             }
 
             // Persist student count to jobs table so the UI can show "X / total" early
             if ($this->jobId !== null) {
-                $jid = (int)$this->jobId;
-                $this->conn->query(
+                $jid = (int) $this->jobId;
+                $this->runQueryOrThrow(
                     "UPDATE allocation_jobs
                         SET total_students   = $total_students,
                             progress_stage   = 'Fetched $total_students students',
                             progress_percent = 15,
                             updated_at       = NOW()
-                      WHERE job_id = $jid"
+                      WHERE job_id = $jid",
+                    'update allocation job totals'
                 );
             }
 
@@ -129,14 +139,14 @@ class AllocationEngine {
                     'condition' => $student['condition'],
                     'mobility' => $student['mobility'],
                     'severity' => $student['severity'],
-                    'academic_level' => (int)$student['academic_level'],
-                    'has_special_needs' => (int)$student['has_special_needs'],
-                    'is_requested' => (bool)$student['is_requested']
+                    'academic_level' => (int) $student['academic_level'],
+                    'has_special_needs' => (int) $student['has_special_needs'],
+                    'is_requested' => (bool) $student['is_requested']
                 ];
             }
-            
+
             $this->updateProgress($progressCallback, 'Scoring students with XGBoost', 20);
-            
+
             $scores_map = [];
             $prediction_mode = 'Stored Medical Scores';
             try {
@@ -162,8 +172,8 @@ class AllocationEngine {
             }
 
             // Fetch Dynamic Threshold
-            $prox_threshold = (float)$this->getSettingValue('urgency_threshold_proximal', 75);
-            $medium_threshold = (float)$this->getSettingValue('urgency_threshold_medium', 40);
+            $prox_threshold = (float) $this->getSettingValue('urgency_threshold_proximal', 75);
+            $medium_threshold = (float) $this->getSettingValue('urgency_threshold_medium', 40);
 
             // 4. Fetch Available Rooms for OR-Tools
             // NOTE: Exclude postgrad (is_postgrad=1) and foundation (is_foundation=1) rooms
@@ -178,19 +188,23 @@ class AllocationEngine {
                           WHERE r.occupied_count < r.capacity
                             AND h.is_postgrad = 0
                             AND h.is_foundation = 0";
-            
-            $roomResult = $this->monitor->query('fetch_available_rooms', function() use ($roomQuery) {
+
+            $roomResult = $this->monitor->query('fetch_available_rooms', function () use ($roomQuery) {
                 return $this->conn->query($roomQuery);
             }, 2000); // warn if > 2 seconds
-            
+
+            if (!$roomResult) {
+                throw new Exception('Failed to fetch available rooms: ' . $this->conn->error);
+            }
+
             $rooms = $roomResult->fetch_all(MYSQLI_ASSOC);
-            
+
             foreach ($rooms as &$r) {
                 // Ensure correct types for Python JSON serialization
-                $r['is_proximal'] = (bool)$r['is_proximal'];
-                $r['has_elevator'] = (bool)$r['has_elevator'];
-                $r['available_capacity'] = (int)$r['available_capacity'];
-                $r['floor_level'] = (int)$r['floor_level'];
+                $r['is_proximal'] = (bool) $r['is_proximal'];
+                $r['has_elevator'] = (bool) $r['has_elevator'];
+                $r['available_capacity'] = (int) $r['available_capacity'];
+                $r['floor_level'] = (int) $r['floor_level'];
                 $r['faculty_target'] = $r['faculty_target'] ?: 'General';
             }
             unset($r);
@@ -201,16 +215,19 @@ class AllocationEngine {
             $output_csv_file = sys_get_temp_dir() . DIRECTORY_SEPARATOR . 'fairmed_output_' . uniqid() . '.csv';
 
             $solver_mode = 'OR-Tools CP-SAT';
-            $solver_status = 'OPTIMAL';
+            $solver_status = 'UNKNOWN';
 
             try {
                 $fp_students = fopen($students_csv_file, 'w');
+                if ($fp_students === false) {
+                    throw new Exception('Unable to create the temporary students CSV file for OR-Tools.');
+                }
                 fputcsv($fp_students, ['id', 'gender', 'faculty', 'score', 'mobility', 'severity', 'urgency_band']);
                 foreach ($students as $s) {
                     $urgency_band = 'Low';
-                    if ((float)$s['score'] >= $prox_threshold) {
+                    if ((float) $s['score'] >= $prox_threshold) {
                         $urgency_band = 'High';
-                    } elseif ((float)$s['score'] >= $medium_threshold) {
+                    } elseif ((float) $s['score'] >= $medium_threshold) {
                         $urgency_band = 'Medium';
                     }
 
@@ -219,6 +236,9 @@ class AllocationEngine {
                 fclose($fp_students);
 
                 $fp_rooms = fopen($rooms_csv_file, 'w');
+                if ($fp_rooms === false) {
+                    throw new Exception('Unable to create the temporary rooms CSV file for OR-Tools.');
+                }
                 fputcsv($fp_rooms, ['id', 'hostel_id', 'gender', 'faculty_target', 'is_proximal', 'has_elevator', 'available_capacity', 'hostel_name', 'block_name', 'floor_level']);
                 foreach ($rooms as $r) {
                     fputcsv($fp_rooms, [$r['id'], $r['hostel_id'], $r['gender'], $r['faculty_target'], $r['is_proximal'] ? 1 : 0, $r['has_elevator'] ? 1 : 0, $r['available_capacity'], $r['hostel_name'], $r['block_name'], $r['floor_level']]);
@@ -229,7 +249,7 @@ class AllocationEngine {
 
                 // 6. Execute OR-Tools allocate.py
                 $assignments = [];
-                $solverBackend = strtolower((string)$this->getSettingValue('allocation_solver_backend', 'ortools'));
+                $solverBackend = strtolower((string) $this->getSettingValue('allocation_solver_backend', 'ortools'));
                 if ($solverBackend === 'ortools') {
                     $alloc_script = __DIR__ . '/../ml_models/allocate.py';
                     $solver_output = $this->executeShellCommand(array_merge(
@@ -238,45 +258,40 @@ class AllocationEngine {
                     ));
 
                     if (is_string($solver_output) && preg_match('/Solver status:\s*([A-Z_]+)/', $solver_output, $matches) === 1) {
-                        $solver_status = strtoupper((string)$matches[1]);
+                        $solver_status = strtoupper((string) $matches[1]);
                     }
 
                     if (file_exists($output_csv_file)) {
                         $fp_out = fopen($output_csv_file, 'r');
+                        if ($fp_out === false) {
+                            throw new Exception('OR-Tools produced an output file, but it could not be opened.');
+                        }
                         fgetcsv($fp_out); // Read header
                         while (($row = fgetcsv($fp_out)) !== false) {
                             if (count($row) >= 2) {
-                                $assignments[(int)$row[0]] = (int)$row[1];
+                                $assignments[(int) $row[0]] = (int) $row[1];
                             }
                         }
                         fclose($fp_out);
                     } else {
-                        $solver_mode = 'PHP Greedy Fallback';
+                        $solver_mode = 'PHP Emergency Fallback';
                         $solver_status = 'FALLBACK';
-                        Logger::warning("OR-Tools solver unavailable, using PHP greedy fallback allocator");
-                        Logger::info("Solver output: " . substr($solver_output, 0, 500));
-                        $assignments = $this->buildFallbackAssignments($students, $rooms, $prox_threshold, $medium_threshold);
+                        Logger::warning(
+                            "OR-Tools solver unavailable, using PHP emergency fallback. Solver output: "
+                            . substr((string) $solver_output, 0, 500)
+                        );
+                        $assignments = $this->buildEmergencyAssignments($students, $rooms, $prox_threshold, $medium_threshold);
                     }
                 } else {
-                    $solver_mode = 'PHP Greedy Fallback';
-                    $solver_status = 'FALLBACK';
-                    $assignments = $this->buildFallbackAssignments($students, $rooms, $prox_threshold, $medium_threshold);
+                    throw new Exception("Allocation backend '$solverBackend' is not supported.");
                 }
             } finally {
                 foreach ([$students_csv_file, $rooms_csv_file, $output_csv_file] as $temp_path) {
                     if (is_string($temp_path) && file_exists($temp_path)) {
-                        unlink($temp_path);
+                        @unlink($temp_path);
                     }
                 }
             }
-
-            $assignments = $this->rebalanceAssignmentsByFacultyProximity(
-                $students,
-                $rooms,
-                $assignments,
-                $prox_threshold,
-                $medium_threshold
-            );
 
             $this->conn->begin_transaction();
             $inTransaction = true;
@@ -284,20 +299,25 @@ class AllocationEngine {
             $this->syncRoomOccupancy();
 
             // Fetch Current Session for Session Locking
-            $session_res = $this->conn->query("SELECT setting_value FROM settings WHERE setting_key = 'current_session'");
+            $session_res = $this->runQueryOrThrow(
+                "SELECT setting_value FROM settings WHERE setting_key = 'current_session'",
+                'fetch current academic session'
+            );
             $session_row = $session_res->fetch_assoc();
             $current_session = $session_row['setting_value'] ?? '2025/2026';
 
-            // To be injected into AllocationEngine.php lines 201 to 260
-            // Pre-fetch all rooms and their occupied beds to avoid thousands of queries
+            // Pre-fetch all rooms and their occupied beds to avoid per-student round-trips
             $rooms_data = [];
             $res = $this->conn->query("SELECT r.room_id, r.capacity, r.bed_config, r.occupied_count, h.hostel_id, h.name as hostel_name FROM rooms r JOIN hostels h ON r.hostel_id = h.hostel_id");
+            if (!$res) {
+                throw new Exception('Failed to pre-fetch room data: ' . $this->conn->error);
+            }
             while ($row = $res->fetch_assoc()) {
                 $config_str = $row['bed_config'] ?? null;
-                $config_arr = empty($config_str) ? array_fill(0, (int)$row['capacity'], 'LB') : array_map('trim', explode(',', $config_str));
-                
+                $config_arr = empty($config_str) ? array_fill(0, (int) $row['capacity'], 'LB') : array_map('trim', explode(',', $config_str));
+
                 $rooms_data[$row['room_id']] = [
-                    'capacity' => (int)$row['capacity'],
+                    'capacity' => (int) $row['capacity'],
                     'config_arr' => $config_arr,
                     'hostel_id' => $row['hostel_id'],
                     'hostel_name' => $row['hostel_name'],
@@ -305,13 +325,16 @@ class AllocationEngine {
                     'new_occupants' => 0
                 ];
             }
-            
+
             $res = $this->conn->query("SELECT room_id, bed_space FROM allocations");
+            if (!$res) {
+                throw new Exception('Failed to pre-fetch allocation bed data: ' . $this->conn->error);
+            }
             while ($row = $res->fetch_assoc()) {
                 if (isset($rooms_data[$row['room_id']]) && $row['bed_space'] !== null) {
                     $ord = ord($row['bed_space']);
                     if ($ord >= 65 && $ord <= 90) { // A-Z
-                        $rooms_data[$row['room_id']]['occupied_indices'][] = $ord - 65; 
+                        $rooms_data[$row['room_id']]['occupied_indices'][] = $ord - 65;
                     }
                 }
             }
@@ -327,15 +350,15 @@ class AllocationEngine {
 
             $sev_map = ['Low' => 1, 'Medium' => 2, 'High' => 3, 'Critical' => 4];
             foreach ($students as $student) {
-                $student_id  = (int)$student['id'];
-                $final_score = (float)$student['score'];
-                $sev_int = $sev_map[$student['severity']] ?? (int)$student['severity'];
-                $prox_need  = ($final_score >= $prox_threshold) ? 1 : 0;
+                $student_id = (int) $student['id'];
+                $final_score = (float) $student['score'];
+                $sev_int = $sev_map[$student['severity']] ?? (int) $student['severity'];
+                $prox_need = ($final_score >= $prox_threshold) ? 1 : 0;
 
                 if (isset($assignments[$student_id]) && isset($rooms_data[$assignments[$student_id]])) {
                     $room_id = $assignments[$student_id];
                     $room = &$rooms_data[$room_id];
-                    
+
                     $slot_index = -1;
                     $config_count = count($room['config_arr']);
                     for ($i = 0; $i < $config_count; $i++) {
@@ -348,27 +371,27 @@ class AllocationEngine {
                     if ($slot_index !== -1) {
                         $room['occupied_indices'][] = $slot_index;
                         $room['new_occupants']++;
-                        
+
                         $bed_space = chr(65 + $slot_index);
                         $bed_label = $room['config_arr'][$slot_index] ?? 'LB';
-                        
+
                         $bed_label_esc = $this->conn->real_escape_string($bed_label);
                         $sess_esc = $this->conn->real_escape_string($current_session);
-                        
+
                         if ($has_algorithm_version_col) {
                             $bulk_allocations[] = "($student_id, $room_id, '$bed_space', '$bed_label_esc', '$sess_esc', 'algorithm', '$algo_version')";
                         } else {
                             $bulk_allocations[] = "($student_id, $room_id, '$bed_space', '$bed_label_esc', '$sess_esc', 'algorithm')";
                         }
-                        
+
                         $bulk_profiles[] = $student_id;
-                        
-                        $hid = (int)$room['hostel_id'];
+
+                        $hid = (int) $room['hostel_id'];
                         $bulk_audit[] = "($student_id, $sev_int, $prox_need, $final_score, 'Allocated', $hid)";
-                        
+
                         $msg = $this->conn->real_escape_string("Congratulations! You have been allocated a room in {$room['hostel_name']}.");
                         $bulk_notifications[] = "($student_id, '$msg')";
-                        
+
                         $allocated_count++;
                     } else {
                         $bulk_audit[] = "($student_id, $sev_int, $prox_need, $final_score, 'No Bed', NULL)";
@@ -386,35 +409,50 @@ class AllocationEngine {
 
             // Execute Bulk Inserts
             if (!empty($bulk_allocations)) {
-                $insert_cols = $has_algorithm_version_col ? 
-                    "(student_id, room_id, bed_space, bed_label, academic_session, allocation_method, algorithm_version)" : 
+                $insert_cols = $has_algorithm_version_col ?
+                    "(student_id, room_id, bed_space, bed_label, academic_session, allocation_method, algorithm_version)" :
                     "(student_id, room_id, bed_space, bed_label, academic_session, allocation_method)";
-                
+
                 foreach (array_chunk($bulk_allocations, 1000) as $chunk) {
-                    $this->conn->query("INSERT INTO allocations $insert_cols VALUES " . implode(',', $chunk));
+                    $this->runQueryOrThrow(
+                        "INSERT INTO allocations $insert_cols VALUES " . implode(',', $chunk),
+                        'bulk insert allocations'
+                    );
                 }
             }
             if (!empty($bulk_profiles)) {
                 foreach (array_chunk($bulk_profiles, 1000) as $chunk) {
                     $ids = implode(',', $chunk);
-                    $this->conn->query("UPDATE student_profiles SET allocation_status = 'Allocated' WHERE user_id IN ($ids)");
+                    $this->runQueryOrThrow(
+                        "UPDATE student_profiles SET allocation_status = 'Allocated' WHERE user_id IN ($ids)",
+                        'bulk update student allocation status'
+                    );
                 }
             }
             if (!empty($bulk_audit)) {
                 foreach (array_chunk($bulk_audit, 1000) as $chunk) {
-                    $this->conn->query("INSERT INTO algorithm_audit_logs (student_id, input_severity, input_proximity_need, calculated_urgency_score, allocation_decision, assigned_hostel_id) VALUES " . implode(',', $chunk));
+                    $this->runQueryOrThrow(
+                        "INSERT INTO algorithm_audit_logs (student_id, input_severity, input_proximity_need, calculated_urgency_score, allocation_decision, assigned_hostel_id) VALUES " . implode(',', $chunk),
+                        'bulk insert audit logs'
+                    );
                 }
             }
             if (!empty($bulk_notifications)) {
                 foreach (array_chunk($bulk_notifications, 1000) as $chunk) {
-                    $this->conn->query("INSERT INTO notifications (user_id, message) VALUES " . implode(',', $chunk));
+                    $this->runQueryOrThrow(
+                        "INSERT INTO notifications (user_id, message) VALUES " . implode(',', $chunk),
+                        'bulk insert notifications'
+                    );
                 }
             }
-            
+
             // Bulk Update Rooms
             foreach ($rooms_data as $room_id => $room) {
                 if ($room['new_occupants'] > 0) {
-                    $this->conn->query("UPDATE rooms SET occupied_count = occupied_count + {$room['new_occupants']} WHERE room_id = $room_id");
+                    $this->runQueryOrThrow(
+                        "UPDATE rooms SET occupied_count = occupied_count + {$room['new_occupants']} WHERE room_id = $room_id",
+                        'bulk update room occupancy'
+                    );
                 }
             }
 
@@ -426,7 +464,7 @@ class AllocationEngine {
 
             // Log allocation completion statistics
             $this->monitor->logStatistics();
-            Logger::info("Allocation completed: {$allocated_count}/{$allocated_count} students processed, "
+            Logger::info("Allocation completed: {$allocated_count}/{$total_students} students processed, "
                 . "Solver: $solver_mode, Status: $solver_status");
 
             return [
@@ -455,7 +493,8 @@ class AllocationEngine {
     /**
      * Recompute and persist urgency scores for every stored medical record.
      */
-    public function rescoreAllMedicalRecords() {
+    public function rescoreAllMedicalRecords()
+    {
         $this->conn->begin_transaction();
 
         try {
@@ -487,9 +526,9 @@ class AllocationEngine {
                     'condition' => $student['condition'],
                     'mobility' => $student['mobility'],
                     'severity' => $student['severity'],
-                    'academic_level' => (int)$student['academic_level'],
-                    'has_special_needs' => (int)$student['has_special_needs'],
-                    'is_requested' => (bool)$student['is_requested']
+                    'academic_level' => (int) $student['academic_level'],
+                    'has_special_needs' => (int) $student['has_special_needs'],
+                    'is_requested' => (bool) $student['is_requested']
                 ];
             }
 
@@ -517,97 +556,21 @@ class AllocationEngine {
      * Helper: Sync Room Occupancy
      * Recalculates occupied_count for all rooms based on actual allocations table.
      */
-    private function syncRoomOccupancy() {
-        // 1. Reset all to 0
-        $this->conn->query("UPDATE rooms SET occupied_count = 0");
-
-        // 2. Count actual allocations per room
-        $sql = "SELECT room_id, COUNT(*) as count FROM allocations GROUP BY room_id";
-        $result = $this->conn->query($sql);
-
-        // 3. Update rooms with actual counts
-        if ($result) {
-            $updateStmt = $this->conn->prepare("UPDATE rooms SET occupied_count = ? WHERE room_id = ?");
-            while ($row = $result->fetch_assoc()) {
-                $count = (int)$row['count'];
-                $rid   = (int)$row['room_id'];
-                $updateStmt->bind_param("ii", $count, $rid);
-                $updateStmt->execute();
-            }
-        }
+    private function syncRoomOccupancy()
+    {
+        $this->runQueryOrThrow("
+            UPDATE rooms r
+            LEFT JOIN (
+                SELECT room_id, COUNT(*) as count 
+                FROM allocations 
+                GROUP BY room_id
+            ) a ON r.room_id = a.room_id
+            SET r.occupied_count = COALESCE(a.count, 0)
+        ", 'sync room occupancy');
     }
 
-    /**
-     * Helper: Assign Bed based on configuration (LB/UB/SB)
-     */
-    private function assignBed($room_id, $student_id, $academic_session) {
-        // 1. Get Room Bed Config
-        $stmt = $this->conn->prepare("SELECT bed_config, capacity FROM rooms WHERE room_id = ?");
-        $stmt->bind_param("i", $room_id);
-        $stmt->execute();
-        $res = $stmt->get_result();
-        $room = $res->fetch_assoc();
-        
-        $config_str = $room['bed_config'] ?? null;
-        if (empty($config_str)) {
-            // Fallback: Default all to 'LB' based on capacity
-            $config_arr = array_fill(0, (int)$room['capacity'], 'LB');
-        } else {
-            $config_arr = array_map('trim', explode(',', $config_str));
-        }
-
-        // 2. Get Occupied Slots
-        $stmt_check = $this->conn->prepare("SELECT bed_space FROM allocations WHERE room_id = ?");
-        $stmt_check->bind_param("i", $room_id);
-        $stmt_check->execute();
-        $res_check = $stmt_check->get_result();
-        
-        $occupied_indices = [];
-        while ($row = $res_check->fetch_assoc()) {
-            if ($row['bed_space'] !== null) {
-                // Ensure valid ASCII range 
-                $ord = ord($row['bed_space']);
-                if ($ord >= 65 && $ord <= 90) { // A-Z
-                    $occupied_indices[] = $ord - 65; 
-                }
-            }
-        }
-        
-        // 3. Find First Free Slot
-        $slot_index = -1;
-        for ($i = 0; $i < count($config_arr); $i++) {
-            if (!in_array($i, $occupied_indices, true)) {
-                $slot_index = $i;
-                break;
-            }
-        }
-        
-        if ($slot_index === -1) return false; // Full
-        
-        // 4. Assign
-        $bed_space = chr(65 + $slot_index); // 0->A
-        $bed_label = $config_arr[$slot_index];
-        
-        if ($this->allocationsSupportAlgorithmVersion()) {
-            $algorithm_version = $this->getCurrentAlgorithmVersion();
-            $stmt_ins = $this->conn->prepare("INSERT INTO allocations (student_id, room_id, bed_space, bed_label, academic_session, algorithm_version) VALUES (?, ?, ?, ?, ?, ?)");
-            $stmt_ins->bind_param("iissss", $student_id, $room_id, $bed_space, $bed_label, $academic_session, $algorithm_version);
-        } else {
-            $stmt_ins = $this->conn->prepare("INSERT INTO allocations (student_id, room_id, bed_space, bed_label, academic_session) VALUES (?, ?, ?, ?, ?)");
-            $stmt_ins->bind_param("iisss", $student_id, $room_id, $bed_space, $bed_label, $academic_session);
-        }
-        
-        if ($stmt_ins->execute()) {
-            $upd_occ = $this->conn->prepare("UPDATE rooms SET occupied_count = occupied_count + 1 WHERE room_id = ?");
-            $upd_occ->bind_param("i", $room_id);
-            $upd_occ->execute();
-            return true;
-        }
-        
-        return false;
-    }
-
-    private function getSettingValue($setting_key, $default_value) {
+    private function getSettingValue($setting_key, $default_value)
+    {
         $stmt = $this->conn->prepare("SELECT setting_value FROM settings WHERE setting_key = ? LIMIT 1");
         if (!$stmt) {
             return $default_value;
@@ -620,7 +583,8 @@ class AllocationEngine {
         return $row['setting_value'] ?? $default_value;
     }
 
-    private function predictBatchScores(array $batch_payload): array {
+    private function predictBatchScores(array $batch_payload): array
+    {
         require_once __DIR__ . '/UrgencyScoreService.php';
         $service = new UrgencyScoreService();
         $result = $service->scoreBatch($batch_payload);
@@ -630,38 +594,17 @@ class AllocationEngine {
         return $result;
     }
 
-    private function runPythonJsonScript($script_path, array $payload): array {
-        $temp_file = tempnam(sys_get_temp_dir(), 'fairmed_json_');
-        if ($temp_file === false) {
-            throw new Exception('Unable to create a temporary file for the Python bridge.');
+    private function runQueryOrThrow(string $sql, string $context)
+    {
+        $result = $this->conn->query($sql);
+        if ($result === false) {
+            throw new Exception("Failed to {$context}: " . $this->conn->error);
         }
-
-        if (file_put_contents($temp_file, json_encode($payload)) === false) {
-            unlink($temp_file);
-            throw new Exception('Unable to write the Python bridge payload.');
-        }
-
-        try {
-            $output = $this->executeShellCommand(array_merge($this->getPythonCommandParts(), [$script_path, $temp_file]));
-        } finally {
-            if (file_exists($temp_file)) {
-                unlink($temp_file);
-            }
-        }
-
-        if ($output === null || $output === '') {
-            throw new Exception('Python bridge produced no output.');
-        }
-
-        $decoded = json_decode($output, true);
-        if (!is_array($decoded)) {
-            throw new Exception('Python bridge returned invalid JSON.');
-        }
-
-        return $decoded;
+        return $result;
     }
 
-    private function executeShellCommand(array $command_parts) {
+    private function executeShellCommand(array $command_parts)
+    {
         $escaped_parts = array_map([$this, 'escapeCommandPart'], $command_parts);
         $command = implode(' ', $escaped_parts);
         $output = @shell_exec($command . ' 2>&1');
@@ -673,8 +616,9 @@ class AllocationEngine {
         return trim($output);
     }
 
-    private function escapeCommandPart($value) {
-        $value = (string)$value;
+    private function escapeCommandPart($value)
+    {
+        $value = (string) $value;
         if (DIRECTORY_SEPARATOR === '\\') {
             return '"' . str_replace('"', '""', $value) . '"';
         }
@@ -682,13 +626,14 @@ class AllocationEngine {
         return escapeshellarg($value);
     }
 
-    private function getPythonCommandParts() {
+    private function getPythonCommandParts()
+    {
         $configured = defined('PYTHON_BIN') && PYTHON_BIN !== ''
-            ? trim((string)PYTHON_BIN)
+            ? trim((string) PYTHON_BIN)
             : (
                 defined('FAIRMED_PYTHON_BIN') && FAIRMED_PYTHON_BIN !== ''
-                    ? trim((string)FAIRMED_PYTHON_BIN)
-                    : trim((string)(getenv('PYTHON_BIN') ?: getenv('FAIRMED_PYTHON_BIN')))
+                ? trim((string) FAIRMED_PYTHON_BIN)
+                : trim((string) (getenv('PYTHON_BIN') ?: getenv('FAIRMED_PYTHON_BIN')))
             );
         if ($configured !== '') {
             $parts = array_values(array_filter(str_getcsv($configured, ' '), static function ($part) {
@@ -706,20 +651,21 @@ class AllocationEngine {
         return ['python3'];
     }
 
-    private function persistUrgencyScores(array $scores_map) {
+    private function persistUrgencyScores(array $scores_map)
+    {
         if (empty($scores_map)) {
             return 0;
         }
 
         // Build a single bulk UPDATE with a CASE expression.
         // This avoids N round-trips to MySQL for large datasets (5k-15k students).
-        $cases  = '';
-        $ids    = [];
+        $cases = '';
+        $ids = [];
         foreach ($scores_map as $student_id => $score) {
-            $sid    = (int)$student_id;
-            $sc     = round((float)$score, 6);
+            $sid = (int) $student_id;
+            $sc = round((float) $score, 6);
             $cases .= " WHEN student_id = $sid THEN $sc";
-            $ids[]  = $sid;
+            $ids[] = $sid;
         }
 
         if (empty($ids)) {
@@ -739,83 +685,83 @@ class AllocationEngine {
         return $this->conn->affected_rows;
     }
 
-    private function buildFallbackAssignments(array $students, array $rooms, float $proxThreshold, float $mediumThreshold): array {
-        $remainingCapacity = [];
-        $roomsByGender = ['Male' => [], 'Female' => []];
-        foreach ($rooms as $room) {
-            $roomId = (int)$room['id'];
-            $remainingCapacity[$roomId] = (int)$room['available_capacity'];
-            $gender = $room['gender'] ?? '';
-            if (!isset($roomsByGender[$gender])) {
-                $roomsByGender[$gender] = [];
-            }
-
-            $room['id'] = $roomId;
-            $room['block_number'] = $this->roomBlockNumber($room);
-            $room['is_primary_male_high'] = $this->isPrimaryMaleHighRoom($room);
-            $room['is_male_clinic'] = $this->isMaleClinicRoom($room);
-            $room['is_female_clinic'] = $this->isFemaleClinicRoom($room);
-            $roomsByGender[$gender][] = $room;
+    private function buildEmergencyAssignments(array $students, array $rooms, float $proxThreshold, float $mediumThreshold): array
+    {
+        if (empty($students) || empty($rooms)) {
+            return [];
         }
 
-        $firstBlocks = $this->buildFirstBlocks($rooms);
+        $roomsById = [];
+        $remainingCapacity = [];
+        foreach ($rooms as $room) {
+            $roomId = (int) ($room['id'] ?? 0);
+            $capacity = (int) ($room['available_capacity'] ?? 0);
+            if ($roomId <= 0 || $capacity <= 0) {
+                continue;
+            }
+            $room['id'] = $roomId;
+            $room['floor_level'] = (int) ($room['floor_level'] ?? -1);
+            $roomsById[$roomId] = $room;
+            $remainingCapacity[$roomId] = $capacity;
+        }
 
+        $firstBlocks = $this->buildFirstBlocks($roomsById);
         usort($students, function (array $left, array $right) use ($proxThreshold, $mediumThreshold) {
-            $leftRank = $this->bandPriorityRank($this->studentUrgencyBand($left, $proxThreshold, $mediumThreshold));
-            $rightRank = $this->bandPriorityRank($this->studentUrgencyBand($right, $proxThreshold, $mediumThreshold));
+            $leftBand = $this->determineUrgencyBand((float) ($left['score'] ?? 0), $proxThreshold, $mediumThreshold);
+            $rightBand = $this->determineUrgencyBand((float) ($right['score'] ?? 0), $proxThreshold, $mediumThreshold);
 
-            if ($leftRank !== $rightRank) {
-                return $leftRank <=> $rightRank;
+            $rankCompare = $this->bandPriorityRank($leftBand) <=> $this->bandPriorityRank($rightBand);
+            if ($rankCompare !== 0) {
+                return $rankCompare;
             }
 
-            $scoreCompare = (float)$right['score'] <=> (float)$left['score'];
+            $scoreCompare = (float) ($right['score'] ?? 0) <=> (float) ($left['score'] ?? 0);
             if ($scoreCompare !== 0) {
                 return $scoreCompare;
             }
 
-            return (int)$left['id'] <=> (int)$right['id'];
+            return (int) ($left['id'] ?? 0) <=> (int) ($right['id'] ?? 0);
         });
 
         $assignments = [];
         foreach ($students as $student) {
-            $bestRoomId = null;
-            $bestWeight = null;
-            $studentBand = $this->studentUrgencyBand($student, $proxThreshold, $mediumThreshold);
-            $candidateRooms = $roomsByGender[$student['gender'] ?? ''] ?? [];
-            $facultyHostels = $this->getFacultyProximalHostels($student);
+            $studentId = (int) ($student['id'] ?? 0);
+            if ($studentId <= 0) {
+                continue;
+            }
 
-            foreach ($candidateRooms as $room) {
-                $roomId = (int)$room['id'];
+            $student['urgency_band'] = $this->determineUrgencyBand((float) ($student['score'] ?? 0), $proxThreshold, $mediumThreshold);
+            $bestRoomId = null;
+            $bestWeight = PHP_INT_MIN;
+
+            foreach ($roomsById as $roomId => $room) {
                 if (($remainingCapacity[$roomId] ?? 0) <= 0) {
                     continue;
                 }
-
-                if (($room['is_primary_male_high'] ?? false) && $studentBand !== 'High') {
+                if (($student['gender'] ?? '') !== ($room['gender'] ?? '')) {
+                    continue;
+                }
+                if (
+                    $this->studentHasMobilityPriority($student)
+                    && in_array($room['hostel_name'] ?? '', ['Joshua Hall', 'Deborah Hall'], true)
+                    && (int) ($room['floor_level'] ?? -1) !== 0
+                ) {
                     continue;
                 }
 
-                if ($this->studentHasMobilityPriority($student)) {
-                    if (in_array($room['hostel_name'] ?? '', ['Joshua Hall', 'Deborah Hall'], true)) {
-                        if (($room['floor_level'] ?? -1) !== 0) {
-                            continue;
-                        }
-                    }
-                }
+                $weight = 1000000
+                    + (int) round(((float) ($student['score'] ?? 0)) * 100)
+                    + $this->placementBonusEmergency($student, $room, $firstBlocks)
+                    - (int) $roomId;
 
-                if ($studentBand === 'Low' && empty($facultyHostels)) {
-                    // No faculty mapping found — allow any gender-matching room
-                    // rather than leaving the student unplaced.
-                }
-
-                $weight = $this->calculateFallbackPlacementWeight($student, $room, $studentBand, $firstBlocks, $facultyHostels);
-                if ($bestWeight === null || $weight > $bestWeight) {
+                if ($weight > $bestWeight) {
                     $bestWeight = $weight;
                     $bestRoomId = $roomId;
                 }
             }
 
             if ($bestRoomId !== null) {
-                $assignments[(int)$student['id']] = $bestRoomId;
+                $assignments[$studentId] = $bestRoomId;
                 $remainingCapacity[$bestRoomId]--;
             }
         }
@@ -823,8 +769,8 @@ class AllocationEngine {
         return $assignments;
     }
 
-    private function studentUrgencyBand(array $student, float $proxThreshold, float $mediumThreshold): string {
-        $score = (float)($student['score'] ?? 0);
+    private function determineUrgencyBand(float $score, float $proxThreshold, float $mediumThreshold): string
+    {
         if ($score >= $proxThreshold) {
             return 'High';
         }
@@ -834,7 +780,8 @@ class AllocationEngine {
         return 'Low';
     }
 
-    private function bandPriorityRank(string $band): int {
+    private function bandPriorityRank(string $band): int
+    {
         return match ($band) {
             'High' => 0,
             'Medium' => 1,
@@ -842,100 +789,42 @@ class AllocationEngine {
         };
     }
 
-    private function buildFirstBlocks(array $rooms): array {
+    private function buildFirstBlocks(array $roomsById): array
+    {
         $firstBlocks = [];
-        foreach ($rooms as $room) {
+        foreach ($roomsById as $room) {
             $key = ($room['hostel_name'] ?? '') . '|' . ($room['gender'] ?? '');
-            $blockNo = $this->roomBlockNumber($room);
-            if (!isset($firstBlocks[$key]) || $blockNo < $firstBlocks[$key]) {
-                $firstBlocks[$key] = $blockNo;
+            $blockNumber = $this->roomBlockNumber($room);
+            if (!isset($firstBlocks[$key]) || $blockNumber < $firstBlocks[$key]) {
+                $firstBlocks[$key] = $blockNumber;
             }
         }
         return $firstBlocks;
     }
 
-    private function roomBlockNumber(array $room): int {
-        $block = trim((string)($room['block_name'] ?? ''));
-        return ctype_digit($block) ? (int)$block : 10000;
+    private function roomBlockNumber(array $room): int
+    {
+        $block = trim((string) ($room['block_name'] ?? ''));
+        return ctype_digit($block) ? (int) $block : 10000;
     }
 
-    private function isPrimaryMaleHighRoom(array $room): bool {
-        return ($room['hostel_name'] ?? '') === 'Prophet Moses Hall'
-            && (string)($room['block_name'] ?? '') === '1'
-            && ($room['gender'] ?? '') === 'Male';
-    }
-
-    private function isMaleClinicRoom(array $room): bool {
-        return ($room['hostel_name'] ?? '') === 'Prophet Moses Hall'
-            && in_array((string)($room['block_name'] ?? ''), ['1', '2'], true)
-            && ($room['gender'] ?? '') === 'Male';
-    }
-
-    private function isFemaleClinicRoom(array $room): bool {
-        return ($room['hostel_name'] ?? '') === 'Queen Esther Extension Hall'
-            && in_array((string)($room['block_name'] ?? ''), ['38', '39'], true)
-            && ($room['gender'] ?? '') === 'Female';
-    }
-
-    private function clinicRoomMatchesGender(array $student, array $room): bool {
-        $gender = $student['gender'] ?? '';
-        if ($gender === 'Male') {
-            return (bool)($room['is_male_clinic'] ?? $this->isMaleClinicRoom($room));
-        }
-        if ($gender === 'Female') {
-            return (bool)($room['is_female_clinic'] ?? $this->isFemaleClinicRoom($room));
-        }
-        return false;
-    }
-
-    private function calculateFallbackPlacementWeight(array $student, array $room, string $studentBand, array $firstBlocks, array $facultyHostels): int {
-        $score = (float)($student['score'] ?? 0);
-        $base = 1000000 + (int)round($score * 100);
-        $bonus = 0;
-
-        if ($studentBand === 'High' && $this->clinicRoomMatchesGender($student, $room)) {
-            $bonus = 5000000;
-        } elseif ($this->roomIsMobilityGroundFloorTarget($student, $room, $facultyHostels, $firstBlocks)) {
-            $bonus = 2200000;
-        } elseif ($studentBand === 'Medium' && in_array($room['hostel_name'] ?? '', $facultyHostels, true)) {
-            if (($room['is_primary_male_high'] ?? false) === true) {
-                $bonus = 0;
-            } elseif ($this->roomIsMediumMaleAccessTarget($student, $room)) {
-                $bonus = 1600000;
-            } elseif ($this->roomIsMediumFirstBlockGroundFloorTarget($student, $room, $facultyHostels, $firstBlocks)) {
-                $bonus = 1550000;
-            } elseif ($this->roomIsFirstBlock($room, $firstBlocks)) {
-                $bonus = 1500000;
-            } else {
-                $bonus = 400000;
-            }
-        } elseif ($studentBand === 'Low') {
-            $rank = array_search($room['hostel_name'] ?? '', $facultyHostels, true);
-            if ($rank === 0) {
-                $bonus = 900000;
-            } elseif ($rank === 1) {
-                $bonus = 450000;
-            } elseif ($this->clinicRoomMatchesGender($student, $room)
-                   && !($room['is_primary_male_high'] ?? false)) {
-                // Overflow: proximal halls are full; allow clinic-proximal as next best.
-                $bonus = 150000;
-            }
-        } elseif (in_array($studentBand, ['Medium', 'Low'], true)
-               && $this->clinicRoomMatchesGender($student, $room)
-               && !($room['is_primary_male_high'] ?? false)) {
-            // Overflow for Medium students when proximal blocks are full.
-            $bonus = 150000;
-        }
-
-        return $base + $bonus - (int)$room['id'];
-    }
-
-    private function roomIsFirstBlock(array $room, array $firstBlocks): bool {
+    private function roomIsFirstBlock(array $room, array $firstBlocks): bool
+    {
         $key = ($room['hostel_name'] ?? '') . '|' . ($room['gender'] ?? '');
         return $this->roomBlockNumber($room) === ($firstBlocks[$key] ?? -1);
     }
 
-    private function getFacultyProximalHostels(array $student): array {
+    private function studentHasMobilityPriority(array $student): bool
+    {
+        return in_array(
+            (string) ($student['mobility'] ?? 'Normal Mobility'),
+            ['Wheelchair User', 'Crutches/Walker', 'Artificial Limb'],
+            true
+        );
+    }
+
+    private function getFacultyProximalHostels(array $student): array
+    {
         $faculty = $student['faculty'] ?? '';
         $gender = $student['gender'] ?? '';
 
@@ -972,184 +861,122 @@ class AllocationEngine {
         return [];
     }
 
-    private function studentHasMobilityPriority(array $student): bool {
-        return in_array(
-            (string)($student['mobility'] ?? 'Normal Mobility'),
-            ['Wheelchair User', 'Crutches/Walker', 'Artificial Limb'],
-            true
-        );
+    private function facultyProximalRank(array $student, array $room): ?int
+    {
+        $rank = array_search($room['hostel_name'] ?? '', $this->getFacultyProximalHostels($student), true);
+        return $rank === false ? null : (int) $rank;
     }
 
-    private function roomIsMobilityGroundFloorTarget(array $student, array $room, array $facultyHostels, array $firstBlocks): bool {
+    private function roomInFacultyProximalHostel(array $student, array $room): bool
+    {
+        return in_array($room['hostel_name'] ?? '', $this->getFacultyProximalHostels($student), true);
+    }
+
+    private function mobilityGroundFloorTarget(array $student): ?string
+    {
         if (!$this->studentHasMobilityPriority($student)) {
-            return false;
+            return null;
         }
 
-        $targetHostel = null;
-        if (($student['gender'] ?? '') === 'Male' && in_array('Joshua Hall', $facultyHostels, true)) {
-            $targetHostel = 'Joshua Hall';
-        } elseif (($student['gender'] ?? '') === 'Female' && in_array('Deborah Hall', $facultyHostels, true)) {
-            $targetHostel = 'Deborah Hall';
-        }
+        $hostels = $this->getFacultyProximalHostels($student);
+        $preferred = ($student['gender'] ?? '') === 'Male'
+            ? 'Joshua Hall'
+            : (($student['gender'] ?? '') === 'Female' ? 'Deborah Hall' : null);
 
-        return $targetHostel !== null
-            && ($room['hostel_name'] ?? '') === $targetHostel
-            && (int)($room['floor_level'] ?? -1) === 0
+        return ($preferred !== null && in_array($preferred, $hostels, true)) ? $preferred : null;
+    }
+
+    private function roomIsMobilityGroundFloorTarget(array $student, array $room, array $firstBlocks): bool
+    {
+        return $this->mobilityGroundFloorTarget($student) === ($room['hostel_name'] ?? '')
+            && (int) ($room['floor_level'] ?? -1) === 0
             && $this->roomIsFirstBlock($room, $firstBlocks);
     }
 
-    private function roomIsMediumMaleAccessTarget(array $student, array $room): bool {
-        return ($student['gender'] ?? '') === 'Male'
-            && ($room['gender'] ?? '') === 'Male'
+    private function roomIsMediumMaleAccessTarget(array $student, array $room): bool
+    {
+        return ($student['urgency_band'] ?? 'Low') === 'Medium'
+            && ($student['gender'] ?? '') === 'Male'
             && ($room['hostel_name'] ?? '') === 'Prophet Moses Extension Hall'
-            && (string)($room['block_name'] ?? '') === '27';
+            && (string) ($room['block_name'] ?? '') === '27'
+            && $this->roomInFacultyProximalHostel($student, $room);
     }
 
-    private function roomIsMediumFirstBlockGroundFloorTarget(array $student, array $room, array $facultyHostels, array $firstBlocks): bool {
-        return in_array($room['hostel_name'] ?? '', ['Joshua Hall', 'Deborah Hall'], true)
-            && in_array($room['hostel_name'] ?? '', $facultyHostels, true)
-            && (int)($room['floor_level'] ?? -1) === 0
-            && $this->roomIsFirstBlock($room, $firstBlocks);
-    }
-
-    private function rebalanceAssignmentsByFacultyProximity(array $students, array $rooms, array $assignments, float $proxThreshold, float $mediumThreshold): array {
-        if (empty($students) || empty($rooms)) {
-            return $assignments;
-        }
-
-        $roomsById = [];
-        $remainingCapacity = [];
-        $firstBlocks = $this->buildFirstBlocks($rooms);
-
-        foreach ($rooms as $room) {
-            $roomId = (int)($room['id'] ?? 0);
-            if ($roomId <= 0) {
-                continue;
-            }
-
-            $room['id'] = $roomId;
-            $room['block_number'] = $this->roomBlockNumber($room);
-            $room['is_primary_male_high'] = $this->isPrimaryMaleHighRoom($room);
-            $room['is_male_clinic'] = $this->isMaleClinicRoom($room);
-            $room['is_female_clinic'] = $this->isFemaleClinicRoom($room);
-            $roomsById[$roomId] = $room;
-            $remainingCapacity[$roomId] = (int)($room['available_capacity'] ?? 0);
-        }
-
-        foreach ($assignments as $studentId => $roomId) {
-            $roomKey = (int)$roomId;
-            if (isset($remainingCapacity[$roomKey])) {
-                $remainingCapacity[$roomKey] = max(0, $remainingCapacity[$roomKey] - 1);
-            }
-        }
-
-        usort($students, function (array $left, array $right) use ($proxThreshold, $mediumThreshold) {
-            $leftRank = $this->bandPriorityRank($this->studentUrgencyBand($left, $proxThreshold, $mediumThreshold));
-            $rightRank = $this->bandPriorityRank($this->studentUrgencyBand($right, $proxThreshold, $mediumThreshold));
-
-            if ($leftRank !== $rightRank) {
-                return $leftRank <=> $rightRank;
-            }
-
-            $scoreCompare = (float)($right['score'] ?? 0) <=> (float)($left['score'] ?? 0);
-            if ($scoreCompare !== 0) {
-                return $scoreCompare;
-            }
-
-            return (int)($left['id'] ?? 0) <=> (int)($right['id'] ?? 0);
-        });
-
-        for ($pass = 0; $pass < 3; $pass++) {
-            $changed = false;
-
-            foreach ($students as $student) {
-                $studentId = (int)($student['id'] ?? 0);
-                if ($studentId <= 0) {
-                    continue;
-                }
-
-                $band = $this->studentUrgencyBand($student, $proxThreshold, $mediumThreshold);
-                if ($band === 'High') {
-                    continue;
-                }
-
-                $facultyHostels = $this->getFacultyProximalHostels($student);
-                if (empty($facultyHostels)) {
-                    continue;
-                }
-
-                $currentRoomId = isset($assignments[$studentId]) ? (int)$assignments[$studentId] : null;
-                $currentRoom = ($currentRoomId !== null && isset($roomsById[$currentRoomId])) ? $roomsById[$currentRoomId] : null;
-                $currentWeight = $currentRoom !== null
-                    ? $this->calculateFallbackPlacementWeight($student, $currentRoom, $band, $firstBlocks, $facultyHostels)
-                    : PHP_INT_MIN;
-
-                $bestRoomId = $currentRoomId;
-                $bestWeight = $currentWeight;
-
-                foreach ($roomsById as $candidateRoomId => $candidateRoom) {
-                    if (!$this->roomMatchesStudentHardRules($student, $candidateRoom, $band)) {
-                        continue;
-                    }
-
-                    $openCapacity = $remainingCapacity[$candidateRoomId] ?? 0;
-                    if ($candidateRoomId !== $currentRoomId && $openCapacity <= 0) {
-                        continue;
-                    }
-
-                    $candidateWeight = $this->calculateFallbackPlacementWeight($student, $candidateRoom, $band, $firstBlocks, $facultyHostels);
-                    if ($candidateWeight > $bestWeight) {
-                        $bestWeight = $candidateWeight;
-                        $bestRoomId = $candidateRoomId;
-                    }
-                }
-
-                if ($bestRoomId !== null && $bestRoomId !== $currentRoomId) {
-                    if ($currentRoomId !== null && isset($remainingCapacity[$currentRoomId])) {
-                        $remainingCapacity[$currentRoomId]++;
-                    }
-                    $remainingCapacity[$bestRoomId] = max(0, ($remainingCapacity[$bestRoomId] ?? 0) - 1);
-                    $assignments[$studentId] = $bestRoomId;
-                    $changed = true;
-                }
-            }
-
-            if (!$changed) {
-                break;
-            }
-        }
-
-        return $assignments;
-    }
-
-    private function roomMatchesStudentHardRules(array $student, array $room, string $studentBand): bool {
-        if (($student['gender'] ?? '') !== ($room['gender'] ?? '')) {
-            return false;
-        }
-
-        if (($room['is_primary_male_high'] ?? $this->isPrimaryMaleHighRoom($room)) && $studentBand !== 'High') {
-            return false;
-        }
-
-        if ($this->studentHasMobilityPriority($student)
+    private function roomIsMediumFirstBlockGroundFloorTarget(array $student, array $room, array $firstBlocks): bool
+    {
+        return ($student['urgency_band'] ?? 'Low') === 'Medium'
             && in_array($room['hostel_name'] ?? '', ['Joshua Hall', 'Deborah Hall'], true)
-            && (int)($room['floor_level'] ?? -1) !== 0) {
-            return false;
+            && $this->roomInFacultyProximalHostel($student, $room)
+            && $this->roomIsFirstBlock($room, $firstBlocks)
+            && (int) ($room['floor_level'] ?? -1) === 0;
+    }
+
+    private function isMaleClinicRoom(array $room): bool
+    {
+        return ($room['hostel_name'] ?? '') === 'Prophet Moses Hall'
+            && in_array((string) ($room['block_name'] ?? ''), ['1', '2'], true)
+            && ($room['gender'] ?? '') === 'Male';
+    }
+
+    private function isFemaleClinicRoom(array $room): bool
+    {
+        return ($room['hostel_name'] ?? '') === 'Queen Esther Extension Hall'
+            && in_array((string) ($room['block_name'] ?? ''), ['38', '39'], true)
+            && ($room['gender'] ?? '') === 'Female';
+    }
+
+    private function clinicRoomMatchesGender(array $student, array $room): bool
+    {
+        $gender = $student['gender'] ?? '';
+        if ($gender === 'Male') {
+            return $this->isMaleClinicRoom($room);
+        }
+        if ($gender === 'Female') {
+            return $this->isFemaleClinicRoom($room);
+        }
+        return false;
+    }
+
+    private function roomIsClinic(array $room): bool
+    {
+        return $this->isMaleClinicRoom($room) || $this->isFemaleClinicRoom($room);
+    }
+
+    private function placementBonusEmergency(array $student, array $room, array $firstBlocks): int
+    {
+        $band = $student['urgency_band'] ?? 'Low';
+        $rank = $this->facultyProximalRank($student, $room);
+
+        if ($band === 'High' && $this->clinicRoomMatchesGender($student, $room)) {
+            return 5000000;
         }
 
-        return true;
-    }
-
-    private function allocationsSupportAlgorithmVersion(): bool {
-        if ($this->allocationsHasAlgorithmVersion !== null) {
-            return $this->allocationsHasAlgorithmVersion;
+        if ($this->roomIsMobilityGroundFloorTarget($student, $room, $firstBlocks)) {
+            return 2200000;
         }
-        // Delegate to shared helper — single source of truth for this schema check.
-        $this->allocationsHasAlgorithmVersion = DbHelper::supportsAlgorithmVersion($this->conn);
-        return $this->allocationsHasAlgorithmVersion;
+
+        if ($band === 'Medium' && $this->roomInFacultyProximalHostel($student, $room)) {
+            if ($this->roomIsMediumMaleAccessTarget($student, $room)) {
+                return 1600000;
+            }
+            if ($this->roomIsMediumFirstBlockGroundFloorTarget($student, $room, $firstBlocks)) {
+                return 1550000;
+            }
+            if ($this->roomIsFirstBlock($room, $firstBlocks)) {
+                return 1500000;
+            }
+            return 400000;
+        }
+
+        if ($band === 'Low' && $rank !== null) {
+            return $rank === 0 ? 900000 : 450000;
+        }
+
+        if (in_array($band, ['Medium', 'Low'], true) && $this->roomIsClinic($room)) {
+            return 150000;
+        }
+
+        return 0;
     }
 
-    private function getCurrentAlgorithmVersion() {
-        return (string)$this->getSettingValue('allocation_algorithm_version', self::ALGORITHM_VERSION);
-    }
 }

@@ -1,16 +1,16 @@
 <?php
-/**
- * DbHelper
- * ========
- * Shared schema introspection and database utility methods.
- * Centralises checks that were previously duplicated across
- * AllocationEngine.php and api/admin_api.php.
- */
 class DbHelper {
-    /**
-     * Returns true if the allocations table has an algorithm_version column.
-     * Result is statically cached for the lifetime of the current PHP request.
-     */
+    public static function prepare(mysqli $conn, string $sql, string $context = 'statement'): ?mysqli_stmt {
+        $stmt = $conn->prepare($sql);
+        if ($stmt instanceof mysqli_stmt) {
+            return $stmt;
+        }
+
+        error_log("[FairMedAlloc] Failed to prepare {$context}: " . $conn->error);
+        return null;
+    }
+
+    // Cache lightweight schema checks for the lifetime of the request.
     public static function supportsAlgorithmVersion(mysqli $conn): bool {
         static $cached = null;
         if ($cached !== null) {
@@ -21,11 +21,7 @@ class DbHelper {
         return $cached;
     }
 
-    /**
-     * Aligns the legacy medical_records schema with the application's current
-     * string-based condition and mobility pipeline, then repairs obvious data
-     * coercions introduced by the old enum/tinyint layout.
-     */
+    // Keep older local databases compatible with the current medical-record shape.
     public static function alignMedicalSchema(mysqli $conn): void {
         static $completed = false;
         if ($completed) {

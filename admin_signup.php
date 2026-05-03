@@ -1,26 +1,9 @@
 <?php
-/**
- * admin_signup.php — Administrator Registration
- * ================================================
- * Allows an existing admin to create a new admin account.
- * This page is PROTECTED: only a currently logged-in admin can access it.
- *
- * Security measures applied:
- *   - Session-based auth guard: redirects non-admins immediately.
- *   - CSRF token validation on every POST.
- *   - Prepared statements for all DB queries (prevents SQL injection).
- *   - Password hashing with PASSWORD_DEFAULT (bcrypt).
- *   - Server-side email format validation.
- *   - Minimum password length enforced server-side.
- */
 session_start();
 
-// --- Auth Guard ---
-// Only an active admin session may create new admin accounts.
-// This prevents unauthorized self-registration as an admin.
-if (!isset($_SESSION['logged_in']) || ($_SESSION['role'] ?? '') !== 'admin') { 
-    header("Location: admin_login.php"); 
-    exit(); 
+if (!isset($_SESSION['logged_in']) || ($_SESSION['role'] ?? '') !== 'admin') {
+    header("Location: admin_login.php");
+    exit();
 }
 
 require_once 'db_config.php';
@@ -30,53 +13,59 @@ $msg = "";
 $msg_type = "";
 
 if ($_SERVER["REQUEST_METHOD"] == "POST") {
-    // --- Security Gate: Validate CSRF Token ---
     check_csrf();
 
-    // Sanitize all text inputs to prevent XSS.
-    $username = sanitize_input($_POST['username']);
-    $email    = sanitize_input($_POST['email']);
-    $name     = sanitize_input($_POST['full_name']);
-    $pass     = $_POST['password']; // Raw — will be hashed. Do not sanitize.
-    $role     = 'admin';            // Role is hardcoded; never trust user input for role assignment.
+    $username = sanitize_input($_POST['username'] ?? '');
+    $email    = sanitize_input($_POST['email'] ?? '');
+    $name     = sanitize_input($_POST['full_name'] ?? '');
+    $pass     = $_POST['password'] ?? '';
+    $role     = 'admin';
 
-    // --- Server-side Email Format Validation ---
-    if (!filter_var($_POST['email'], FILTER_VALIDATE_EMAIL)) {
+    if (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
         $msg = "Please provide a valid email address.";
         $msg_type = "error";
-    }
-    // --- Duplicate Username Check ---
-    elseif (($check = $conn->prepare("SELECT user_id FROM users WHERE username = ?")) &&
-            $check->bind_param("s", $username) &&
-            $check->execute() &&
-            $check->get_result()->num_rows > 0) {
-        $msg = "Username already exists.";
-        $msg_type = "error";
     } elseif (strlen($pass) < 8) {
-        // Server-side password length guard (client-side minlength is not sufficient).
         $msg = "Password must be at least 8 characters long.";
         $msg_type = "error";
     } else {
-        // Hash the password securely before storing.
-        $hash = password_hash($pass, PASSWORD_DEFAULT);
-        
-        // --- 1. Create Admin User ---
-        $sql = FAIRMED_SUPPORTS_MUST_CHANGE_PASSWORD
-            ? "INSERT INTO users (username, full_name, email, password_hash, must_change_password, role) VALUES (?, ?, ?, ?, 1, ?)"
-            : "INSERT INTO users (username, full_name, email, password_hash, role) VALUES (?, ?, ?, ?, ?)";
-        $stmt = $conn->prepare($sql);
-        $stmt->bind_param("sssss", $username, $name, $email, $hash, $role);
-        
-        if ($stmt->execute()) {
-            // FIX: Previously this code replaced the creating admin's session with the
-            // new account's session — a silent session-hijack bug. Now the creator stays
-            // logged in and receives a clear confirmation message instead.
-            $msg      = "Admin account '{$username}' created successfully. They can now log in at admin_login.php and will be required to change the temporary password after sign-in.";
-            $msg_type = "success";
-        } else {
-            // Generic error — do not expose DB error details to the client.
-            $msg      = "Error creating account. Please try again.";
+        $check = DbHelper::prepare($conn, "SELECT user_id FROM users WHERE username = ?", 'admin signup duplicate check');
+
+        if (!$check) {
+            $msg = "Account creation is temporarily unavailable. Please try again shortly.";
             $msg_type = "error";
+        } else {
+            $check->bind_param("s", $username);
+            $check->execute();
+            $exists = $check->get_result()->num_rows > 0;
+            $check->close();
+
+            if ($exists) {
+                $msg = "Username already exists.";
+                $msg_type = "error";
+            } else {
+                $hash = password_hash($pass, PASSWORD_DEFAULT);
+                $sql = FAIRMED_SUPPORTS_MUST_CHANGE_PASSWORD
+                    ? "INSERT INTO users (username, full_name, email, password_hash, must_change_password, role) VALUES (?, ?, ?, ?, 1, ?)"
+                    : "INSERT INTO users (username, full_name, email, password_hash, role) VALUES (?, ?, ?, ?, ?)";
+                $stmt = DbHelper::prepare($conn, $sql, 'admin signup insert');
+
+                if (!$stmt) {
+                    $msg = "Account creation is temporarily unavailable. Please try again shortly.";
+                    $msg_type = "error";
+                } else {
+                    $stmt->bind_param("sssss", $username, $name, $email, $hash, $role);
+
+                    if ($stmt->execute()) {
+                        $msg = "Admin account '{$username}' created successfully. They can now log in at admin_login.php and will be required to change the temporary password after sign-in.";
+                        $msg_type = "success";
+                    } else {
+                        $msg = "Error creating account. Please try again.";
+                        $msg_type = "error";
+                    }
+
+                    $stmt->close();
+                }
+            }
         }
     }
 }
@@ -102,7 +91,7 @@ require_once 'includes/header.php';
         <?php if($msg): ?>
             <div class="alert alert-<?php echo $msg_type === 'error' ? 'danger' : 'success'; ?> mb-6">
                 <i class="fa-solid <?php echo $msg_type === 'error' ? 'fa-circle-exclamation' : 'fa-check-circle'; ?>"></i>
-                <?php echo htmlspecialchars($msg); ?>
+                <?php echo htmlspecialchars($msg, ENT_QUOTES, 'UTF-8'); ?>
             </div>
         <?php endif; ?>
 
@@ -183,8 +172,8 @@ function toggleAdminSignupPw() {
     var isHidden = input.type === 'password';
     input.type = isHidden ? 'text' : 'password';
     if (icon) {
-        icon.classList.toggle('fa-eye',       !isHidden);
-        icon.classList.toggle('fa-eye-slash',  isHidden);
+        icon.classList.toggle('fa-eye', !isHidden);
+        icon.classList.toggle('fa-eye-slash', isHidden);
     }
 }
 </script>

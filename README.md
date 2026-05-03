@@ -177,7 +177,7 @@ Important files:
 - `ml_models/predict.py`: raw XGBoost inference plus policy calibration
 - `ml_models/allocate.py`: OR-Tools weighted allocator
 - `includes/UrgencyScoreService.php`: PHP scoring bridge and fallback
-- `includes/AllocationEngine.php`: orchestration, persistence, fallback allocator
+- `includes/AllocationEngine.php`: orchestration, persistence, OR-Tools allocation pipeline with an emergency PHP fallback
 - `api/admin_api.php`: admin queue and worker dispatch endpoints
 - `worker_allocation.php`: background job processor
 - `worker_launcher.php`: continuous queue poller

@@ -105,6 +105,27 @@ function sendJsonResponse(array $payload, int $statusCode = 200): void {
     exit;
 }
 
+function flushJsonResponse(array $payload, int $statusCode = 200): void {
+    http_response_code($statusCode);
+    while (ob_get_level() > 0) {
+        ob_end_clean();
+    }
+
+    if (!isset($payload['success']) && isset($payload['status'])) {
+        $payload['success'] = ($payload['status'] === 'success');
+    }
+
+    $json = json_encode($payload);
+    header('Connection: close');
+    header('Content-Length: ' . strlen((string) $json));
+    echo $json;
+
+    if (function_exists('session_write_close')) {
+        session_write_close();
+    }
+    @flush();
+}
+
 // --------------------------------------------------------------------------
 // Handlers
 // --------------------------------------------------------------------------
@@ -123,13 +144,44 @@ function handleQueueAllocation($conn) {
     }
     check_csrf();
 
+    // ── Stale queued-job cleanup ──────────────────────────────────────────────
+    // A job stuck in 'queued' for > 5 min means the background worker never
+    // started (e.g. popen failed silently under Apache on Windows).
+    // Mark it failed so a fresh job can be created immediately.
+    try {
+        $conn->query(
+            "UPDATE allocation_jobs
+                SET status        = 'failed',
+                    error_message = 'Worker failed to start — job was stuck in queued state. Please retry.',
+                    completed_at  = NOW(),
+                    updated_at    = NOW()
+              WHERE status = 'queued'
+                AND created_at < DATE_SUB(NOW(), INTERVAL 5 MINUTE)"
+        );
+    } catch (Throwable $ignored) { /* table may not exist yet */ }
+
     // Prevent duplicate jobs: if a job is already queued or running, return it.
-    $existing = $conn->query(
-        "SELECT job_id, status, progress_percent, progress_stage
-           FROM allocation_jobs
-          WHERE status IN ('queued','running')
-          ORDER BY created_at DESC LIMIT 1"
-    );
+    try {
+        $existing = $conn->query(
+            "SELECT job_id, status, progress_percent, progress_stage
+               FROM allocation_jobs
+              WHERE status IN ('queued','running')
+              ORDER BY created_at DESC LIMIT 1"
+        );
+    } catch (Throwable $tableErr) {
+        sendJsonResponse([
+            'status'  => 'error',
+            'message' => 'The allocation_jobs table does not exist. Please run the database migrations (sql/run_migrations.php) first.'
+        ], 500);
+        return;
+    }
+    if ($existing === false) {
+        sendJsonResponse([
+            'status'  => 'error',
+            'message' => 'Could not query allocation jobs: ' . $conn->error
+        ], 500);
+        return;
+    }
     if ($existing && $existing->num_rows > 0) {
         $row = $existing->fetch_assoc();
         sendJsonResponse([
@@ -157,40 +209,118 @@ function handleQueueAllocation($conn) {
     log_admin_action($conn, $admin_id, "Queued allocation job #$job_id");
 
     // Fire the worker in the background (non-blocking).
-    dispatchWorker($job_id);
+    $dispatch = dispatchWorker($job_id);
+    $shouldInlineFallback = false;
+    if (!($dispatch['launched'] ?? false)) {
+        $shouldInlineFallback = true;
+    }
 
-    sendJsonResponse([
+    usleep(750000);
+    $warning = null;
+    $statusStmt = $conn->prepare(
+        "SELECT status, error_message
+           FROM allocation_jobs
+          WHERE job_id = ?
+          LIMIT 1"
+    );
+    if ($statusStmt) {
+        $statusStmt->bind_param('i', $job_id);
+        $statusStmt->execute();
+        $statusRow = $statusStmt->get_result()->fetch_assoc();
+        $statusStmt->close();
+        if (($statusRow['status'] ?? 'queued') === 'failed') {
+            sendJsonResponse([
+                'status'  => 'error',
+                'message' => $statusRow['error_message'] ?: 'The worker exited before processing the job.'
+            ], 500);
+            return;
+        }
+        if (($statusRow['status'] ?? 'queued') === 'queued') {
+            $warning = 'Background worker launch did not claim the job quickly; continuing with inline server-side processing.';
+            $shouldInlineFallback = true;
+        }
+    }
+
+    $response = [
         'status'  => 'queued',
         'job_id'  => $job_id,
-        'message' => 'Allocation job queued and worker started.'
-    ]);
+        'message' => 'Allocation job queued and worker started.',
+        'warning' => $warning
+    ];
+
+    if ($shouldInlineFallback) {
+        flushJsonResponse($response);
+        if (!defined('FAIRMED_WORKER_LIBRARY_MODE')) {
+            define('FAIRMED_WORKER_LIBRARY_MODE', true);
+        }
+        require_once dirname(__DIR__) . '/worker_allocation.php';
+        runWorkerJobInline($conn, $job_id);
+        exit;
+    }
+
+    sendJsonResponse($response);
 }
 
 /**
  * Launch worker_allocation.php as a background process.
  * Uses proc_open so the HTTP response is NOT held open.
  */
-function dispatchWorker(int $job_id): void {
+function dispatchWorker(int $job_id): array {
     $php   = resolvePhpCliBinary();
     $script = dirname(__DIR__) . DIRECTORY_SEPARATOR . 'worker_allocation.php';
 
     if (!file_exists($script)) {
-        Logger::error("dispatchWorker: worker script not found at $script");
-        return;
+        $message = "Worker script not found at $script";
+        Logger::error("dispatchWorker: $message");
+        return ['launched' => false, 'message' => $message];
     }
 
     if (DIRECTORY_SEPARATOR === '\\') {
-        // Windows: launch explicitly through cmd.exe so the shell built-in
-        // `start` works reliably under Apache/mod_php as well as CLI.
-        $cmd = 'cmd /c start "" /B ' . escapeshellarg($php) . ' ' . escapeshellarg($script)
-             . ' --job-id=' . $job_id . ' > NUL 2>&1';
-        pclose(popen($cmd, 'r'));
+        // Windows: try proc_open first (more reliable under Apache-as-a-service
+        // than popen + cmd /c start, which can fail when Apache has no console).
+        $cmd = escapeshellarg($php) . ' ' . escapeshellarg($script) . ' --job-id=' . (int)$job_id;
+        $descriptors = [[0 => 'pipe', 'r'], [1 => 'pipe', 'w'], [2 => 'pipe', 'w']];
+        $proc = @proc_open('cmd /c start /B "" ' . $cmd, $descriptors, $pipes);
+        if (is_resource($proc)) {
+            // Close pipe handles so the child is fully detached, then release.
+            foreach ($pipes as $pipe) { fclose($pipe); }
+            proc_close($proc);
+            Logger::info("dispatchWorker: proc_open launched Job #$job_id");
+            return ['launched' => true, 'message' => null];
+        } else {
+            // Fallback: direct popen (works in most CLI + XAMPP Apache configs)
+            $handle = popen('cmd /c start /B "" ' . $cmd . ' > NUL 2>&1', 'r');
+            if ($handle === false) {
+                Logger::error("dispatchWorker: both proc_open and popen failed for Job #$job_id");
+                return [
+                    'launched' => false,
+                    'message' => "Unable to launch the background worker for Job #$job_id. Check that PHP CLI and cmd.exe are available to Apache/XAMPP."
+                ];
+            } else {
+                pclose($handle);
+                Logger::info("dispatchWorker: popen launched Job #$job_id");
+                return ['launched' => true, 'message' => null];
+            }
+        }
     } else {
-        // Linux / macOS
+        // Linux / macOS — redirect stderr to a temp log so launch errors aren't lost
+        $errLog = sys_get_temp_dir() . '/fairmedalloc_worker_' . $job_id . '.err';
         $cmd = escapeshellarg($php) . ' ' . escapeshellarg($script)
-             . ' --job-id=' . (int)$job_id . ' > /dev/null 2>&1 &';
-        exec($cmd);
+             . ' --job-id=' . (int)$job_id
+             . ' > /dev/null 2>' . escapeshellarg($errLog) . ' &';
+        exec($cmd, $out, $rc);
+        if ($rc === 0) {
+            Logger::info("dispatchWorker: exec launched Job #$job_id");
+            return ['launched' => true, 'message' => null];
+        }
+        if ($rc !== 0) {
+            Logger::error("dispatchWorker: exec() returned code $rc for Job #$job_id — command: $cmd");
+        }
     }
+    return [
+        'launched' => false,
+        'message' => "Unable to launch the background worker for Job #$job_id."
+    ];
 }
 
 function resolvePhpCliBinary(): string {

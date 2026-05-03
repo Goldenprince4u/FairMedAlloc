@@ -70,12 +70,17 @@ if ($res) {
 }
 
 // ── Step 3: Collect all SQL files in order ───────────────────────────────────
-$files = glob($migrations_dir . '/*.sql');
+$allFiles = glob($migrations_dir . '/*.sql') ?: [];
+$files = array_values(array_filter(
+    $allFiles,
+    static fn(string $filepath): bool => preg_match('/^\d{8}[A-Za-z0-9_]*\.sql$/', basename($filepath)) === 1
+));
+
 if (!$files) {
-    out("No SQL migration files found in " . $migrations_dir);
+    out("No numbered SQL migration files found in " . $migrations_dir);
     exit(0);
 }
-sort($files); // Chronological sort by filename (relies on YYYYMMDD_ prefix)
+sort($files); // Chronological sort by filename (relies on YYYYMMDD prefix)
 
 // ── Step 4: Apply pending migrations ─────────────────────────────────────────
 $pending = 0;

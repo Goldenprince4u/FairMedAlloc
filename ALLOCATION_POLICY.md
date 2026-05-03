@@ -77,7 +77,7 @@ High-band students receive the strongest clinic-proximal priority.
 
 Rule:
 
-- Prophet Moses Hall Block 1 is High-only and never backfilled.
+- Prophet Moses Hall Block 1 is prioritized for High-urgency but can be backfilled using faculty proximity if empty.
 
 ### Female clinic-proximal space
 
@@ -147,8 +147,7 @@ Hard rule:
 ## Hard Constraints
 
 1. Gender must match the hostel.
-2. Prophet Moses Hall Block 1 is High-only.
-3. Mobility-priority students in Joshua Hall and Deborah Hall must stay on ground floor.
+2. Mobility-priority students in Joshua Hall and Deborah Hall must stay on ground floor.
 
 ## Faculty Mapping
 
@@ -205,4 +204,4 @@ Relevant files:
 - Scoring bridge: `includes/UrgencyScoreService.php`
 - Raw model adapter: `ml_models/predict.py`
 - Solver: `ml_models/allocate.py`
-- PHP fallback allocator: `includes/AllocationEngine.php`
+- OR-Tools-backed allocation engine with emergency PHP fallback: `includes/AllocationEngine.php`

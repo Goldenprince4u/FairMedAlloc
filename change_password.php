@@ -1,11 +1,4 @@
 <?php
-/**
- * change_password.php
- * Unified password update page for students and admins.
- *
- * Used both for voluntary password updates and forced first-login changes
- * after temporary credentials are issued.
- */
 session_start();
 require_once 'db_config.php';
 require_once 'includes/security_helper.php';
@@ -17,10 +10,8 @@ if (!isset($_SESSION['logged_in']) || !isset($_SESSION['user_id'])) {
 
 $user_id = (int)$_SESSION['user_id'];
 $role = $_SESSION['role'] ?? 'student';
-
 $is_required = isset($_GET['required']) && $_GET['required'] === '1';
 
-// Only admins can change passwords voluntarily. Students can only change if forced by an admin reset.
 if ($role !== 'admin' && !$is_required) {
     header("Location: student_dashboard.php");
     exit();
@@ -36,57 +27,64 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $new_pass = $_POST['new_pass'] ?? '';
     $confirm_pass = $_POST['confirm_pass'] ?? '';
 
-    $stmt = $conn->prepare("SELECT password_hash FROM users WHERE user_id = ?");
-    $stmt->bind_param("i", $user_id);
-    $stmt->execute();
-    $user_row = $stmt->get_result()->fetch_assoc();
-
-    if (!$user_row || !password_verify($current_pass, $user_row['password_hash'])) {
-        $message = "Current password is incorrect.";
-        $msg_type = 'error';
-    } elseif ($new_pass !== $confirm_pass) {
-        $message = "New passwords do not match.";
-        $msg_type = 'error';
-    } elseif (
-        strlen($new_pass) < 8 ||
-        !preg_match('/[A-Z]/', $new_pass) ||
-        !preg_match('/[a-z]/', $new_pass) ||
-        !preg_match('/[0-9]/', $new_pass)
-    ) {
-        $message = "Password must be 8+ characters and include uppercase, lowercase, and a number.";
+    $stmt = DbHelper::prepare($conn, "SELECT password_hash FROM users WHERE user_id = ?", 'change password lookup');
+    if (!$stmt) {
+        $message = "Password update is temporarily unavailable. Please try again shortly.";
         $msg_type = 'error';
     } else {
-        $new_hash = password_hash($new_pass, PASSWORD_DEFAULT);
+        $stmt->bind_param("i", $user_id);
+        $stmt->execute();
+        $user_row = $stmt->get_result()->fetch_assoc();
+        $stmt->close();
 
-        if (FAIRMED_SUPPORTS_MUST_CHANGE_PASSWORD) {
-            $update = $conn->prepare("
-                UPDATE users
-                SET password_hash = ?, must_change_password = 0, login_attempts = 0, lock_until = NULL
-                WHERE user_id = ?
-            ");
+        if (!$user_row || !password_verify($current_pass, $user_row['password_hash'])) {
+            $message = "Current password is incorrect.";
+            $msg_type = 'error';
+        } elseif ($new_pass !== $confirm_pass) {
+            $message = "New passwords do not match.";
+            $msg_type = 'error';
+        } elseif (
+            strlen($new_pass) < 8 ||
+            !preg_match('/[A-Z]/', $new_pass) ||
+            !preg_match('/[a-z]/', $new_pass) ||
+            !preg_match('/[0-9]/', $new_pass)
+        ) {
+            $message = "Password must be 8+ characters and include uppercase, lowercase, and a number.";
+            $msg_type = 'error';
         } else {
-            $update = $conn->prepare("
-                UPDATE users
-                SET password_hash = ?, login_attempts = 0, lock_until = NULL
-                WHERE user_id = ?
-            ");
+            $new_hash = password_hash($new_pass, PASSWORD_DEFAULT);
+            $sql = FAIRMED_SUPPORTS_MUST_CHANGE_PASSWORD
+                ? "UPDATE users SET password_hash = ?, must_change_password = 0, login_attempts = 0, lock_until = NULL WHERE user_id = ?"
+                : "UPDATE users SET password_hash = ?, login_attempts = 0, lock_until = NULL WHERE user_id = ?";
+            $update = DbHelper::prepare($conn, $sql, 'change password update');
+
+            if (!$update) {
+                $message = "Password update is temporarily unavailable. Please try again shortly.";
+                $msg_type = 'error';
+            } else {
+                $update->bind_param("si", $new_hash, $user_id);
+
+                if ($update->execute()) {
+                    $update->close();
+                    $_SESSION['must_change_password'] = false;
+
+                    $delete_tokens = DbHelper::prepare($conn, "DELETE FROM password_resets WHERE user_id = ?", 'change password delete tokens');
+                    if ($delete_tokens) {
+                        $delete_tokens->bind_param("i", $user_id);
+                        $delete_tokens->execute();
+                        $delete_tokens->close();
+                    }
+
+                    $target = $role === 'admin' ? 'admin_dashboard.php' : 'student_dashboard.php';
+                    header("Location: {$target}?password_changed=1");
+                    exit();
+                }
+
+                $update->close();
+                $message = "Unable to update password right now. Please try again.";
+                $msg_type = 'error';
+            }
         }
-        $update->bind_param("si", $new_hash, $user_id);
-
-        if ($update->execute()) {
-            $_SESSION['must_change_password'] = false;
-
-            $delete_tokens = $conn->prepare("DELETE FROM password_resets WHERE user_id = ?");
-            $delete_tokens->bind_param("i", $user_id);
-            $delete_tokens->execute();
-
-            $target = $role === 'admin' ? 'admin_dashboard.php' : 'student_dashboard.php';
-            header("Location: {$target}?password_changed=1");
-            exit();
-        }
-
-        $message = "Unable to update password right now. Please try again.";
-        $msg_type = 'error';
     }
 }
 
@@ -112,7 +110,7 @@ require_once 'includes/header.php';
 
             <?php if ($message): ?>
                 <div class="alert alert-<?php echo $msg_type === 'error' ? 'danger' : 'success'; ?> mb-4 text-center">
-                    <?php echo htmlspecialchars($message); ?>
+                    <?php echo htmlspecialchars($message, ENT_QUOTES, 'UTF-8'); ?>
                 </div>
             <?php endif; ?>
 

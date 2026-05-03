@@ -225,9 +225,7 @@ def placement_bonus(student, room, first_blocks):
         150 000  Medium or Low -> clinic-proximal room (overflow when proximal full)
               0  Any other gender-matching room (last resort)
 
-    Only Prophet Moses Hall Block 1 is hard-excluded for non-High students
-    (enforced as a hard filter in run_ortools, not here).
-    All other rooms — including clinic-proximal — are reachable by any student
+    All rooms — including clinic-proximal — are reachable by any student
     when their preferred halls are at capacity.
     """
     is_high = student_is_high(student)
@@ -242,8 +240,6 @@ def placement_bonus(student, room, first_blocks):
         return 2_200_000
 
     if is_medium and room_in_faculty_proximal_hostel(student, room):
-        if is_primary_male_high_room(room):
-            return 0
         if room_is_medium_male_access_target(student, room):
             return 1_600_000
         if room_is_medium_first_block_ground_floor_target(student, room, first_blocks):
@@ -257,7 +253,7 @@ def placement_bonus(student, room, first_blocks):
 
     # Overflow: Medium or Low student reaching a clinic-proximal room because
     # all faculty-proximal blocks are full. Preferred over any other room.
-    if (is_medium or is_low) and is_clinic_room(room) and not is_primary_male_high_room(room):
+    if (is_medium or is_low) and is_clinic_room(room):
         return 150_000
 
     return 0
@@ -273,8 +269,6 @@ def run_ortools(students, rooms, remaining_cap, first_blocks, rng):
 
     Uses SPARSE variable creation:
       - Variables are only created for gender-compatible pairs.
-      - Variables for Block-1-Prophet-Moses are skipped for non-High students
-        (the only absolute hard exclusion).
       - Mobility-priority students in Joshua/Deborah Hall are restricted to
         floor 0 only (the only two-floor hostels; no elevator, stairs only).
       - All other students may reach any gender-matching room; placement bonuses
@@ -299,9 +293,7 @@ def run_ortools(students, rooms, remaining_cap, first_blocks, rng):
             # Hard filter 1: gender must match
             if gender != room.get('gender', ''):
                 continue
-            # Hard filter 2: Block 1 Prophet Moses only for High males
-            if is_primary_male_high_room(room) and not is_high:
-                continue
+            # Removed Hard filter 2: allow backfill of clinic rooms based on faculty proximity
             # Hard filter 3: Mobility constraint on ground floor for Joshua/Deborah
             if student_has_mobility_priority(student):
                 if room.get('hostel_name', '') in ('Joshua Hall', 'Deborah Hall'):

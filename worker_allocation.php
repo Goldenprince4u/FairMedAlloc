@@ -21,7 +21,7 @@
  *  - Graceful shutdown: honours a $shuttingDown flag (set via SIGTERM on Linux).
  */
 
-if (php_sapi_name() !== 'cli') {
+if (!defined('FAIRMED_WORKER_LIBRARY_MODE') && php_sapi_name() !== 'cli') {
     http_response_code(403);
     die("This script must be run from the command line only.\n");
 }
@@ -32,10 +32,11 @@ const LOCK_WAIT_SECONDS  = 1;    // how long GET_LOCK waits before giving up
 const STALE_JOB_MINUTES  = 20;   // "running" jobs older than this are reset
 const PROGRESS_FLUSH_SEC = 3;    // minimum seconds between DB progress writes
 const RETRY_DELAY_SEC    = 10;   // seconds to wait before a retry attempt
+const JOB_CANCELLED_EXCEPTION = '__FAIRMED_JOB_CANCELLED__';
 
 // ── Bootstrap ─────────────────────────────────────────────────────────────────
 require_once __DIR__ . '/db_config.php';
-require_once __DIR__ . '/includes/Logger.php';
+// Note: db_config.php already pulls in includes/Logger.php and includes/DbHelper.php
 require_once __DIR__ . '/includes/AllocationEngine.php';
 
 // ── DB connection validation (Issue #6 fix) ───────────────────────────────────
@@ -54,6 +55,7 @@ try {
 }
 
 // ── Parse CLI arguments ───────────────────────────────────────────────────────
+if (!defined('FAIRMED_WORKER_LIBRARY_MODE')) {
 $opts       = getopt('', ['job-id:']);
 $forced_job = isset($opts['job-id']) ? (int)$opts['job-id'] : null;
 
@@ -68,6 +70,7 @@ if (function_exists('pcntl_signal')) {
 
 // ── Main ──────────────────────────────────────────────────────────────────────
 main($conn, $forced_job, $shuttingDown);
+}
 
 // =============================================================================
 // Functions
@@ -106,6 +109,30 @@ function main(mysqli $conn, ?int $forced_job, bool &$shuttingDown): void
             Logger::info('Worker: graceful shutdown complete.');
             exit(0);
         }
+    }
+}
+
+function runWorkerJobInline(mysqli $conn, int $job_id): void
+{
+    resetStaleRunningJobs($conn);
+
+    if (!acquireWorkerLock($conn)) {
+        Logger::warning("Worker: inline fallback could not acquire GET_LOCK for Job #$job_id.");
+        return;
+    }
+
+    try {
+        $job = getJobById($conn, $job_id);
+        if (!$job) {
+            Logger::warning("Worker: inline fallback could not find Job #$job_id.");
+            return;
+        }
+
+        Logger::info("Worker: inline fallback processing Job #{$job['job_id']}.");
+        processAllocationJob($conn, $job);
+    } finally {
+        releaseWorkerLock($conn);
+        Logger::info('Worker: inline fallback lock released.');
     }
 }
 
@@ -188,126 +215,183 @@ function resetStaleRunningJobs(mysqli $conn): void
 function processAllocationJob(mysqli $conn, array $job): void
 {
     $job_id     = (int)$job['job_id'];
-    $retryCount = (int)($job['retry_count'] ?? 0);
+    $retryCount = max(0, (int)($job['retry_count'] ?? 0));
     $maxRetries = (int)($job['max_retries'] ?? 3);
 
-    // Mark as started (prepared statement)
+    while (true) {
+        markJobRunning($conn, $job_id);
+
+        try {
+            $engine = new AllocationEngine($conn);
+            $engine->setJobId($job_id);  // enables total_students tracking in the DB
+
+            // Rate-limited progress callback (Issue #4: already uses prepared statements)
+            $lastFlush = 0;
+            $progressCallback = function (array $progress) use ($conn, $job_id, &$lastFlush): void {
+                $now = time();
+                if ($now - $lastFlush < PROGRESS_FLUSH_SEC) {
+                    return;
+                }
+                $lastFlush = $now;
+
+                $stage   = (string)($progress['stage']   ?? '');
+                $percent = max(0, min(100, (int)($progress['percent'] ?? 0)));
+
+                // Check if an administrator cancelled this job mid-run
+                $cancelCheck = $conn->prepare(
+                    "SELECT status FROM allocation_jobs WHERE job_id = ? LIMIT 1"
+                );
+                if ($cancelCheck) {
+                    $cancelCheck->bind_param('i', $job_id);
+                    $cancelCheck->execute();
+                    $checkRow = $cancelCheck->get_result()->fetch_assoc();
+                    $cancelCheck->close();
+                    if (($checkRow['status'] ?? '') === 'cancelled') {
+                        throw new RuntimeException(JOB_CANCELLED_EXCEPTION);
+                    }
+                }
+
+                $stmt = $conn->prepare(
+                    "UPDATE allocation_jobs
+                        SET progress_stage   = ?,
+                            progress_percent = ?,
+                            status           = 'running',
+                            updated_at       = NOW()
+                      WHERE job_id = ?"
+                );
+                if (!$stmt) {
+                    return;
+                }
+                $stmt->bind_param('sii', $stage, $percent, $job_id);
+                $stmt->execute();
+                $stmt->close();
+            };
+
+            $result    = $engine->run(null, $progressCallback);
+            $status    = $result['status'] ?? 'error';
+            $allocated = (int)($result['allocated'] ?? 0);
+            $total     = (int)($result['total']     ?? 0);
+
+            $resultJson = json_encode([
+                'status'          => $status,
+                'allocated'       => $allocated,
+                'total'           => $total,
+                'solver_mode'     => $result['solver_mode']     ?? 'unknown',
+                'solver_status'   => $result['solver_status']   ?? 'unknown',
+                'prediction_mode' => $result['prediction_mode'] ?? 'unknown',
+                'message'         => $result['message']         ?? '',
+                'optimal'         => $result['optimal']         ?? false,
+            ]);
+
+            if ($status === 'success') {
+                $stmt = $conn->prepare(
+                    "UPDATE allocation_jobs
+                        SET status             = 'completed',
+                            progress_stage     = 'Completed',
+                            progress_percent   = 100,
+                            allocated_students = ?,
+                            total_students     = ?,
+                            result_data        = ?,
+                            completed_at       = NOW(),
+                            updated_at         = NOW()
+                      WHERE job_id = ?"
+                );
+                $stmt->bind_param('iisi', $allocated, $total, $resultJson, $job_id);
+                $stmt->execute();
+                $stmt->close();
+                Logger::info("Worker: Job #$job_id completed — $allocated/$total students allocated.");
+                return;
+            }
+
+            $errorMsg = $result['message'] ?? 'Engine returned non-success status.';
+            if (!retryJobOrFail($conn, $job_id, $retryCount, $maxRetries, $errorMsg, $resultJson)) {
+                return;
+            }
+            $retryCount++;
+
+        } catch (Throwable $e) {
+            if ($e instanceof RuntimeException && $e->getMessage() === JOB_CANCELLED_EXCEPTION) {
+                markJobCancelled($conn, $job_id);
+                Logger::info("Worker: Job #$job_id was cancelled by administrator.");
+                return;
+            }
+
+            Logger::error("Worker: Job #$job_id threw exception — " . $e->getMessage());
+            $errorMsg = substr(
+                $e->getMessage() . ' (' . basename($e->getFile()) . ':' . $e->getLine() . ')',
+                0, 500
+            );
+            if (!retryJobOrFail($conn, $job_id, $retryCount, $maxRetries, $errorMsg, null)) {
+                return;
+            }
+            $retryCount++;
+        }
+    }
+}
+
+/**
+ * Mark a job as running while preserving its first started_at timestamp.
+ */
+function markJobRunning(mysqli $conn, int $job_id): void
+{
     $startStmt = $conn->prepare(
         "UPDATE allocation_jobs
             SET status           = 'running',
-                started_at       = NOW(),
+                started_at       = COALESCE(started_at, NOW()),
+                completed_at     = NULL,
                 progress_stage   = 'Initializing',
                 progress_percent = 5,
                 updated_at       = NOW()
           WHERE job_id = ?"
     );
+    if (!$startStmt) {
+        throw new RuntimeException('Could not prepare start statement: ' . $conn->error);
+    }
     $startStmt->bind_param('i', $job_id);
     $startStmt->execute();
     $startStmt->close();
+}
 
-    try {
-        $engine = new AllocationEngine($conn);
-        $engine->setJobId($job_id);  // enables total_students tracking in the DB
-
-        // Rate-limited progress callback (Issue #4: already uses prepared statements)
-        $lastFlush = 0;
-        $progressCallback = function (array $progress) use ($conn, $job_id, &$lastFlush): void {
-            $now = time();
-            if ($now - $lastFlush < PROGRESS_FLUSH_SEC) {
-                return;
-            }
-            $lastFlush = $now;
-
-            $stage   = (string)($progress['stage']   ?? '');
-            $percent = max(0, min(100, (int)($progress['percent'] ?? 0)));
-
-            $stmt = $conn->prepare(
-                "UPDATE allocation_jobs
-                    SET progress_stage   = ?,
-                        progress_percent = ?,
-                        status           = 'running',
-                        updated_at       = NOW()
-                  WHERE job_id = ?"
-            );
-            if (!$stmt) return;
-            $stmt->bind_param('sii', $stage, $percent, $job_id);
-            $stmt->execute();
-            $stmt->close();
-        };
-
-        $result    = $engine->run(null, $progressCallback);
-        $status    = $result['status'] ?? 'error';
-        $allocated = (int)($result['allocated'] ?? 0);
-        $total     = (int)($result['total']     ?? 0);
-
-        $resultJson = json_encode([
-            'status'          => $status,
-            'allocated'       => $allocated,
-            'total'           => $total,
-            'solver_mode'     => $result['solver_mode']     ?? 'unknown',
-            'solver_status'   => $result['solver_status']   ?? 'unknown',
-            'prediction_mode' => $result['prediction_mode'] ?? 'unknown',
-            'message'         => $result['message']         ?? '',
-            'optimal'         => $result['optimal']         ?? false,
-        ]);
-
-        if ($status === 'success') {
-            $stmt = $conn->prepare(
-                "UPDATE allocation_jobs
-                    SET status             = 'completed',
-                        progress_stage     = 'Completed',
-                        progress_percent   = 100,
-                        allocated_students = ?,
-                        total_students     = ?,
-                        result_data        = ?,
-                        completed_at       = NOW(),
-                        updated_at         = NOW()
-                  WHERE job_id = ?"
-            );
-            $stmt->bind_param('iisi', $allocated, $total, $resultJson, $job_id);
-            $stmt->execute();
-            $stmt->close();
-            Logger::info("Worker: Job #$job_id completed — $allocated/$total students allocated.");
-
-        } else {
-            // Engine returned non-success — schedule retry or mark failed
-            $errorMsg = $result['message'] ?? 'Engine returned non-success status.';
-            scheduleRetryOrFail($conn, $job_id, $retryCount, $maxRetries, $errorMsg, $resultJson);
-        }
-
-    } catch (Throwable $e) {
-        Logger::error("Worker: Job #$job_id threw exception — " . $e->getMessage());
-        $errorMsg = substr(
-            $e->getMessage() . ' (' . basename($e->getFile()) . ':' . $e->getLine() . ')',
-            0, 500
-        );
-        scheduleRetryOrFail($conn, $job_id, $retryCount, $maxRetries, $errorMsg, null);
+function markJobCancelled(mysqli $conn, int $job_id): void
+{
+    $stmt = $conn->prepare(
+        "UPDATE allocation_jobs
+            SET status        = 'cancelled',
+                completed_at  = COALESCE(completed_at, NOW()),
+                updated_at    = NOW(),
+                error_message = 'Cancelled by administrator'
+          WHERE job_id = ?"
+    );
+    if (!$stmt) {
+        return;
     }
+    $stmt->bind_param('i', $job_id);
+    $stmt->execute();
+    $stmt->close();
 }
 
 /**
- * Issue #9: Retry with exponential backoff.
- * Re-queues the job if retries remain, otherwise marks it as failed.
+ * Retry inside the same worker process so a one-off worker launched from the
+ * admin UI can finish its own retry cycle without depending on worker_launcher.
+ * Returns true when another attempt should be made after backoff.
  */
-function scheduleRetryOrFail(
+function retryJobOrFail(
     mysqli $conn,
     int    $job_id,
     int    $retryCount,
     int    $maxRetries,
     string $errorMsg,
     ?string $resultJson
-): void {
+): bool {
     $newRetryCount = $retryCount + 1;
 
     if ($newRetryCount <= $maxRetries) {
         $delaySec = RETRY_DELAY_SEC * (2 ** ($newRetryCount - 1)); // exponential backoff
         Logger::warning("Worker: Job #$job_id failed (attempt $newRetryCount/$maxRetries). Retrying in {$delaySec}s.");
 
-        sleep($delaySec);
-
         $stmt = $conn->prepare(
             "UPDATE allocation_jobs
-                SET status           = 'queued',
+                SET status           = 'running',
                     retry_count      = ?,
                     progress_stage   = ?,
                     progress_percent = 0,
@@ -315,10 +399,12 @@ function scheduleRetryOrFail(
                     updated_at       = NOW()
               WHERE job_id = ?"
         );
-        $stage = "Retry $newRetryCount/$maxRetries";
+        $stage = "Retry $newRetryCount/$maxRetries in {$delaySec}s";
         $stmt->bind_param('issi', $newRetryCount, $stage, $errorMsg, $job_id);
         $stmt->execute();
         $stmt->close();
+        sleep($delaySec);
+        return true;
 
     } else {
         Logger::error("Worker: Job #$job_id permanently failed after $maxRetries retries — $errorMsg");
@@ -335,5 +421,6 @@ function scheduleRetryOrFail(
         $stmt->bind_param('ssi', $errorMsg, $resultJson, $job_id);
         $stmt->execute();
         $stmt->close();
+        return false;
     }
 }

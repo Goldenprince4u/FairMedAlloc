@@ -1,8 +1,4 @@
 <?php
-/**
- * admin_reset_password.php
- * Admin-issued temporary password reset.
- */
 session_start();
 
 if (!isset($_SESSION['logged_in']) || ($_SESSION['role'] ?? '') !== 'admin') {
@@ -40,63 +36,74 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $msg = 'Enter the account username or matric number.';
         $msg_type = 'error';
     } else {
-        $lookup = $conn->prepare("SELECT user_id, username, full_name, role FROM users WHERE username = ? LIMIT 1");
-        $lookup->bind_param("s", $username);
-        $lookup->execute();
-        $user = $lookup->get_result()->fetch_assoc();
+        $lookup = DbHelper::prepare(
+            $conn,
+            "SELECT user_id, username, full_name, role FROM users WHERE username = ? LIMIT 1",
+            'admin reset lookup'
+        );
 
-        if (!$user) {
-            $msg = 'No account matched that username or matric number.';
+        if (!$lookup) {
+            $msg = 'Password reset is temporarily unavailable. Please try again shortly.';
             $msg_type = 'error';
         } else {
-            $issued_password = $provided_password !== '' ? $provided_password : generate_temporary_password();
+            $lookup->bind_param("s", $username);
+            $lookup->execute();
+            $user = $lookup->get_result()->fetch_assoc();
+            $lookup->close();
 
-            if (strlen($issued_password) < 8) {
-                $msg = 'Temporary password must be at least 8 characters long.';
+            if (!$user) {
+                $msg = 'No account matched that username or matric number.';
                 $msg_type = 'error';
             } else {
-                $password_hash = password_hash($issued_password, PASSWORD_DEFAULT);
-                $target_account = $user['username'];
+                $issued_password = $provided_password !== '' ? $provided_password : generate_temporary_password();
 
-                $conn->begin_transaction();
-
-                try {
-                    if (FAIRMED_SUPPORTS_MUST_CHANGE_PASSWORD) {
-                        $reset_stmt = $conn->prepare("
-                            UPDATE users
-                            SET password_hash = ?, must_change_password = 1, login_attempts = 0, lock_until = NULL
-                            WHERE user_id = ?
-                        ");
-                    } else {
-                        $reset_stmt = $conn->prepare("
-                            UPDATE users
-                            SET password_hash = ?, login_attempts = 0, lock_until = NULL
-                            WHERE user_id = ?
-                        ");
-                    }
-                    $reset_stmt->bind_param("si", $password_hash, $user['user_id']);
-                    $reset_stmt->execute();
-
-                    $delete_tokens = $conn->prepare("DELETE FROM password_resets WHERE user_id = ?");
-                    $delete_tokens->bind_param("i", $user['user_id']);
-                    $delete_tokens->execute();
-
-                    log_admin_action(
-                        $conn,
-                        (int)$_SESSION['user_id'],
-                        "Issued temporary password reset for {$user['role']} account {$user['username']}"
-                    );
-
-                    $conn->commit();
-
-                    $msg = "Temporary password issued for {$user['full_name']} ({$user['username']}). Share it securely; the user will be required to change it after signing in.";
-                    $msg_type = 'success';
-                } catch (Throwable $e) {
-                    $conn->rollback();
-                    $issued_password = '';
-                    $target_account = '';
-                    $msg = 'Unable to reset that account right now. Please try again.';
+                if (strlen($issued_password) < 8) {
+                    $msg = 'Temporary password must be at least 8 characters long.';
                     $msg_type = 'error';
+                } else {
+                    $password_hash = password_hash($issued_password, PASSWORD_DEFAULT);
+                    $target_account = $user['username'];
+                    $sql = FAIRMED_SUPPORTS_MUST_CHANGE_PASSWORD
+                        ? "UPDATE users SET password_hash = ?, must_change_password = 1, login_attempts = 0, lock_until = NULL WHERE user_id = ?"
+                        : "UPDATE users SET password_hash = ?, login_attempts = 0, lock_until = NULL WHERE user_id = ?";
+
+                    $conn->begin_transaction();
+
+                    try {
+                        $reset_stmt = DbHelper::prepare($conn, $sql, 'admin reset update');
+                        if (!$reset_stmt) {
+                            throw new RuntimeException('Unable to prepare the password reset.');
+                        }
+                        $reset_stmt->bind_param("si", $password_hash, $user['user_id']);
+                        $reset_stmt->execute();
+                        $reset_stmt->close();
+
+                        $delete_tokens = DbHelper::prepare($conn, "DELETE FROM password_resets WHERE user_id = ?", 'admin reset delete tokens');
+                        if (!$delete_tokens) {
+                            throw new RuntimeException('Unable to clear existing reset tokens.');
+                        }
+                        $delete_tokens->bind_param("i", $user['user_id']);
+                        $delete_tokens->execute();
+                        $delete_tokens->close();
+
+                        log_admin_action(
+                            $conn,
+                            (int)$_SESSION['user_id'],
+                            "Issued temporary password reset for {$user['role']} account {$user['username']}"
+                        );
+
+                        $conn->commit();
+
+                        $msg = "Temporary password issued for {$user['full_name']} ({$user['username']}). Share it securely; the user will be required to change it after signing in.";
+                        $msg_type = 'success';
+                    } catch (Throwable $e) {
+                        $conn->rollback();
+                        error_log('[FairMedAlloc] Admin reset password failed: ' . $e->getMessage());
+                        $issued_password = '';
+                        $target_account = '';
+                        $msg = 'Unable to reset that account right now. Please try again.';
+                        $msg_type = 'error';
+                    }
                 }
             }
         }
@@ -124,7 +131,7 @@ require_once 'includes/header.php';
         <?php if ($msg): ?>
             <div class="alert alert-<?php echo $msg_type === 'error' ? 'danger' : 'success'; ?> mb-6">
                 <i class="fa-solid <?php echo $msg_type === 'error' ? 'fa-circle-exclamation' : 'fa-key'; ?>"></i>
-                <?php echo htmlspecialchars($msg); ?>
+                <?php echo htmlspecialchars($msg, ENT_QUOTES, 'UTF-8'); ?>
             </div>
         <?php endif; ?>
 
@@ -145,7 +152,7 @@ require_once 'includes/header.php';
                             name="username"
                             class="input-auth"
                             placeholder="RUN/CMP/22/001 or admin_username"
-                            value="<?php echo htmlspecialchars($_POST['username'] ?? ''); ?>"
+                            value="<?php echo htmlspecialchars($_POST['username'] ?? '', ENT_QUOTES, 'UTF-8'); ?>"
                             required
                         >
                     </div>
@@ -194,10 +201,10 @@ require_once 'includes/header.php';
                     <div class="card" style="padding:1.75rem;border:1px solid rgba(37,99,235,0.2);">
                         <h3 style="font-size:1rem;margin-bottom:0.75rem;">Issued Password</h3>
                         <div class="text-xs text-muted mb-2">Account</div>
-                        <div class="fw-700 text-head mb-4"><?php echo htmlspecialchars($target_account); ?></div>
+                        <div class="fw-700 text-head mb-4"><?php echo htmlspecialchars($target_account, ENT_QUOTES, 'UTF-8'); ?></div>
                         <div class="text-xs text-muted mb-2">Temporary Password</div>
                         <div style="font-family:var(--font-mono, monospace);font-size:1.05rem;font-weight:700;padding:0.875rem 1rem;border-radius:10px;background:var(--c-bg-subtle);border:1px dashed var(--c-border);">
-                            <?php echo htmlspecialchars($issued_password); ?>
+                            <?php echo htmlspecialchars($issued_password, ENT_QUOTES, 'UTF-8'); ?>
                         </div>
                     </div>
                 <?php endif; ?>

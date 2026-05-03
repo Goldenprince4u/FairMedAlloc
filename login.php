@@ -1,83 +1,106 @@
 <?php
-/**
- * login.php — Student Login Portal
- * Security: CSRF, bcrypt, brute-force lockout, role guard.
- */
 session_start();
 require_once 'db_config.php';
 require_once 'includes/security_helper.php';
 
 $error = '';
 if (isset($_GET['error']) && $_GET['error'] === 'profile_missing') {
-    $error = "Profile data incomplete. Please log in again to sync.";
+    $error = 'Profile data incomplete. Please log in again to sync.';
 }
 
-if ($_SERVER["REQUEST_METHOD"] === "POST") {
+if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     check_csrf();
-    $username = trim($_POST['username']);
-    $password = trim($_POST['password']);
-    $generic_login_error = "Unable to sign in right now. Check your credentials or try again later.";
+
+    $username = trim($_POST['username'] ?? '');
+    $password = trim($_POST['password'] ?? '');
+    $generic_login_error = 'Unable to sign in right now. Check your credentials or try again later.';
     $must_change_select = FAIRMED_SUPPORTS_MUST_CHANGE_PASSWORD ? ', must_change_password' : ', 0 AS must_change_password';
 
-    $stmt = $conn->prepare("SELECT user_id, username, password_hash, role, login_attempts, lock_until, profile_pic, full_name{$must_change_select} FROM users WHERE username = ?");
-    $stmt->bind_param("s", $username);
-    $stmt->execute();
-    $res = $stmt->get_result();
+    $lookupSql = "SELECT user_id, username, password_hash, role, login_attempts, lock_until, profile_pic, full_name{$must_change_select} FROM users WHERE username = ?";
+    $stmt = DbHelper::prepare($conn, $lookupSql, 'student login lookup');
 
-    if ($res->num_rows === 1) {
-        $user = $res->fetch_assoc();
-        if ($user['lock_until'] && strtotime($user['lock_until']) > time()) {
-            $error = $generic_login_error;
-        } else {
-            if (password_verify($password, $user['password_hash'])) {
-                if ($user['role'] !== 'student') {
-                    $error = $generic_login_error;
-                } else {
-                    $reset_stmt = $conn->prepare("UPDATE users SET login_attempts = 0, lock_until = NULL, last_login = NOW() WHERE user_id = ?");
-                    $reset_stmt->bind_param("i", $user['user_id']);
-                    $reset_stmt->execute();
-                    session_regenerate_id(true);
-                    $_SESSION['logged_in']   = true;
-                    $_SESSION['user_id']     = $user['user_id'];
-                    $_SESSION['role']        = $user['role'];
-                    $_SESSION['username']    = $user['username'];
-                    $_SESSION['profile_pic'] = $user['profile_pic'] ?? 'default.png';
-                    $_SESSION['full_name']   = $user['full_name'] ?? $user['username'];
-                    $_SESSION['must_change_password'] = !empty($user['must_change_password']);
-                    $target = $_SESSION['must_change_password'] ? 'change_password.php?required=1' : 'student_dashboard.php';
-                    header("Location: {$target}");
-                    exit();
-                }
-            } else {
-                $attempts = $user['login_attempts'] + 1;
-                if ($attempts >= 5) {
-                    $lock_stmt = $conn->prepare("UPDATE users SET login_attempts = ?, lock_until = DATE_ADD(NOW(), INTERVAL 15 MINUTE) WHERE user_id = ?");
-                    $lock_stmt->bind_param("ii", $attempts, $user['user_id']);
-                    $lock_stmt->execute();
-                    $error = $generic_login_error;
-                } else {
-                    $inc_stmt = $conn->prepare("UPDATE users SET login_attempts = ? WHERE user_id = ?");
-                    $inc_stmt->bind_param("ii", $attempts, $user['user_id']);
-                    $inc_stmt->execute();
-                    $error = $generic_login_error;
-                }
-            }
-        }
+    if (!$stmt) {
+        $error = 'Sign-in is temporarily unavailable. Please try again shortly.';
     } else {
-        $error = $generic_login_error;
+        $stmt->bind_param('s', $username);
+        $stmt->execute();
+        $res = $stmt->get_result();
+
+        if ($res->num_rows === 1) {
+            $user = $res->fetch_assoc();
+
+            if ($user['lock_until'] && strtotime($user['lock_until']) > time()) {
+                $error = $generic_login_error;
+            } elseif (!password_verify($password, $user['password_hash'])) {
+                $attempts = (int)$user['login_attempts'] + 1;
+
+                if ($attempts >= 5) {
+                    $lockStmt = DbHelper::prepare(
+                        $conn,
+                        'UPDATE users SET login_attempts = ?, lock_until = DATE_ADD(NOW(), INTERVAL 15 MINUTE) WHERE user_id = ?',
+                        'student login lockout'
+                    );
+                    if ($lockStmt) {
+                        $lockStmt->bind_param('ii', $attempts, $user['user_id']);
+                        $lockStmt->execute();
+                        $lockStmt->close();
+                    }
+                } else {
+                    $incrementStmt = DbHelper::prepare(
+                        $conn,
+                        'UPDATE users SET login_attempts = ? WHERE user_id = ?',
+                        'student login attempt increment'
+                    );
+                    if ($incrementStmt) {
+                        $incrementStmt->bind_param('ii', $attempts, $user['user_id']);
+                        $incrementStmt->execute();
+                        $incrementStmt->close();
+                    }
+                }
+
+                $error = $generic_login_error;
+            } elseif (($user['role'] ?? '') !== 'student') {
+                $error = $generic_login_error;
+            } else {
+                $resetStmt = DbHelper::prepare(
+                    $conn,
+                    'UPDATE users SET login_attempts = 0, lock_until = NULL, last_login = NOW() WHERE user_id = ?',
+                    'student login success reset'
+                );
+                if ($resetStmt) {
+                    $resetStmt->bind_param('i', $user['user_id']);
+                    $resetStmt->execute();
+                    $resetStmt->close();
+                }
+
+                session_regenerate_id(true);
+                $_SESSION['logged_in'] = true;
+                $_SESSION['user_id'] = $user['user_id'];
+                $_SESSION['role'] = $user['role'];
+                $_SESSION['username'] = $user['username'];
+                $_SESSION['profile_pic'] = $user['profile_pic'] ?? 'default.png';
+                $_SESSION['full_name'] = $user['full_name'] ?? $user['username'];
+                $_SESSION['must_change_password'] = !empty($user['must_change_password']);
+
+                $target = $_SESSION['must_change_password'] ? 'change_password.php?required=1' : 'student_dashboard.php';
+                header("Location: {$target}");
+                exit();
+            }
+        } else {
+            $error = $generic_login_error;
+        }
+
+        $stmt->close();
     }
 }
 
-$page_title = "Student Login | FairMedAlloc";
+$page_title = 'Student Login | FairMedAlloc';
 require_once 'includes/header.php';
 ?>
 
 <div class="auth-container">
-
-    <!-- ── Left: Brand Panel ── -->
     <div class="auth-left">
         <div class="brand-content">
-
             <img src="assets/logo.jpeg"
                  alt="Redeemer's University Logo"
                  style="width:72px;height:72px;border-radius:50%;object-fit:cover;margin-bottom:1.5rem;border:3px solid rgba(201,168,76,0.5);">
@@ -101,28 +124,21 @@ require_once 'includes/header.php';
         </div>
     </div>
 
-    <!-- ── Right: Form Panel ── -->
     <div class="auth-right">
         <div class="auth-box animate-fade-in">
-
-            <!-- Header -->
             <div class="mb-8">
                 <span class="badge badge-primary mb-4" style="font-size:0.68rem;letter-spacing:0.1em;">STUDENT PORTAL</span>
                 <h2 style="font-size:1.75rem;margin-bottom:0.35rem;color:var(--c-text-head);">Welcome Back</h2>
                 <p class="text-muted" style="font-size:0.9rem;">Enter your credentials to access the system.</p>
             </div>
 
-
-
-            <!-- Error -->
             <?php if ($error): ?>
                 <div class="alert alert-danger mb-4">
                     <i class="fa-solid fa-circle-exclamation"></i>
-                    <?php echo htmlspecialchars($error); ?>
+                    <?php echo htmlspecialchars($error, ENT_QUOTES, 'UTF-8'); ?>
                 </div>
             <?php endif; ?>
 
-            <!-- Login Form -->
             <form method="post" id="login-form">
                 <?php csrf_field(); ?>
 
@@ -161,11 +177,12 @@ require_once 'includes/header.php';
 
                 <script>
                 function togglePasswordVisibility() {
-                    const pw   = document.getElementById('login-password');
+                    const pw = document.getElementById('login-password');
                     const icon = document.getElementById('togglePassword');
                     const isHidden = pw.type === 'password';
+
                     pw.type = isHidden ? 'text' : 'password';
-                    icon.classList.toggle('fa-eye',      !isHidden);
+                    icon.classList.toggle('fa-eye', !isHidden);
                     icon.classList.toggle('fa-eye-slash', isHidden);
                 }
                 </script>
@@ -183,11 +200,9 @@ require_once 'includes/header.php';
                     Administrator? <a href="admin_login.php" class="text-primary fw-700">Admin Login &rarr;</a>
                 </div>
             </form>
-
         </div>
     </div>
 </div>
 
 </body>
 </html>
-
