@@ -1,9 +1,11 @@
 <?php
 /**
- * Allocation Engine
- * =================
- * Core logic for assigning students to hostels based on fairness constraints.
- * Includes performance monitoring to identify slow queries and bottlenecks.
+ * Allocation Engine (The Orchestrator)
+ * ====================================
+ * This is the PHP brain of the system. It handles talking to the database, 
+ * pushing student data to the Python AI/Graph Matcher, and ultimately writing 
+ * the assignments back to the database. It also enforces the strict Lower Bunk (LB) 
+ * rules for disabled students.
  */
 require_once __DIR__ . '/DbHelper.php';
 require_once __DIR__ . '/PerformanceMonitor.php';

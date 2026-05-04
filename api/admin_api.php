@@ -1,10 +1,10 @@
 <?php
 /**
- * Admin API Controller
- * ====================
- * Unified endpoint for administrative API actions.
- * Acts as a router directing AJAX requests to specific handler functions.
- * Expected Usage via GET parameter: ?action=run_algorithm | manual_assign | get_rooms | analytics
+ * Admin API Controller (The Traffic Cop)
+ * ======================================
+ * I built this to handle all the async AJAX requests from the admin dashboard.
+ * It's basically a massive switch statement that routes actions like queuing up 
+ * Min-Cost Flow algorithms, fetching chart data, or manually overriding beds.
  */
 session_start();
 require_once '../db_config.php';

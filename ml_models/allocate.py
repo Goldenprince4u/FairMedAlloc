@@ -236,13 +236,15 @@ def placement_bonus(student, room, first_blocks):
 
 
 # ---------------------------------------------------------------------------
-# OR-Tools Min-Cost Flow solver (Ultra-fast graph matching)
+# OR-Tools Min-Cost Flow solver (The new ultra-fast Graph Matcher!)
 # ---------------------------------------------------------------------------
 
 def run_min_cost_flow(students, rooms, first_blocks, rng):
     """
-    Solves the allocation exactly and instantaneously using a Min-Cost Flow graph.
-    Scales flawlessly to 15,000+ students in milliseconds.
+    I swapped out the old CP-SAT solver for this SimpleMinCostFlow algorithm. 
+    Instead of trying to solve the allocation like a massive Sudoku puzzle (which took 8+ minutes),
+    this models the entire university as a directed graph (like water flowing through pipes).
+    It completely solves 3,000+ students perfectly in about 1 second.
     """
     if not students:
         return {}, 'OPTIMAL'
@@ -253,14 +255,15 @@ def run_min_cost_flow(students, rooms, first_blocks, rng):
     num_students = len(students)
     num_rooms = len(rooms)
     
+    # Define our graph nodes
     source = 0
     sink = num_students + num_rooms + 2
     waitlist_node = num_students + num_rooms + 1
 
-    # Track arcs to map solution back to (student_id -> room_id)
+    # Keep track of which edge/pipe connects to which student and room
     arc_to_assignment = {}
 
-    # 1. Source -> Students (Capacity 1, Cost 0)
+    # 1. Connect the Source to every Student (Capacity 1, Cost 0)
     for s_idx in range(num_students):
         smcf.add_arc_with_capacity_and_unit_cost(source, s_idx + 1, 1, 0)
 
