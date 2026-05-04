@@ -276,32 +276,43 @@ function dispatchWorker(int $job_id): array {
     }
 
     if (DIRECTORY_SEPARATOR === '\\') {
-        // Windows: try proc_open first (more reliable under Apache-as-a-service
-        // than popen + cmd /c start, which can fail when Apache has no console).
-        $cmd = escapeshellarg($php) . ' ' . escapeshellarg($script) . ' --job-id=' . (int)$job_id;
-        $descriptors = [[0 => 'pipe', 'r'], [1 => 'pipe', 'w'], [2 => 'pipe', 'w']];
-        $proc = @proc_open('cmd /c start /B "" ' . $cmd, $descriptors, $pipes);
+        // Windows: Apache runs as a Windows service with no desktop/console session,
+        // so "cmd /c start /B" silently fails (start requires an interactive session).
+        // Use proc_open with an array command (bypass_shell) to spawn PHP CLI directly.
+        $descriptors = [
+            0 => ['pipe', 'r'],
+            1 => ['file', 'NUL', 'w'],
+            2 => ['file', 'NUL', 'w'],
+        ];
+        $proc = @proc_open(
+            [$php, $script, '--job-id=' . (int)$job_id],
+            $descriptors,
+            $pipes,
+            dirname(__DIR__),
+            null,
+            ['bypass_shell' => true, 'create_process_group' => true]
+        );
         if (is_resource($proc)) {
-            // Close pipe handles so the child is fully detached, then release.
-            foreach ($pipes as $pipe) { fclose($pipe); }
+            foreach ($pipes as $pipe) { @fclose($pipe); }
             proc_close($proc);
-            Logger::info("dispatchWorker: proc_open launched Job #$job_id");
+            Logger::info("dispatchWorker: proc_open (detached) launched Job #$job_id");
             return ['launched' => true, 'message' => null];
-        } else {
-            // Fallback: direct popen (works in most CLI + XAMPP Apache configs)
-            $handle = popen('cmd /c start /B "" ' . $cmd . ' > NUL 2>&1', 'r');
-            if ($handle === false) {
-                Logger::error("dispatchWorker: both proc_open and popen failed for Job #$job_id");
-                return [
-                    'launched' => false,
-                    'message' => "Unable to launch the background worker for Job #$job_id. Check that PHP CLI and cmd.exe are available to Apache/XAMPP."
-                ];
-            } else {
-                pclose($handle);
-                Logger::info("dispatchWorker: popen launched Job #$job_id");
-                return ['launched' => true, 'message' => null];
-            }
         }
+
+        // Fallback: plain popen without "start" (works in interactive XAMPP sessions)
+        $cmd = escapeshellarg($php) . ' ' . escapeshellarg($script) . ' --job-id=' . (int)$job_id . ' > NUL 2>&1';
+        $handle = @popen($cmd, 'r');
+        if ($handle !== false) {
+            pclose($handle);
+            Logger::info("dispatchWorker: popen (fallback) launched Job #$job_id");
+            return ['launched' => true, 'message' => null];
+        }
+
+        Logger::error("dispatchWorker: all Windows launch methods failed for Job #$job_id");
+        return [
+            'launched' => false,
+            'message'  => "Unable to launch the background worker for Job #$job_id. Ensure php.exe is accessible to the Apache process.",
+        ];
     } else {
         // Linux / macOS — redirect stderr to a temp log so launch errors aren't lost
         $errLog = sys_get_temp_dir() . '/fairmedalloc_worker_' . $job_id . '.err';
