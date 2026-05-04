@@ -322,12 +322,33 @@ class AllocationEngine {
                     $room_id = $assignments[$student_id];
                     $room = &$rooms_data[$room_id];
                     
+                    $is_mobility_issue = false;
+                    $mobility_val = strtolower(trim($student['mobility'] ?? ''));
+                    if ($mobility_val !== '' && $mobility_val !== 'normal mobility' && $mobility_val !== 'none') {
+                        $is_mobility_issue = true;
+                    }
+
                     $slot_index = -1;
                     $config_count = count($room['config_arr']);
-                    for ($i = 0; $i < $config_count; $i++) {
-                        if (!in_array($i, $room['occupied_indices'], true)) {
-                            $slot_index = $i;
-                            break;
+
+                    if ($is_mobility_issue) {
+                        for ($i = 0; $i < $config_count; $i++) {
+                            if (!in_array($i, $room['occupied_indices'], true)) {
+                                $label = $room['config_arr'][$i] ?? 'LB';
+                                if (trim($label) === 'LB') {
+                                    $slot_index = $i;
+                                    break;
+                                }
+                            }
+                        }
+                    }
+
+                    if ($slot_index === -1) {
+                        for ($i = 0; $i < $config_count; $i++) {
+                            if (!in_array($i, $room['occupied_indices'], true)) {
+                                $slot_index = $i;
+                                break;
+                            }
                         }
                     }
 

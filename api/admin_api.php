@@ -709,11 +709,18 @@ function handleManualAssign($conn) {
             $dec_stmt->execute();
         }
 
+        $is_mobility_issue = false;
+        $mobility_val = strtolower(trim($student['mobility'] ?? ($student['mobility_status'] ?? '')));
+        if ($mobility_val !== '' && $mobility_val !== 'normal mobility' && $mobility_val !== 'none') {
+            $is_mobility_issue = true;
+        }
+
         $bed = determineAvailableBedForManualAllocation(
             $conn,
             $room_id,
             (int)$target_room['capacity'],
-            $target_room['bed_config'] ?? ''
+            $target_room['bed_config'] ?? '',
+            $is_mobility_issue
         );
         if ($bed === null) {
             throw new Exception('The selected room is already full.');
@@ -889,7 +896,7 @@ function fetchExistingAllocationForManualAllocation($conn, int $student_id): ?ar
     return $row ?: null;
 }
 
-function determineAvailableBedForManualAllocation($conn, int $room_id, int $capacity, string $bed_config): ?array {
+function determineAvailableBedForManualAllocation($conn, int $room_id, int $capacity, string $bed_config, bool $is_mobility_issue = false): ?array {
     $config_arr = [];
     if ($bed_config !== '') {
         $config_arr = array_map('trim', explode(',', $bed_config));
@@ -910,6 +917,20 @@ function determineAvailableBedForManualAllocation($conn, int $room_id, int $capa
             $ord = ord($bed_space);
             if ($ord >= 65 && $ord <= 90) {
                 $occupied_indices[] = $ord - 65;
+            }
+        }
+    }
+
+    if ($is_mobility_issue) {
+        for ($i = 0; $i < $capacity; $i++) {
+            if (!in_array($i, $occupied_indices, true)) {
+                $label = $config_arr[$i] ?? 'LB';
+                if (trim($label) === 'LB') {
+                    return [
+                        'bed_space' => chr(65 + $i),
+                        'bed_label' => $label
+                    ];
+                }
             }
         }
     }
