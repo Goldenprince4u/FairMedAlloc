@@ -32,3 +32,6 @@ fairmedalloc_export.sql
 
 # Scratch / one-off test scripts
 scratch/
+
+.venv_solver/
+
