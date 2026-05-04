@@ -383,14 +383,31 @@ class AllocationEngine {
 
             // Execute Bulk Inserts
             if (!empty($bulk_allocations)) {
-                $insert_cols = $has_algorithm_version_col ? 
-                    "(student_id, room_id, bed_space, bed_label, academic_session, allocation_method, algorithm_version)" : 
+                $insert_cols = $has_algorithm_version_col ?
+                    "(student_id, room_id, bed_space, bed_label, academic_session, allocation_method, algorithm_version)" :
                     "(student_id, room_id, bed_space, bed_label, academic_session, allocation_method)";
-                
-                foreach (array_chunk($bulk_allocations, 1000) as $chunk) {
-                    $this->conn->query("INSERT INTO allocations $insert_cols VALUES " . implode(',', $chunk));
+
+                foreach (array_chunk($bulk_allocations, 500) as $chunk) {
+                    $rows = [];
+                    foreach ($chunk as $a) {
+                        $bs  = $this->conn->real_escape_string($a['bed_space']);
+                        $bl  = $this->conn->real_escape_string($a['bed_label']);
+                        $ses = $this->conn->real_escape_string($a['academic_session']);
+                        $am  = $this->conn->real_escape_string($a['allocation_method']);
+                        if ($has_algorithm_version_col) {
+                            $av  = $this->conn->real_escape_string($a['algorithm_version']);
+                            $rows[] = "({$a['student_id']},{$a['room_id']},'$bs','$bl','$ses','$am','$av')";
+                        } else {
+                            $rows[] = "({$a['student_id']},{$a['room_id']},'$bs','$bl','$ses','$am')";
+                        }
+                    }
+                    $ok = $this->conn->query("INSERT INTO allocations $insert_cols VALUES " . implode(',', $rows));
+                    if (!$ok) {
+                        throw new Exception('Bulk allocation insert failed: ' . $this->conn->error);
+                    }
                 }
             }
+
             if (!empty($bulk_profiles)) {
                 foreach (array_chunk($bulk_profiles, 1000) as $chunk) {
                     $ids = implode(',', $chunk);

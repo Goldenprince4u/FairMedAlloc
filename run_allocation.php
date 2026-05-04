@@ -476,40 +476,41 @@ require_once 'includes/header.php';
     /* ── Cancel Job ────────────────────────────────────────────────────────────── */
 
     async function cancelCurrentJob() {
-        if (!_currentJobId) return;
         const csrf = getCSRF();
         const logEl = document.getElementById('console');
         const cancelBtn = document.getElementById('cancel-job-btn');
 
         if (!csrf) { logLine(logEl, 'Security token missing. Reload page.', 'var(--c-danger)'); return; }
-        if (!confirm(`Cancel allocation Job #${_currentJobId}? This cannot be undone.`)) return;
+        if (!confirm('Cancel the current allocation job? This will stop the process and release all locks.')) return;
 
         if (cancelBtn) { cancelBtn.disabled = true; cancelBtn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Cancelling…'; }
 
         try {
+            const body = new URLSearchParams({ csrf_token: csrf });
+            if (_currentJobId) body.append('job_id', _currentJobId);
+
             const resp = await fetch('api/admin_api.php?action=cancel_job', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-                body: new URLSearchParams({ csrf_token: csrf, job_id: _currentJobId }),
+                body,
             });
             const data = await parseApiJson(resp);
 
-            if (data.status === 'success') {
-                clearTimeout(_pollTimer);
-                stopElapsedTimer();
-                setJobBadge('cancelled');
-                updateProgressBar('Cancelled', 0);
-                logLine(logEl, `&#9940; ${data.message}`, '#b0b0b0');
-                resetButtons();
-            } else {
-                logLine(logEl, `&#10007; Could not cancel: ${data.message}`, 'var(--c-danger)');
-                if (cancelBtn) { cancelBtn.disabled = false; cancelBtn.innerHTML = '<i class="fa-solid fa-xmark"></i> Cancel Job'; }
-            }
+            // Both success and "no jobs found" are treated as success — both release locks
+            clearTimeout(_pollTimer);
+            stopElapsedTimer();
+            setJobBadge('cancelled');
+            updateProgressBar('Cancelled', 0);
+            logLine(logEl, `&#9940; ${data.message}`, '#b0b0b0');
+            logLine(logEl, '<span style="opacity:0.6;">You can now start a new allocation run.</span>');
+            resetButtons();
+            if (cancelBtn) cancelBtn.style.display = 'none';
         } catch (err) {
             logLine(logEl, `&#10007; Network error: ${err.message}`, 'var(--c-danger)');
             if (cancelBtn) { cancelBtn.disabled = false; cancelBtn.innerHTML = '<i class="fa-solid fa-xmark"></i> Cancel Job'; }
         }
     }
+
 
     function renderCompletionResult(logEl, data) {
         const res = data.result ?? {};

@@ -481,7 +481,10 @@ function handleWorkerHealth($conn) {
  * Issue #18: Cancel a queued or running job.
  * Only queued jobs can be safely cancelled immediately.
  * Running jobs are marked cancelled — the worker honours it on next progress flush.
- * POST /api/admin_api.php?action=cancel_job  {job_id: X, csrf_token: Y}
+ * POST /api/admin_api.php?action=cancel_job  {csrf_token: Y}          (job_id optional)
+ *
+ * Cancels ALL queued/running allocation jobs immediately and releases all
+ * processing locks so a fresh job can be queued straight away.
  */
 function handleCancelJob($conn) {
     if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
@@ -490,43 +493,58 @@ function handleCancelJob($conn) {
     }
     check_csrf();
 
-    $job_id = (int)($_POST['job_id'] ?? 0);
-    if ($job_id <= 0) {
-        sendJsonResponse(['status' => 'error', 'message' => 'Invalid job_id'], 400);
-        return;
+    $job_id = isset($_POST['job_id']) ? (int)$_POST['job_id'] : 0;
+
+    // Cancel all active jobs (or a specific one if job_id provided)
+    if ($job_id > 0) {
+        $sql    = "UPDATE allocation_jobs
+                      SET status        = 'cancelled',
+                          completed_at  = COALESCE(completed_at, NOW()),
+                          updated_at    = NOW(),
+                          error_message = 'Cancelled by administrator'
+                    WHERE job_id = ?
+                      AND status IN ('queued', 'running')";
+        $stmt = $conn->prepare($sql);
+        $stmt->bind_param('i', $job_id);
+        $stmt->execute();
+        $affected = $stmt->affected_rows;
+        $stmt->close();
+    } else {
+        // No specific job_id — cancel everything active
+        $conn->query(
+            "UPDATE allocation_jobs
+                SET status        = 'cancelled',
+                    completed_at  = COALESCE(completed_at, NOW()),
+                    updated_at    = NOW(),
+                    error_message = 'Cancelled by administrator'
+              WHERE status IN ('queued', 'running')"
+        );
+        $affected = $conn->affected_rows;
     }
 
-    // Only allow cancelling jobs that are queued or running
-    $stmt = $conn->prepare(
-        "UPDATE allocation_jobs
-            SET status        = 'cancelled',
-                completed_at  = NOW(),
-                updated_at    = NOW(),
-                error_message = 'Cancelled by administrator'
-          WHERE job_id = ?
-            AND status IN ('queued', 'running')"
-    );
-    $stmt->bind_param('i', $job_id);
-    $stmt->execute();
-    $affected = $stmt->affected_rows;
-    $stmt->close();
+    // Always release the admin processing lock so a new job can start immediately
+    releaseProcessingLock($conn, 'admin_processing_lock');
 
-    if ($affected === 0) {
+    // Release MySQL worker GET_LOCK in case the background worker is still holding it
+    $conn->query("SELECT RELEASE_LOCK('fairmedalloc_allocation_worker')");
+
+    $admin_id = (int)$_SESSION['user_id'];
+    if ($affected > 0) {
+        log_admin_action($conn, $admin_id, $job_id > 0 ? "Cancelled allocation job #$job_id" : "Cancelled all active allocation jobs");
+        Logger::info("Admin cancelled " . ($job_id > 0 ? "Job #$job_id" : "all active jobs") . " and released all locks.");
         sendJsonResponse([
-            'status'  => 'error',
-            'message' => 'Job not found or already in a terminal state (completed/failed/cancelled).'
-        ], 404);
-        return;
+            'status'  => 'success',
+            'message' => $affected . ' job(s) cancelled. You can now start a new allocation.',
+        ]);
+    } else {
+        // Even if no jobs were found, still release locks — idempotent clean-up
+        sendJsonResponse([
+            'status'  => 'success',
+            'message' => 'No active jobs found. Locks released — ready to start a new allocation.',
+        ]);
     }
-
-    log_admin_action($conn, (int)$_SESSION['user_id'], "Cancelled allocation job #$job_id");
-    Logger::info("Admin cancelled Job #$job_id");
-
-    sendJsonResponse([
-        'status'  => 'success',
-        'message' => "Job #$job_id has been cancelled."
-    ]);
 }
+
 
 /**
  * Invokes the core Allocation Engine to process mathematical hostel placements.
