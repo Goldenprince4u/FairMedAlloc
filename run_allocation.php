@@ -224,7 +224,7 @@ require_once 'includes/header.php';
                 </div>
 
                 <div id="console"
-                    style="font-size:0.78rem;font-family:monospace;line-height:1.85;color:rgba(255,255,255,0.7);margin-top:1rem;">
+                    style="font-size:0.78rem;font-family:monospace;line-height:1.85;color:rgba(255,255,255,0.7);margin-top:1rem;max-height:350px;overflow-y:auto;padding-right:0.5rem;scrollbar-width:thin;scrollbar-color:rgba(255,255,255,0.2) transparent;">
                     <div style="opacity:0.4;">Waiting to start&hellip;</div>
                 </div>
             </div>
@@ -277,7 +277,12 @@ require_once 'includes/header.php';
         if (_elapsedInterval) { clearInterval(_elapsedInterval); _elapsedInterval = null; }
     }
 
+    let _lastLogMsg = '';
     function logLine(logEl, msg, color) {
+        // Prevent printing the exact same message back-to-back
+        if (msg === _lastLogMsg) return;
+        _lastLogMsg = msg;
+
         const now = new Date().toLocaleTimeString('en-GB', { hour12: false });
         const div = document.createElement('div');
         div.style.marginBottom = '0.4rem';
