@@ -200,7 +200,7 @@ class AllocationEngine {
             $rooms_csv_file = sys_get_temp_dir() . DIRECTORY_SEPARATOR . 'fairmed_rooms_' . uniqid() . '.csv';
             $output_csv_file = sys_get_temp_dir() . DIRECTORY_SEPARATOR . 'fairmed_output_' . uniqid() . '.csv';
 
-            $solver_mode = 'OR-Tools CP-SAT';
+            $solver_mode = 'OR-Tools Min-Cost Flow';
             $solver_status = 'OPTIMAL';
 
             try {
@@ -450,7 +450,7 @@ class AllocationEngine {
                 'prediction_mode' => $prediction_mode,
                 'solver_mode' => $solver_mode,
                 'solver_status' => $solver_status,
-                'optimal' => $solver_mode === 'OR-Tools CP-SAT' && $solver_status === 'OPTIMAL'
+                'optimal' => $solver_status === 'OPTIMAL'
             ];
 
         } catch (Throwable $e) {
