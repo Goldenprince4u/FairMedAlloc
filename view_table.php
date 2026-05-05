@@ -28,6 +28,76 @@ if ($threshold_result) {
 }
 $high_urgency_threshold = $high_urgency_threshold ?? 75;
 
+// --- SEARCH AND FILTER LOGIC ---
+$search = isset($_GET['search']) ? trim($_GET['search']) : '';
+$search_cond = "1=1";
+$search_params = [];
+$search_types = "";
+
+if ($search !== '') {
+    $search_cond = "(u.full_name LIKE ? OR u.username LIKE ? OR h.name LIKE ?)";
+    $like = "%{$search}%";
+    $search_params = [$like, $like, $like];
+    $search_types = "sss";
+}
+
+$base_joins = "
+    FROM student_profiles p 
+    JOIN users u ON p.user_id = u.user_id 
+    JOIN departments d ON p.department_id = d.department_id
+    JOIN faculties f ON d.faculty_id = f.faculty_id
+    LEFT JOIN medical_records m ON p.user_id = m.student_id 
+    LEFT JOIN allocations a ON p.user_id = a.student_id 
+    LEFT JOIN rooms r ON a.room_id = r.room_id 
+    LEFT JOIN hostels h ON r.hostel_id = h.hostel_id
+";
+
+// --- CSV EXPORT ---
+if (isset($_GET['export']) && $_GET['export'] === 'csv') {
+    $export_sql = "SELECT p.user_id, u.full_name, u.username AS matric_no, p.level,
+        d.name as department, f.name as faculty, p.gender,
+        m.urgency_score, m.condition_category, m.mobility_status, m.severity_level,
+        h.name as hostel_name, h.block_name, r.room_number, u.email
+        $base_joins WHERE $search_cond ORDER BY m.urgency_score DESC, u.username ASC";
+        
+    $stmt = $conn->prepare($export_sql);
+    if ($search !== '') {
+        $stmt->bind_param($search_types, ...$search_params);
+    }
+    $stmt->execute();
+    $res = $stmt->get_result();
+
+    header('Content-Type: text/csv; charset=utf-8');
+    header('Content-Disposition: attachment; filename=fairmedalloc_students_' . date('Ymd_His') . '.csv');
+    $output = fopen('php://output', 'w');
+    
+    fputcsv($output, ['Matric Number', 'Full Name', 'Gender', 'Faculty', 'Department', 'Level', 'Condition Category', 'Severity Level', 'Mobility Status', 'Urgency Score', 'Allocation Status', 'Hostel', 'Block', 'Room']);
+    
+    while ($row = $res->fetch_assoc()) {
+        $status = $row['hostel_name'] ? 'Allocated' : 'Pending';
+        fputcsv($output, [
+            $row['matric_no'],
+            $row['full_name'],
+            $row['gender'],
+            $row['faculty'],
+            $row['department'],
+            $row['level'],
+            $row['condition_category'] ?? 'None',
+            $row['severity_level'] ?? 'None',
+            $row['mobility_status'] ?? 'None',
+            number_format((float)($row['urgency_score'] ?? 0), 2),
+            $status,
+            $row['hostel_name'] ?? 'N/A',
+            $row['block_name'] ?? 'N/A',
+            $row['room_number'] ?? 'N/A'
+        ]);
+    }
+    fclose($output);
+    exit();
+}
+// --- END CSV EXPORT ---
+
+
 // Pagination Setup
 $page = isset($_GET['page']) ? (int)$_GET['page'] : 1;
 $limit = 50;

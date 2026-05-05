@@ -23,24 +23,9 @@ document.addEventListener('DOMContentLoaded', () => {
         ) {
             closeAssignModal();
         }
-
-        if (e.target.closest('#exportBtn')) {
-            exportTableToCSV('allocation_matrix.csv');
-        }
     });
 
-    const searchInput = document.getElementById('searchInput');
-    if (searchInput) {
-        searchInput.addEventListener('input', filterTable);
-        const saved = sessionStorage.getItem('matrixSearch');
-        if (saved) {
-            searchInput.value = saved;
-            filterTable();
-        }
-        searchInput.addEventListener('input', () => {
-            sessionStorage.setItem('matrixSearch', searchInput.value);
-        });
-    }
+    // Search and export are now handled completely server-side via PHP forms.
 
     const hostelSelect = document.getElementById('assignHostel');
     if (hostelSelect) {
@@ -181,46 +166,7 @@ function submitAssignment() {
         });
 }
 
-function filterTable() {
-    const filter = document.getElementById('searchInput').value.toUpperCase().trim();
-    const rows = document.querySelectorAll('table tbody tr');
-
-    rows.forEach((row) => {
-        const text = row.textContent || row.innerText;
-        row.style.display = text.toUpperCase().includes(filter) ? '' : 'none';
-    });
-}
-
-function exportTableToCSV(filename) {
-    const csv = [];
-    const rows = document.querySelectorAll('table tr');
-
-    for (const row of rows) {
-        if (row.style.display === 'none') {
-            continue;
-        }
-
-        const cols = row.querySelectorAll('td, th');
-        const rowData = [];
-        for (let j = 0; j < cols.length - 1; j++) {
-            let cell = cols[j].innerText.replace(/(\r\n|\n|\r)/gm, ' ').trim();
-            cell = cell.replace(/"/g, '""');
-            rowData.push(`"${cell}"`);
-        }
-        if (rowData.length > 0) {
-            csv.push(rowData.join(','));
-        }
-    }
-
-    const blob = new Blob([csv.join('\n')], { type: 'text/csv' });
-    const a = document.createElement('a');
-    a.download = filename;
-    a.href = URL.createObjectURL(blob);
-    a.style.display = 'none';
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-}
+    // Client-side filtering and exporting have been removed in favor of robust server-side processing.
 
 function showToast(message, type = 'info') {
     const existing = document.getElementById('fm-toast');

@@ -303,21 +303,31 @@ def run_min_cost_flow(students, rooms, first_blocks, rng):
         base_score = band_base + int(score * 100)
 
         for r_idx, room in enumerate(rooms):
-            # Hard constraints
+            # ── Hard Constraint 1: Gender matching ───────────────────────────────
             if gender != room.get('gender', ''):
                 continue
-            if student_has_mobility_priority(student):
-                # ANY mobility student MUST be on the ground floor.
-                if str(room.get('floor_level', '-1')) != '0':
-                    continue
-                # If they are NOT High urgency (i.e. they don't need the clinic), 
-                # they are specifically locked to Joshua or Deborah Hall.
-                if not is_high and room.get('hostel_name', '') not in ('Joshua Hall', 'Deborah Hall'):
-                    continue
 
-            # Students with BOTH mobility AND medical conditions must go to clinic proximity
+            # ── Hard Constraint 2: Combined-condition → clinic proximity ONLY ────
+            # Must be checked BEFORE the general mobility constraint because
+            # clinic rooms may be on upper floors and combined-condition students
+            # need to reach them. This constraint supersedes floor restrictions.
             if student_has_combined_mobility_and_medical(student):
                 if not clinic_room_matches_gender(student, room):
+                    continue
+                # Combined-condition students are satisfied here — do NOT apply
+                # the general ground-floor or hostel restriction below.
+
+            # ── Hard Constraint 3: Mobility-only → ground floor of designated halls
+            # Only applies when the student does NOT have a combined condition
+            # (combined-condition students are routed by constraint 2 above).
+            elif student_has_mobility_priority(student):
+                # Must be ground floor
+                if str(room.get('floor_level', '-1')) != '0':
+                    continue
+                # High-urgency mobility-only students can access any gender-matched
+                # ground-floor room (e.g. clinic proximal if it's ground floor).
+                # Non-high mobility students are locked to Joshua/Deborah Hall.
+                if not is_high and room.get('hostel_name', '') not in ('Joshua Hall', 'Deborah Hall'):
                     continue
 
             bonus = placement_bonus(student, room, first_blocks)
