@@ -148,18 +148,20 @@ require_once 'includes/header.php';
 
                 <p class="text-muted" style="font-size:0.875rem;margin-bottom:1rem;">This process will:</p>
                 <ul class="list-instructions">
-                    <li>Fetch eligible students (paid &amp; unallocated) from the database.</li>
-                    <li>Recalculate urgency scores via the configured XGBoost model and policy calibration layer.</li>
-                    <li>Strongly prioritise High urgency students for clinic-proximal space.</li>
-                    <li>Run the OR-Tools CP-SAT solver, with an emergency PHP fallback if Python is unavailable.</li>
-                    <li>Write audit logs and notify each student of the result.</li>
+                    <li>Fetch all <strong>paid &amp; unallocated</strong> students from the database.</li>
+                    <li>Re-score each student's urgency via the <strong>XGBoost model</strong>, then apply the policy calibration layer to enforce band floors (High / Medium / Low).</li>
+                    <li>Feed the scored student and room data to the <strong>OR-Tools Min-Cost Flow solver</strong> (Python) to compute a cost-optimal assignment.</li>
+                    <li>Pass every solver result through the <strong>PHP Safety Inspector</strong>, which enforces: clinic-proximal routing for combined-condition students, Lower Bunk (LB) beds for mobility students, ground-floor placement, and gender separation.</li>
+                    <li>Waitlist students whose accessibility constraints cannot be satisfied (e.g. no LB beds remaining) with a clear notification reason.</li>
+                    <li>Backfill any remaining clinic-proximal capacity with Medium-urgency students using faculty-proximal proximity bonuses.</li>
+                    <li>Write a full <strong>audit log</strong> entry for every allocation decision and persist results in a single database transaction.</li>
                 </ul>
 
                 <div class="alert"
                     style="margin-top:1.25rem;background:rgba(0,120,255,0.08);border:1px solid rgba(91,158,247,0.3);color:#5b9ef7;font-size:0.82rem;padding:0.75rem 1rem;border-radius:8px;">
                     <i class="fa-solid fa-bolt"></i>
-                    <strong>Async mode:</strong> The job runs in the background — you can safely close this tab or
-                    navigate away. The page polls for progress automatically.
+                    <strong>Async mode:</strong> The job is dispatched to a background worker — you can safely close this tab or
+                    navigate away. Progress is polled automatically every few seconds and displayed below.
                 </div>
 
                 <?php if ($is_locked): ?>
