@@ -121,7 +121,7 @@ require_once 'includes/header.php';
 <div class="app-shell">
     <?php require_once 'includes/nav.php'; ?>
 
-    <main class="main-content">
+    <main class="main-content" style="height:calc(100vh - var(--nav-height, 64px));overflow:hidden;display:flex;flex-direction:column;">
 
         <!-- Page Header -->
         <div class="page-header">
@@ -135,10 +135,10 @@ require_once 'includes/header.php';
             </a>
         </div>
 
-        <div class="grid grid-cols-2">
+        <div class="grid grid-cols-2" style="flex:1;overflow:hidden;min-height:0;">
 
             <!-- ── Control Panel ─────────────────────────────────────────── -->
-            <div class="card" style="padding:2rem;">
+            <div class="card" style="padding:2rem;overflow-y:auto;">
                 <div class="form-section-title" style="margin-bottom:1.25rem;">
                     <span class="form-section-icon" style="background:rgba(0,33,71,0.08);color:var(--c-primary);">
                         <i class="fa-solid fa-sliders"></i>
@@ -148,20 +148,18 @@ require_once 'includes/header.php';
 
                 <p class="text-muted" style="font-size:0.875rem;margin-bottom:1rem;">This process will:</p>
                 <ul class="list-instructions">
-                    <li>Fetch all <strong>paid &amp; unallocated</strong> students from the database.</li>
-                    <li>Re-score each student's urgency via the <strong>XGBoost model</strong>, then apply the policy calibration layer to enforce band floors (High / Medium / Low).</li>
-                    <li>Feed the scored student and room data to the <strong>OR-Tools Min-Cost Flow solver</strong> (Python) to compute a cost-optimal assignment.</li>
-                    <li>Pass every solver result through the <strong>PHP Safety Inspector</strong>, which enforces: clinic-proximal routing for combined-condition students, Lower Bunk (LB) beds for mobility students, ground-floor placement, and gender separation.</li>
-                    <li>Waitlist students whose accessibility constraints cannot be satisfied (e.g. no LB beds remaining) with a clear notification reason.</li>
-                    <li>Backfill any remaining clinic-proximal capacity with Medium-urgency students using faculty-proximal proximity bonuses.</li>
-                    <li>Write a full <strong>audit log</strong> entry for every allocation decision and persist results in a single database transaction.</li>
+                    <li>Fetch all <strong>paid and unallocated</strong> students from the database.</li>
+                    <li>Re-score each student's urgency using the <strong>XGBoost model</strong>, then calibrate into High, Medium, or Low priority bands.</li>
+                    <li>Run the <strong>OR-Tools Min-Cost Flow solver</strong> to compute the optimal cost assignment.</li>
+                    <li>Apply the <strong>PHP Safety Inspector</strong> — enforcing clinic-proximal routing, Lower Bunk beds for mobility students, ground-floor placement, and gender separation.</li>
+                    <li>Waitlist students whose constraints can't be met, with a reason. Backfill remaining space with lower-priority students.</li>
+                    <li>Write a full <strong>audit log</strong> and save all results in one database transaction.</li>
                 </ul>
 
                 <div class="alert"
                     style="margin-top:1.25rem;background:rgba(0,120,255,0.08);border:1px solid rgba(91,158,247,0.3);color:#5b9ef7;font-size:0.82rem;padding:0.75rem 1rem;border-radius:8px;">
                     <i class="fa-solid fa-bolt"></i>
-                    <strong>Async mode:</strong> The job is dispatched to a background worker — you can safely close this tab or
-                    navigate away. Progress is polled automatically every few seconds and displayed below.
+                    <strong>Async mode:</strong> The job runs in the background — you can safely close this tab or navigate away. Progress is polled automatically every few seconds.
                 </div>
 
                 <?php if ($is_locked): ?>
@@ -207,15 +205,15 @@ require_once 'includes/header.php';
             </div>
 
             <!-- ── Process Log ─────────────────────────────────────────────── -->
-            <div class="card-console">
+            <div class="card-console" style="display:flex;flex-direction:column;overflow:hidden;">
                 <div
-                    style="font-size:0.875rem;font-weight:700;color:rgba(255,255,255,0.9);margin-bottom:1.25rem;padding-bottom:0.875rem;border-bottom:1px solid rgba(255,255,255,0.1);display:flex;align-items:center;gap:0.5rem;">
+                    style="font-size:0.875rem;font-weight:700;color:rgba(255,255,255,0.9);margin-bottom:1.25rem;padding-bottom:0.875rem;border-bottom:1px solid rgba(255,255,255,0.1);display:flex;align-items:center;gap:0.5rem;flex-shrink:0;">
                     <i class="fa-solid fa-terminal" style="color:var(--c-accent);"></i> Process Log
                     <span id="job-status-badge" style="margin-left:auto;"></span>
                 </div>
 
                 <!-- Progress bar (hidden until job starts) -->
-                <div class="progress-wrap" id="progress-wrap" style="display:none;">
+                <div class="progress-wrap" id="progress-wrap" style="display:none;flex-shrink:0;">
                     <div class="progress-bar-track">
                         <div class="progress-bar-fill" id="progress-fill"></div>
                     </div>
@@ -226,7 +224,7 @@ require_once 'includes/header.php';
                 </div>
 
                 <div id="console"
-                    style="font-size:0.78rem;font-family:monospace;line-height:1.85;color:rgba(255,255,255,0.7);margin-top:1rem;max-height:350px;overflow-y:auto;padding-right:0.5rem;scrollbar-width:thin;scrollbar-color:rgba(255,255,255,0.2) transparent;">
+                    style="font-size:0.78rem;font-family:monospace;line-height:1.85;color:rgba(255,255,255,0.7);margin-top:1rem;flex:1;overflow-y:auto;padding-right:0.5rem;scrollbar-width:thin;scrollbar-color:rgba(255,255,255,0.2) transparent;">
                     <div style="opacity:0.4;">Waiting to start&hellip;</div>
                 </div>
             </div>
