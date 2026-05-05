@@ -84,7 +84,8 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
                     $has_mobility  = ($mobility !== 'Normal Mobility');
 
                     if ($has_condition || $has_mobility) {
-                        $record_condition = $has_condition ? $condition : 'Physical Disability';
+                        // Mobility-only students: condition is 'None' — their need is captured by mobility_status alone.
+                        $record_condition = $has_condition ? $condition : 'None';
                         $details = $has_condition
                             ? "$condition (Self-Reported)"
                             : "Mobility Support Required (Self-Reported)";
@@ -92,7 +93,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
                         $severity = 'Low';
                         if ($has_condition && in_array($condition, ['Sickle Cell Disease', 'Epilepsy', 'Cardiovascular', 'Asthma'], true)) {
                             $severity = 'High';
-                        } elseif ($has_condition && in_array($condition, ['Visual Impairment', 'Physical Disability'], true)) {
+                        } elseif ($has_condition && in_array($condition, ['Visual Impairment'], true)) {
                             $severity = 'Medium';
                         }
 
@@ -283,7 +284,6 @@ require_once 'includes/header.php';
                             <option value="Sickle Cell Disease">Sickle Cell Disease</option>
                             <option value="Cardiovascular">Cardiovascular</option>
                             <option value="Visual Impairment">Visual Impairment</option>
-                            <option value="Physical Disability">Physical Disability</option>
                             <option value="Other">Other</option>
                         </select>
                     </div>

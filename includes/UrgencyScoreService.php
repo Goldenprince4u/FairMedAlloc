@@ -101,7 +101,7 @@ class UrgencyScoreService {
             'Cardiovascular' => 90.0,
             'Neurological' => 70.0,
             'Orthopaedic' => 65.0,
-            'Physical Disability' => 65.0,
+            // 'Physical Disability' removed — this is captured by mobility_status, not condition_category.
             'Visual Impairment' => 60.0,
             'Asthma' => 50.0,
             'Respiratory' => 50.0,

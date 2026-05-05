@@ -278,8 +278,10 @@ def build_pickle_feature_vector(student):
             "Cardiac": "has_cardiac_issue",
             "Cardiovascular": "has_cardiac_issue",
             "Visual Impairment": "has_visual_impairment",
-            "Physical Disability": "has_physical_disability",
-            "Orthopaedic": "has_physical_disability",
+            # 'Physical Disability' and 'Orthopaedic' intentionally excluded:
+            # physical disability is NOT a condition — it is captured by mobility_status.
+            # has_physical_disability will always receive 0 from the condition path;
+            # the mobility_score feature carries the full signal instead.
         }
 
         for condition in split_condition_values(student.get("condition")):
@@ -370,7 +372,7 @@ def calculate_score_fallback(student):
             "Cardiovascular": 90.0,
             "Neurological": 70.0,
             "Orthopaedic": 65.0,
-            "Physical Disability": 65.0,
+            # "Physical Disability" removed — captured by mobility_status, not condition_category.
             "Visual Impairment": 60.0,
             "Asthma": 50.0,
             "Respiratory": 50.0,
