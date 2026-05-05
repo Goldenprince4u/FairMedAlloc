@@ -267,7 +267,10 @@ function processAllocationJob(mysqli $conn, array $job): void
                 $stmt->close();
             };
 
-            $result    = $engine->run(null, $progressCallback);
+            // Pass use_mutex=false — this worker already holds 'fairmedalloc_allocation_worker'
+            // via acquireWorkerLock(). Asking the engine to acquire a second lock on the same
+            // connection would cause a self-deadlock when the inline fallback path is used.
+            $result    = $engine->run(null, $progressCallback, false);
             $status    = $result['status'] ?? 'error';
             $allocated = (int)($result['allocated'] ?? 0);
             $total     = (int)($result['total']     ?? 0);

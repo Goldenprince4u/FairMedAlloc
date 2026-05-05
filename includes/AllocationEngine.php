@@ -57,17 +57,19 @@ class AllocationEngine {
      * @param callable|null $progressCallback Optional callback for progress updates
      *        Called as: $progressCallback(['stage' => str, 'percent' => int])
      */
-    public function run(?int $single_student_id = null, ?callable $progressCallback = null) {
+    public function run(?int $single_student_id = null, ?callable $progressCallback = null, bool $use_mutex = true) {
         $inTransaction = false;
 
         try {
-            // Acquire a mutual exclusion lock to prevent concurrent allocation runs.
-            // GET_LOCK returns 1 if successful, 0 if another job holds the lock.
-            // The timeout of 0 means: don't wait, just fail immediately if locked.
-            $lockResult = $this->conn->query("SELECT GET_LOCK('allocation_run_lock', 0) as got_lock");
-            $lockRow = $lockResult ? $lockResult->fetch_assoc() : null;
-            if (!($lockRow['got_lock'] ?? 0)) {
-                return ['status' => 'error', 'message' => 'Another allocation job is already running. Please wait for it to complete before starting a new one.'];
+            // Acquire a mutual exclusion lock to prevent concurrent direct calls.
+            // When called from the worker (worker_allocation.php), the worker already
+            // holds its own GET_LOCK so we skip this to avoid deadlocking ourselves.
+            if ($use_mutex) {
+                $lockResult = $this->conn->query("SELECT GET_LOCK('allocation_run_lock', 0) as got_lock");
+                $lockRow = $lockResult ? $lockResult->fetch_assoc() : null;
+                if (!($lockRow['got_lock'] ?? 0)) {
+                    return ['status' => 'error', 'message' => 'Another allocation job is already running. Please wait for it to complete before starting a new one.'];
+                }
             }
 
             // 1. Sync Occupancy (Safety Check)
@@ -114,7 +116,9 @@ class AllocationEngine {
             $total_students  = count($students);
 
             if (empty($students)) {
-                $this->conn->commit();
+                if ($use_mutex) {
+                    $this->conn->query("SELECT RELEASE_LOCK('allocation_run_lock')");
+                }
                 return ['status' => 'success', 'allocated' => 0, 'total' => 0];
             }
 
@@ -330,11 +334,15 @@ class AllocationEngine {
             $has_algorithm_version_col = $this->allocationsHasAlgorithmVersion ?? DbHelper::supportsAlgorithmVersion($this->conn);
             $this->allocationsHasAlgorithmVersion = $has_algorithm_version_col;
 
-            $sev_map = ['Low' => 1, 'Medium' => 2, 'High' => 3, 'Critical' => 4];
+            // Severity encoding for audit logs:
+            //   PHP  → 1=Low, 2=Medium, 3=High, 4=Critical
+            //   Python OR-Tools uses 'Low','Medium','High' strings directly from the CSV
+            // The two systems are internally consistent. Critical is treated as High by the solver.
+            $sev_map = ['Low' => 1, 'Medium' => 2, 'High' => 3, 'Critical' => 3];
             foreach ($students as $student) {
                 $student_id  = (int)$student['id'];
                 $final_score = (float)$student['score'];
-                $sev_int = $sev_map[$student['severity']] ?? (int)$student['severity'];
+                $sev_int = $sev_map[$student['severity']] ?? 2; // default Medium if unknown
                 $prox_need  = ($final_score >= $prox_threshold) ? 1 : 0;
 
                 if (isset($assignments[$student_id]) && isset($rooms_data[$assignments[$student_id]])) {
@@ -503,7 +511,9 @@ class AllocationEngine {
             $inTransaction = false;
 
             // Release the mutual exclusion lock now that the transaction is committed
-            $this->conn->query("SELECT RELEASE_LOCK('allocation_run_lock')");
+            if ($use_mutex) {
+                $this->conn->query("SELECT RELEASE_LOCK('allocation_run_lock')");
+            }
 
             $this->updateProgress($progressCallback, 'Allocation complete', 100);
 
@@ -531,8 +541,10 @@ class AllocationEngine {
                     Logger::critical("CRITICAL: Rollback failed during allocation failure recovery. DB may be in inconsistent state: " . $rollbackErr->getMessage());
                 }
             }
-            // Always release the mutex lock, even on failure
-            $this->conn->query("SELECT RELEASE_LOCK('allocation_run_lock')");
+            // Always release the mutex lock on failure (only if we hold it)
+            if ($use_mutex) {
+                $this->conn->query("SELECT RELEASE_LOCK('allocation_run_lock')");
+            }
             Logger::error("Allocation process failed: " . $e->getMessage());
             return [
                 'status' => 'error',
