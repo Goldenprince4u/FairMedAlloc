@@ -61,6 +61,15 @@ class AllocationEngine {
         $inTransaction = false;
 
         try {
+            // Acquire a mutual exclusion lock to prevent concurrent allocation runs.
+            // GET_LOCK returns 1 if successful, 0 if another job holds the lock.
+            // The timeout of 0 means: don't wait, just fail immediately if locked.
+            $lockResult = $this->conn->query("SELECT GET_LOCK('allocation_run_lock', 0) as got_lock");
+            $lockRow = $lockResult ? $lockResult->fetch_assoc() : null;
+            if (!($lockRow['got_lock'] ?? 0)) {
+                return ['status' => 'error', 'message' => 'Another allocation job is already running. Please wait for it to complete before starting a new one.'];
+            }
+
             // 1. Sync Occupancy (Safety Check)
             $this->updateProgress($progressCallback, 'Syncing occupancy', 5);
             $this->syncRoomOccupancy();
@@ -148,6 +157,14 @@ class AllocationEngine {
                 Logger::info("ML service score prediction successful for " . count($batch_payload) . " students");
             } catch (Throwable $e) {
                 Logger::warning("ML service unavailable, falling back to stored urgency scores: " . $e->getMessage());
+                // Log which students are affected so the audit trail captures the fallback mode.
+                $fallback_ids = array_column($students, 'id');
+                Logger::warning(
+                    sprintf("Fallback scoring active for %d students. First 10 IDs: %s",
+                        count($fallback_ids),
+                        implode(', ', array_slice($fallback_ids, 0, 10))
+                    )
+                );
                 // Use stored scores from database - already loaded in $students array
             }
 
@@ -323,6 +340,20 @@ class AllocationEngine {
                 if (isset($assignments[$student_id]) && isset($rooms_data[$assignments[$student_id]])) {
                     $room_id = $assignments[$student_id];
                     $room = &$rooms_data[$room_id];
+
+                    // === POST-SOLVER VALIDATION ===
+                    // Re-verify the OR-Tools output satisfies the combined-condition clinic constraint.
+                    // If the solver routed a combined-condition student to a non-clinic room (e.g. due
+                    // to a future code change or edge case), we skip the student to the waitlist rather
+                    // than blindly committing a bad assignment. This does NOT fail the whole batch.
+                    if ($this->hasCombinedConditions($student) && !$this->isClinicProximityRoom($room_id)) {
+                        Logger::error("Constraint violation: Combined-condition student {$student_id} was routed to non-clinic room {$room_id}. Placing on waitlist.");
+                        $bulk_audit[] = "($student_id, $sev_int, $prox_need, $final_score, 'Constraint Violation', NULL)";
+                        $msg = $this->conn->real_escape_string("Your accommodation request requires a clinic-proximal room. No suitable beds are currently available in the designated blocks. Please contact Student Affairs.");
+                        $bulk_notifications[] = "($student_id, '$msg')";
+                        unset($room);
+                        continue;
+                    }
                     
                     $is_mobility_issue = false;
                     $mobility_val = strtolower(trim($student['mobility'] ?? ''));
@@ -334,18 +365,21 @@ class AllocationEngine {
                     $config_count = count($room['config_arr']);
 
                     if ($is_mobility_issue) {
+                        // Students with mobility conditions cannot use SB or UB (Single/Upper Bunk).
+                        // They cannot climb the ladder to access these beds.
+                        // Prefer LB (Lower Bunk) or other ground-level bed types.
                         for ($i = 0; $i < $config_count; $i++) {
                             if (!in_array($i, $room['occupied_indices'], true)) {
-                                $label = $room['config_arr'][$i] ?? 'LB';
-                                if (trim($label) === 'LB') {
+                                $label = trim($room['config_arr'][$i] ?? 'LB');
+                                // Skip SB and UB for mobility students
+                                if ($label !== 'SB' && $label !== 'UB') {
                                     $slot_index = $i;
                                     break;
                                 }
                             }
                         }
-                    }
-
-                    if ($slot_index === -1) {
+                    } else {
+                        // Standard students can take any available bed
                         for ($i = 0; $i < $config_count; $i++) {
                             if (!in_array($i, $room['occupied_indices'], true)) {
                                 $slot_index = $i;
@@ -392,12 +426,21 @@ class AllocationEngine {
                         $allocated_count++;
                     } else {
                         $bulk_audit[] = "($student_id, $sev_int, $prox_need, $final_score, 'No Bed', NULL)";
-                        $msg = $this->conn->real_escape_string("Update: You have been placed on the waiting list as no suitable rooms are currently available.");
+                        // Give combined-condition students a more specific waitlist message
+                        if ($this->hasCombinedConditions($student)) {
+                            $msg = $this->conn->real_escape_string("Your accommodation requires a clinic-proximal room with an accessible bed. No suitable beds are currently available in the designated blocks. Please contact Student Affairs immediately.");
+                        } else {
+                            $msg = $this->conn->real_escape_string("Update: You have been placed on the waiting list as no suitable rooms are currently available.");
+                        }
                         $bulk_notifications[] = "($student_id, '$msg')";
                     }
                 } else {
                     $bulk_audit[] = "($student_id, $sev_int, $prox_need, $final_score, 'No Bed', NULL)";
-                    $msg = $this->conn->real_escape_string("Update: You have been placed on the waiting list as no suitable rooms are currently available.");
+                    if ($this->hasCombinedConditions($student)) {
+                        $msg = $this->conn->real_escape_string("Your accommodation requires a clinic-proximal room with an accessible bed. No suitable beds are currently available in the designated blocks. Please contact Student Affairs immediately.");
+                    } else {
+                        $msg = $this->conn->real_escape_string("Update: You have been placed on the waiting list as no suitable rooms are currently available.");
+                    }
                     $bulk_notifications[] = "($student_id, '$msg')";
                 }
             }
@@ -459,6 +502,9 @@ class AllocationEngine {
             $this->conn->commit();
             $inTransaction = false;
 
+            // Release the mutual exclusion lock now that the transaction is committed
+            $this->conn->query("SELECT RELEASE_LOCK('allocation_run_lock')");
+
             $this->updateProgress($progressCallback, 'Allocation complete', 100);
 
             // Log allocation completion statistics
@@ -477,11 +523,17 @@ class AllocationEngine {
             ];
 
         } catch (Throwable $e) {
-            // Rollback if anything fails
+            // Rollback if anything fails — also catch rollback errors to prevent hung transactions
             if ($inTransaction) {
-                $this->conn->rollback();
+                try {
+                    $this->conn->rollback();
+                } catch (Throwable $rollbackErr) {
+                    Logger::critical("CRITICAL: Rollback failed during allocation failure recovery. DB may be in inconsistent state: " . $rollbackErr->getMessage());
+                }
             }
-            Logger::error("Allocation process failed", $e);
+            // Always release the mutex lock, even on failure
+            $this->conn->query("SELECT RELEASE_LOCK('allocation_run_lock')");
+            Logger::error("Allocation process failed: " . $e->getMessage());
             return [
                 'status' => 'error',
                 'message' => $e->getMessage()
@@ -572,6 +624,56 @@ class AllocationEngine {
                 $updateStmt->execute();
             }
         }
+    }
+
+    // =========================================================================
+    // Phase 1 Remediation: Post-Solver Validation Helpers
+    // =========================================================================
+
+    /**
+     * Returns true if this student has BOTH a qualifying mobility condition
+     * AND a non-trivial medical severity (Medium or above).
+     * These students are subject to the clinic-proximity hard constraint.
+     */
+    private function hasCombinedConditions(array $student): bool {
+        $mobilityVal = strtolower(trim($student['mobility'] ?? ''));
+        $isMobility  = $mobilityVal !== ''
+                    && $mobilityVal !== 'normal mobility'
+                    && $mobilityVal !== 'none';
+
+        $severity   = strtolower(trim($student['severity'] ?? 'low'));
+        $hasMedical = in_array($severity, ['medium', 'high', 'critical'], true);
+
+        return $isMobility && $hasMedical;
+    }
+
+    /**
+     * Returns true if the given room_id belongs to a clinic-proximal block.
+     *   Male:   Prophet Moses Hall, Blocks 1 or 2
+     *   Female: Queen Esther Extension Hall, Blocks 38 or 39
+     *
+     * This is intentionally a DB lookup (not hardcoded array) so that if the
+     * is_clinic_proximity computed column is added to the schema later, this
+     * query will automatically benefit from it.
+     */
+    private function isClinicProximityRoom(int $room_id): bool {
+        $stmt = $this->conn->prepare("
+            SELECT 1 FROM rooms r
+            JOIN hostels h ON r.hostel_id = h.hostel_id
+            WHERE r.room_id = ?
+              AND (
+                (h.name = 'Prophet Moses Hall'          AND h.block_name IN ('1','2'))
+                OR
+                (h.name = 'Queen Esther Extension Hall' AND h.block_name IN ('38','39'))
+              )
+            LIMIT 1
+        ");
+        if (!$stmt) return false;
+        $stmt->bind_param("i", $room_id);
+        $stmt->execute();
+        $result = $stmt->get_result();
+        $stmt->close();
+        return $result->num_rows > 0;
     }
 
     /**

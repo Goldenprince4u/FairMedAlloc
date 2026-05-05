@@ -115,6 +115,19 @@ def student_has_mobility_priority(student):
     return student.get('mobility', 'Normal Mobility') in MOBILITY_PRIORITY_STATUSES
 
 
+def student_has_medical_condition(student):
+    """Check if student has a medical condition (not 'None' or 'Healthy')."""
+    condition = student.get('severity', 'Low')
+    # Severity > Low indicates a medical condition
+    return condition in {'Medium', 'High', 'Critical'}
+
+
+def student_has_combined_mobility_and_medical(student):
+    """Check if student has BOTH mobility issue AND medical condition.
+    These students should be prioritized for clinic proximity."""
+    return student_has_mobility_priority(student) and student_has_medical_condition(student)
+
+
 def clinic_room_matches_gender(student, room):
     g = student.get('gender', '')
     if g == 'Male':   return is_male_clinic_room(room)
@@ -211,6 +224,11 @@ def placement_bonus(student, room, first_blocks):
     is_low    = student_is_low(student)
     rank      = faculty_proximal_rank(student, room)
 
+    # Special priority: Students with both mobility AND medical condition to clinic proximity
+    # They should have the HIGHEST priority (higher than standard High urgency)
+    if student_has_combined_mobility_and_medical(student) and clinic_room_matches_gender(student, room):
+        return 5_500_000
+
     if is_high and clinic_room_matches_gender(student, room):
         return 5_000_000
 
@@ -289,9 +307,18 @@ def run_min_cost_flow(students, rooms, first_blocks, rng):
             if gender != room.get('gender', ''):
                 continue
             if student_has_mobility_priority(student):
-                if room.get('hostel_name', '') in ('Joshua Hall', 'Deborah Hall'):
-                    if str(room.get('floor_level', '-1')) != '0':
-                        continue
+                # ANY mobility student MUST be on the ground floor.
+                if str(room.get('floor_level', '-1')) != '0':
+                    continue
+                # If they are NOT High urgency (i.e. they don't need the clinic), 
+                # they are specifically locked to Joshua or Deborah Hall.
+                if not is_high and room.get('hostel_name', '') not in ('Joshua Hall', 'Deborah Hall'):
+                    continue
+
+            # Students with BOTH mobility AND medical conditions must go to clinic proximity
+            if student_has_combined_mobility_and_medical(student):
+                if not clinic_room_matches_gender(student, room):
+                    continue
 
             bonus = placement_bonus(student, room, first_blocks)
             weight = base_score + bonus + rng.randint(0, 99)
