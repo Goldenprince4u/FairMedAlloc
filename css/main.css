@@ -1534,8 +1534,11 @@ tr:hover td { background: var(--c-bg-surface-2); }
    RESPONSIVE — Mobile (≤768px)
    ============================================================ */
 @media (max-width: 768px) {
+
+    /* --- Sidebar --- */
     .sidebar {
         transform: translateX(-100%);
+        width: 280px;
     }
 
     .sidebar.open {
@@ -1546,29 +1549,147 @@ tr:hover td { background: var(--c-bg-surface-2); }
     .sidebar-overlay.open { display: block; }
     .sidebar-toggle { display: flex; }
 
+    /* --- Main content --- */
     .main-content {
         margin-left: 0;
-        padding: 4rem 1.25rem 1.5rem;
+        padding: 4.5rem 1rem 2rem;
     }
 
+    /* --- Auth Pages --- */
     .auth-container { flex-direction: column; height: auto; min-height: 100vh; overflow: visible; }
     .auth-left, .auth-right { width: 100%; height: auto; overflow: visible; position: static; }
-    .auth-left { padding: 3rem 2rem 2rem; min-height: auto; }
-    .auth-right { padding: 2rem 1.5rem 3rem; }
+    .auth-left { padding: 2.5rem 1.5rem 2rem; min-height: auto; }
+    .auth-right { padding: 1.5rem 1rem 3rem; }
+    .auth-headline { font-size: 2rem; }
+    .auth-feature-list { display: none; } /* hide checklist on mobile to save space */
+    .brand-border { margin-top: 1rem; }
 
+    /* --- Grid layouts --- */
     .grid-cols-2 { grid-template-columns: 1fr; }
+    .grid-cols-3 { grid-template-columns: 1fr; }
     .grid-cols-4 { grid-template-columns: 1fr; }
     .grid-help   { grid-template-columns: 1fr; }
     .grid-dashboard-custom { grid-template-columns: 1fr; }
+    .grid-profile { grid-template-columns: 1fr; }
 
-    h1 { font-size: 1.75rem; }
-    h2 { font-size: 1.5rem; }
+    /* --- Page header: stack vertically --- */
+    .page-header {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 0.75rem;
+    }
+
+    .page-header-info h1 { font-size: 1.35rem; }
+    .page-header-info p  { font-size: 0.82rem; }
+
+    /* --- Stat cards: side-by-side 2 columns --- */
+    .stats-grid {
+        grid-template-columns: repeat(2, 1fr);
+        gap: 0.75rem;
+    }
+
+    .stat-card {
+        padding: 1rem;
+        gap: 0.75rem;
+    }
+
+    .stat-icon {
+        width: 38px;
+        height: 38px;
+        font-size: 1rem;
+    }
+
+    .stat-info h3 { font-size: 1.35rem; }
+    .stat-info p  { font-size: 0.7rem; }
+
+    /* --- Tables: allow horizontal scrolling --- */
+    .table-container {
+        overflow-x: auto;
+        -webkit-overflow-scrolling: touch;
+    }
+
+    td, th { white-space: nowrap; font-size: 0.82rem; padding: 0.65rem 0.75rem; }
+
+    /* --- Cards --- */
+    .glass-card { padding: 1.25rem; }
+
+    /* --- Profile banner: stack vertically --- */
+    .profile-banner {
+        flex-direction: column;
+        text-align: center;
+        padding: 1.5rem 1rem;
+        gap: 0.75rem;
+    }
+
+    .profile-banner-meta {
+        flex-wrap: wrap;
+        justify-content: center;
+        gap: 0.5rem;
+    }
+
+    /* --- Buttons: full width in forms --- */
+    .btn-mobile-full { width: 100%; justify-content: center; }
+
+    /* --- Modals: full-screen friendly --- */
+    .modal-overlay { align-items: flex-end; }
+
+    .modal-overlay > div,
+    .modal-overlay > .glass-card {
+        width: 100% !important;
+        max-width: 100% !important;
+        border-radius: var(--radius-md) var(--radius-md) 0 0;
+        max-height: 90vh;
+        overflow-y: auto;
+    }
+
+    /* --- Upload zone: tighter padding --- */
+    .upload-zone { padding: 2rem 1rem; }
+
+    /* --- Console card: shorter min-height on mobile --- */
+    .card-console { min-height: 280px; padding: 1.25rem; font-size: 0.8rem; }
+
+    /* --- Hero section --- */
+    .hero { padding: 6rem 1.25rem 3rem; }
+    .hero h1 { font-size: clamp(1.9rem, 8vw, 3rem); }
+    .hero p  { font-size: 1rem; }
+
+    /* --- Nav transparent (landing page) --- */
+    .nav-transparent { padding: 1.25rem; }
+
+    /* --- Typography scale --- */
+    h1 { font-size: 1.6rem; }
+    h2 { font-size: 1.35rem; }
+    h3 { font-size: 1.15rem; }
+
+    /* --- Flex wrapping utility on mobile --- */
+    .flex-mobile-col { flex-direction: column; }
 }
 
+/* ============================================================
+   RESPONSIVE — Small Mobile (≤640px)
+   ============================================================ */
 @media (max-width: 640px) {
-    .hide-mobile { display: none; }
-    .main-content { padding: 4.5rem 1rem 1rem; }
-    .grid-cols-3 { grid-template-columns: 1fr; }
+    .hide-mobile { display: none !important; }
+
+    .main-content { padding: 4.5rem 0.875rem 1.5rem; }
+
+    /* Stat cards: single column on very small screens */
+    .stats-grid { grid-template-columns: 1fr; }
+
+    /* Page header actions: full width */
+    .page-header .btn { width: 100%; justify-content: center; }
+
+    /* Auth box: full padding reduction */
+    .auth-right { padding: 1.25rem 0.875rem 2rem; }
+
+    /* Table text even smaller */
+    td, th { font-size: 0.78rem; padding: 0.5rem 0.625rem; }
+
+    /* Glass card tighter */
+    .glass-card { padding: 1rem; }
+
+    h1 { font-size: 1.4rem; }
+    h2 { font-size: 1.2rem; }
 }
 
 /* (theme-toggle-btn defined above) */
