@@ -28,6 +28,7 @@ try {
                 total_students, allocated_students, result_data, error_message,
                 created_at, started_at, completed_at
            FROM allocation_jobs
+          WHERE job_type = 'allocation'
           ORDER BY created_at DESC LIMIT 1"
     );
     if ($jq && $jq->num_rows > 0) {

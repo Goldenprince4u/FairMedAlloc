@@ -164,7 +164,7 @@ function handleQueueAllocation($conn) {
     // Prevent duplicate jobs: if a job is already queued or running, return it.
     try {
         $existing = $conn->query(
-            "SELECT job_id, status, progress_percent, progress_stage
+            "SELECT job_id, job_type, status, progress_percent, progress_stage
                FROM allocation_jobs
               WHERE status IN ('queued','running')
               ORDER BY created_at DESC LIMIT 1"
@@ -185,11 +185,14 @@ function handleQueueAllocation($conn) {
     }
     if ($existing && $existing->num_rows > 0) {
         $row = $existing->fetch_assoc();
+        $jobType = (string)($row['job_type'] ?? 'allocation');
+        $jobLabel = $jobType === 'csv_import' ? 'data import' : 'allocation';
         sendJsonResponse([
             'status'   => 'queued',
             'job_id'   => (int)$row['job_id'],
-            'message'  => 'A job is already in progress.',
-            'job_status' => $row['status']
+            'message'  => "A {$jobLabel} job is already in progress.",
+            'job_status' => $row['status'],
+            'job_type' => $jobType,
         ]);
         return;
     }
@@ -385,7 +388,7 @@ function handleJobStatus($conn) {
     }
 
     $stmt = $conn->prepare(
-        "SELECT job_id, status, progress_stage, progress_percent,
+        "SELECT job_id, job_type, status, progress_stage, progress_percent,
                 total_students, allocated_students,
                 result_data, error_message,
                 created_at, started_at, completed_at
@@ -406,6 +409,7 @@ function handleJobStatus($conn) {
     $payload = [
         'status'           => 'success',
         'job_id'           => (int)$row['job_id'],
+        'job_type'         => (string)($row['job_type'] ?? 'allocation'),
         'job_status'       => $row['status'],
         'progress_stage'   => $row['progress_stage']   ?? '',
         'progress_percent' => (int)$row['progress_percent'],

@@ -43,10 +43,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_FILES['csv_file'])) {
 
     if (empty($msg)) {
         $existing = $conn->prepare(
-            "SELECT job_id
+            "SELECT job_id, job_type
                FROM allocation_jobs
-              WHERE job_type = 'csv_import'
-                AND status IN ('queued', 'running')
+              WHERE status IN ('queued', 'running')
               ORDER BY created_at DESC
               LIMIT 1"
         );
@@ -55,8 +54,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_FILES['csv_file'])) {
             $existingRow = $existing->get_result()->fetch_assoc();
             $existing->close();
             if ($existingRow) {
-                $active_import_job_id = (int)$existingRow['job_id'];
-                $msg = 'A CSV import is already in progress. Please wait for it to finish.';
+                $existingJobType = (string)($existingRow['job_type'] ?? '');
+                if ($existingJobType === 'csv_import') {
+                    $active_import_job_id = (int)$existingRow['job_id'];
+                    $msg = 'A CSV import is already in progress. Please wait for it to finish.';
+                } else {
+                    $msg = 'An allocation job is already in progress. Please wait for it to finish before importing data.';
+                }
                 $msg_type = 'error';
             }
         }
