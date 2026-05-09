@@ -121,7 +121,7 @@ require_once 'includes/header.php';
 <div class="app-shell">
     <?php require_once 'includes/nav.php'; ?>
 
-    <main class="main-content" style="height:calc(100vh - var(--nav-height, 64px));overflow:hidden;display:flex;flex-direction:column;">
+    <main class="main-content">
 
         <!-- Page Header -->
         <div class="page-header">
@@ -135,10 +135,10 @@ require_once 'includes/header.php';
             </a>
         </div>
 
-        <div class="grid grid-cols-2" style="flex:1;overflow:hidden;min-height:0;">
+        <div class="grid grid-cols-2">
 
             <!-- ── Control Panel ─────────────────────────────────────────── -->
-            <div class="card" style="padding:2rem;overflow-y:auto;">
+            <div class="card" style="padding:2rem;">
                 <div class="form-section-title" style="margin-bottom:1.25rem;">
                     <span class="form-section-icon" style="background:rgba(0,33,71,0.08);color:var(--c-primary);">
                         <i class="fa-solid fa-sliders"></i>
@@ -146,20 +146,21 @@ require_once 'includes/header.php';
                     Control Panel
                 </div>
 
-                <p class="text-muted" style="font-size:0.875rem;margin-bottom:1rem;">This process will:</p>
-                <ul class="list-instructions">
-                    <li>Fetch all <strong>paid and unallocated</strong> students from the database.</li>
-                    <li>Re-score each student's urgency using the <strong>XGBoost model</strong>, then calibrate into High, Medium, or Low priority bands.</li>
-                    <li>Run the <strong>OR-Tools Min-Cost Flow solver</strong> to compute the optimal cost assignment.</li>
-                    <li>Apply the <strong>PHP Safety Inspector</strong> — enforcing clinic-proximal routing, Lower Bunk beds for mobility students, ground-floor placement, and gender separation.</li>
-                    <li>Waitlist students whose constraints can't be met, with a reason. Backfill remaining space with lower-priority students.</li>
-                    <li>Write a full <strong>audit log</strong> and save all results in one database transaction.</li>
+                <p class="text-muted" style="font-size:0.875rem;margin-bottom:1rem;">This process will execute the following steps:</p>
+                <ul class="list-instructions" style="line-height: 1.6; color: rgba(255, 255, 255, 0.85); font-size: 0.9rem; margin-bottom: 1rem; padding-left: 1.5rem;">
+                    <li><strong>Fetch Candidates:</strong> Retrieves all paid and unallocated students from the database.</li>
+                    <li><strong>Calculate Urgency:</strong> Scores each student using the XGBoost model and calibrates them into High, Medium, or Low priority bands.</li>
+                    <li><strong>Optimize Allocation:</strong> Runs the OR-Tools Min-Cost Flow solver to compute the optimal room assignments.</li>
+                    <li><strong>Enforce Constraints:</strong> Applies the PHP Safety Inspector to guarantee clinic-proximal routing, lower bunk beds for mobility students, ground-floor placement, and strict gender separation.</li>
+                    <li><strong>Manage Waitlist:</strong> Waitlists students whose specific constraints cannot be met (with a reason provided) and backfills any remaining space.</li>
+                    <li><strong>Finalize:</strong> Writes a comprehensive audit log and saves all results securely in a single database transaction.</li>
                 </ul>
 
                 <div class="alert"
                     style="margin-top:1.25rem;background:rgba(0,120,255,0.08);border:1px solid rgba(91,158,247,0.3);color:#5b9ef7;font-size:0.82rem;padding:0.75rem 1rem;border-radius:8px;">
                     <i class="fa-solid fa-bolt"></i>
-                    <strong>Async mode:</strong> The job runs in the background — you can safely close this tab or navigate away. Progress is polled automatically every few seconds.
+                    <strong>Async mode:</strong> The job runs in the background — you can safely close this tab or
+                    navigate away. Progress is polled automatically every few seconds.
                 </div>
 
                 <?php if ($is_locked): ?>
