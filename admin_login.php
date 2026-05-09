@@ -129,106 +129,83 @@ require_once 'includes/header.php';
 
     <div class="auth-right">
         <div class="auth-box animate-fade-in">
-            <div class="auth-form-shell">
-                <div class="auth-form-main">
-                    <div class="mb-8">
-                        <span class="badge badge-primary mb-4" style="font-size:0.68rem;letter-spacing:0.1em;background:rgba(0,33,71,0.08);color:var(--c-primary);">
-                            <i class="fa-solid fa-lock" style="font-size:0.6rem;"></i> ADMINISTRATOR PORTAL
-                        </span>
-                        <h2 style="font-size:1.75rem;margin-bottom:0.35rem;color:var(--c-text-head);">Admin Login</h2>
-                        <p class="text-muted" style="font-size:0.9rem;">Enter your administrative credentials to proceed.</p>
+            <div class="mb-8">
+                <span class="badge badge-primary mb-4" style="font-size:0.68rem;letter-spacing:0.1em;background:rgba(0,33,71,0.08);color:var(--c-primary);">
+                    <i class="fa-solid fa-lock" style="font-size:0.6rem;"></i> ADMINISTRATOR PORTAL
+                </span>
+                <h2 style="font-size:1.75rem;margin-bottom:0.35rem;color:var(--c-text-head);">Admin Login</h2>
+                <p class="text-muted" style="font-size:0.9rem;">Enter your administrative credentials to proceed.</p>
+            </div>
+
+            <?php if ($error): ?>
+                <div class="alert alert-danger mb-4">
+                    <i class="fa-solid fa-circle-exclamation"></i>
+                    <?php echo htmlspecialchars($error, ENT_QUOTES, 'UTF-8'); ?>
+                </div>
+            <?php endif; ?>
+
+            <form method="post" id="admin-login-form">
+                <?php csrf_field(); ?>
+
+                <div class="form-group">
+                    <label for="admin-username">Username</label>
+                    <div class="input-group">
+                        <span class="input-icon"><i class="fa-solid fa-user-shield"></i></span>
+                        <input type="text"
+                               id="admin-username"
+                               name="username"
+                               placeholder="admin"
+                               required
+                               class="input-auth"
+                               style="padding-left:2.5rem;"
+                               autocomplete="username">
                     </div>
-
-                    <?php if ($error): ?>
-                        <div class="alert alert-danger mb-4">
-                            <i class="fa-solid fa-circle-exclamation"></i>
-                            <?php echo htmlspecialchars($error, ENT_QUOTES, 'UTF-8'); ?>
-                        </div>
-                    <?php endif; ?>
-
-                    <form method="post" id="admin-login-form">
-                        <?php csrf_field(); ?>
-
-                        <div class="form-group">
-                            <label for="admin-username">Username</label>
-                            <div class="input-group">
-                                <span class="input-icon"><i class="fa-solid fa-user-shield"></i></span>
-                                <input type="text"
-                                       id="admin-username"
-                                       name="username"
-                                       placeholder="admin"
-                                       required
-                                       class="input-auth"
-                                       style="padding-left:2.5rem;"
-                                       autocomplete="username">
-                            </div>
-                        </div>
-
-                        <div class="form-group">
-                            <label for="admin-password">Password</label>
-                            <div class="input-group">
-                                <span class="input-icon"><i class="fa-solid fa-lock"></i></span>
-                                <input type="password"
-                                       id="admin-password"
-                                       name="password"
-                                       placeholder="Enter your password"
-                                       required
-                                       class="input-auth"
-                                       style="padding-left:2.5rem;padding-right:2.75rem;"
-                                       autocomplete="current-password">
-                                <i class="fa-solid fa-eye text-muted"
-                                   id="toggleAdminPassword"
-                                   style="position:absolute;right:14px;top:50%;transform:translateY(-50%);cursor:pointer;font-size:0.85rem;"
-                                   onclick="toggleAdminPw()"
-                                   title="Toggle password visibility"></i>
-                            </div>
-                        </div>
-
-                        <script>
-                        function toggleAdminPw() {
-                            const pw = document.getElementById('admin-password');
-                            const icon = document.getElementById('toggleAdminPassword');
-                            const isHidden = pw.type === 'password';
-
-                            pw.type = isHidden ? 'text' : 'password';
-                            icon.classList.toggle('fa-eye', !isHidden);
-                            icon.classList.toggle('fa-eye-slash', isHidden);
-                        }
-                        </script>
-
-                        <button type="submit" class="btn btn-primary w-full mt-2" id="admin-login-submit" style="padding:0.8rem;">
-                            <i class="fa-solid fa-right-to-bracket"></i> Sign In
-                        </button>
-
-                        <div class="text-center mt-4" style="font-size:0.84rem;">
-                            <a href="forgot_password.php" class="text-muted">Forgot Password?</a>
-                        </div>
-
-                        <div class="text-center mt-6 pt-4 text-muted" style="border-top:1px solid var(--c-border);font-size:0.84rem;">
-                            Student portal? <a href="login.php" class="text-primary fw-700">Student Login &rarr;</a>
-                        </div>
-                    </form>
                 </div>
 
-                <aside class="auth-form-aside">
-                    <div class="auth-aside-card">
-                        <h3>Control Center</h3>
-                        <ul class="auth-aside-list">
-                            <li><i class="fa-solid fa-sliders"></i><span>Manage allocations, system settings, reports, imports, and account recovery from one secure dashboard.</span></li>
-                            <li><i class="fa-solid fa-file-shield"></i><span>Only authorized administrators should use this portal, especially on shared or public devices.</span></li>
-                            <li><i class="fa-solid fa-clock-rotate-left"></i><span>Failed attempts trigger lock protection, so sign in with your current approved admin credentials.</span></li>
-                        </ul>
+                <div class="form-group">
+                    <label for="admin-password">Password</label>
+                    <div class="input-group">
+                        <span class="input-icon"><i class="fa-solid fa-lock"></i></span>
+                        <input type="password"
+                               id="admin-password"
+                               name="password"
+                               placeholder="Enter your password"
+                               required
+                               class="input-auth"
+                               style="padding-left:2.5rem;padding-right:2.75rem;"
+                               autocomplete="current-password">
+                        <i class="fa-solid fa-eye text-muted"
+                           id="toggleAdminPassword"
+                           style="position:absolute;right:14px;top:50%;transform:translateY(-50%);cursor:pointer;font-size:0.85rem;"
+                           onclick="toggleAdminPw()"
+                           title="Toggle password visibility"></i>
                     </div>
+                </div>
 
-                    <div class="auth-aside-card">
-                        <h3>Before You Continue</h3>
-                        <ul class="auth-aside-list">
-                            <li><i class="fa-solid fa-key"></i><span>If you were issued a temporary password, you may be asked to change it immediately after signing in.</span></li>
-                            <li><i class="fa-solid fa-cloud-arrow-up"></i><span>Import, reset, and create-admin actions are all available after login with the refreshed mobile layout.</span></li>
-                        </ul>
-                    </div>
-                </aside>
-            </div>
+                <script>
+                function toggleAdminPw() {
+                    const pw = document.getElementById('admin-password');
+                    const icon = document.getElementById('toggleAdminPassword');
+                    const isHidden = pw.type === 'password';
+
+                    pw.type = isHidden ? 'text' : 'password';
+                    icon.classList.toggle('fa-eye', !isHidden);
+                    icon.classList.toggle('fa-eye-slash', isHidden);
+                }
+                </script>
+
+                <button type="submit" class="btn btn-primary w-full mt-2" id="admin-login-submit" style="padding:0.8rem;">
+                    <i class="fa-solid fa-right-to-bracket"></i> Sign In
+                </button>
+
+                <div class="text-center mt-4" style="font-size:0.84rem;">
+                    <a href="forgot_password.php" class="text-muted">Forgot Password?</a>
+                </div>
+
+                <div class="text-center mt-6 pt-4 text-muted" style="border-top:1px solid var(--c-border);font-size:0.84rem;">
+                    Student portal? <a href="login.php" class="text-primary fw-700">Student Login &rarr;</a>
+                </div>
+            </form>
         </div>
     </div>
 </div>

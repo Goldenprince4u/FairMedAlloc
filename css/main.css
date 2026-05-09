@@ -1206,7 +1206,7 @@ tr:hover td { background: var(--c-bg-surface-2); }
 /* Inner auth form wrapper — centred with a readable max-width */
 .auth-box {
     width: 100%;
-    max-width: 920px;
+    max-width: 440px;
     padding-top: 2rem;       /* Top breathing room when user scrolls up */
     padding-bottom: 2rem;    /* Bottom breathing room */
 }
