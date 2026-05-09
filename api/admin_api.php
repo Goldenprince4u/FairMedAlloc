@@ -11,6 +11,7 @@ require_once '../db_config.php';
 require_once '../includes/security_helper.php';
 require_once '../includes/DbHelper.php';
 require_once '../includes/Logger.php';
+require_once '../includes/JobDispatcher.php';
 
 // All responses from this file will be JSON-formatted
 header('Content-Type: application/json');
@@ -209,7 +210,7 @@ function handleQueueAllocation($conn) {
     log_admin_action($conn, $admin_id, "Queued allocation job #$job_id");
 
     // Fire the worker in the background (non-blocking).
-    $dispatch = dispatchWorker($job_id);
+    $dispatch = fairmedDispatchWorker($job_id);
     $shouldInlineFallback = false;
     if (!($dispatch['launched'] ?? false)) {
         $shouldInlineFallback = true;

@@ -126,80 +126,103 @@ require_once 'includes/header.php';
 
     <div class="auth-right">
         <div class="auth-box animate-fade-in">
-            <div class="mb-8">
-                <span class="badge badge-primary mb-4" style="font-size:0.68rem;letter-spacing:0.1em;">STUDENT PORTAL</span>
-                <h2 style="font-size:1.75rem;margin-bottom:0.35rem;color:var(--c-text-head);">Welcome Back</h2>
-                <p class="text-muted" style="font-size:0.9rem;">Enter your credentials to access the system.</p>
+            <div class="auth-form-shell">
+                <div class="auth-form-main">
+                    <div class="mb-8">
+                        <span class="badge badge-primary mb-4" style="font-size:0.68rem;letter-spacing:0.1em;">STUDENT PORTAL</span>
+                        <h2 style="font-size:1.75rem;margin-bottom:0.35rem;color:var(--c-text-head);">Welcome Back</h2>
+                        <p class="text-muted" style="font-size:0.9rem;">Enter your credentials to access the system.</p>
+                    </div>
+
+                    <?php if ($error): ?>
+                        <div class="alert alert-danger mb-4">
+                            <i class="fa-solid fa-circle-exclamation"></i>
+                            <?php echo htmlspecialchars($error, ENT_QUOTES, 'UTF-8'); ?>
+                        </div>
+                    <?php endif; ?>
+
+                    <form method="post" id="login-form">
+                        <?php csrf_field(); ?>
+
+                        <div class="form-group">
+                            <label for="login-matric">Matric Number</label>
+                            <div class="input-group">
+                                <span class="input-icon"><i class="fa-solid fa-id-card"></i></span>
+                                <input type="text"
+                                       id="login-matric"
+                                       name="username"
+                                       placeholder="e.g. RUN/CMP/22/001"
+                                       required
+                                       class="input-auth"
+                                       style="padding-left:2.5rem;">
+                            </div>
+                        </div>
+
+                        <div class="form-group">
+                            <label for="login-password">Password</label>
+                            <div class="input-group">
+                                <span class="input-icon"><i class="fa-solid fa-lock"></i></span>
+                                <input type="password"
+                                       id="login-password"
+                                       name="password"
+                                       placeholder="Enter your password"
+                                       required
+                                       class="input-auth"
+                                       style="padding-left:2.5rem;padding-right:2.75rem;">
+                                <i class="fa-solid fa-eye text-muted"
+                                   id="togglePassword"
+                                   style="position:absolute;right:14px;top:50%;transform:translateY(-50%);cursor:pointer;font-size:0.85rem;"
+                                   onclick="togglePasswordVisibility()"
+                                   title="Toggle password visibility"></i>
+                            </div>
+                        </div>
+
+                        <script>
+                        function togglePasswordVisibility() {
+                            const pw = document.getElementById('login-password');
+                            const icon = document.getElementById('togglePassword');
+                            const isHidden = pw.type === 'password';
+
+                            pw.type = isHidden ? 'text' : 'password';
+                            icon.classList.toggle('fa-eye', !isHidden);
+                            icon.classList.toggle('fa-eye-slash', isHidden);
+                        }
+                        </script>
+
+                        <button type="submit" class="btn btn-primary w-full mt-2" id="login-submit-btn" style="padding:0.8rem;">
+                            Sign In <i class="fa-solid fa-arrow-right" style="margin-left:6px;"></i>
+                        </button>
+
+                        <div class="auth-links-row mt-4">
+                            <a href="signup.php" class="text-primary fw-700">New Student? Register</a>
+                            <a href="forgot_password.php" class="text-muted">Forgot Password?</a>
+                        </div>
+
+                        <div class="text-center mt-6 pt-4 text-muted" style="border-top:1px solid var(--c-border);font-size:0.84rem;">
+                            Administrator? <a href="admin_login.php" class="text-primary fw-700">Admin Login &rarr;</a>
+                        </div>
+                    </form>
+                </div>
+
+                <aside class="auth-form-aside">
+                    <div class="auth-aside-card">
+                        <h3>Quick Access</h3>
+                        <ul class="auth-aside-list">
+                            <li><i class="fa-solid fa-id-badge"></i><span>Use your official matric number so your hostel profile and payment status match correctly.</span></li>
+                            <li><i class="fa-solid fa-notes-medical"></i><span>Keep your health and mobility information updated before allocation runs.</span></li>
+                            <li><i class="fa-solid fa-shield-heart"></i><span>Sign in to view your status, print your slip, and monitor allocation updates in one place.</span></li>
+                        </ul>
+                    </div>
+
+                    <div class="auth-aside-card">
+                        <h3>Need Help?</h3>
+                        <ul class="auth-aside-list">
+                            <li><i class="fa-solid fa-user-plus"></i><span>New to the portal? Create your student account first, then return here to sign in.</span></li>
+                            <li><i class="fa-solid fa-arrow-right-arrow-left"></i><span>Switching roles? The admin portal is available from the link below the form.</span></li>
+                        </ul>
+                    </div>
+                </aside>
             </div>
-
-            <?php if ($error): ?>
-                <div class="alert alert-danger mb-4">
-                    <i class="fa-solid fa-circle-exclamation"></i>
-                    <?php echo htmlspecialchars($error, ENT_QUOTES, 'UTF-8'); ?>
-                </div>
-            <?php endif; ?>
-
-            <form method="post" id="login-form">
-                <?php csrf_field(); ?>
-
-                <div class="form-group">
-                    <label for="login-matric">Matric Number</label>
-                    <div class="input-group">
-                        <span class="input-icon"><i class="fa-solid fa-id-card"></i></span>
-                        <input type="text"
-                               id="login-matric"
-                               name="username"
-                               placeholder="e.g. RUN/CMP/22/001"
-                               required
-                               class="input-auth"
-                               style="padding-left:2.5rem;">
-                    </div>
-                </div>
-
-                <div class="form-group">
-                    <label for="login-password">Password</label>
-                    <div class="input-group">
-                        <span class="input-icon"><i class="fa-solid fa-lock"></i></span>
-                        <input type="password"
-                               id="login-password"
-                               name="password"
-                               placeholder="Enter your password"
-                               required
-                               class="input-auth"
-                               style="padding-left:2.5rem;padding-right:2.75rem;">
-                        <i class="fa-solid fa-eye text-muted"
-                           id="togglePassword"
-                           style="position:absolute;right:14px;top:50%;transform:translateY(-50%);cursor:pointer;font-size:0.85rem;"
-                           onclick="togglePasswordVisibility()"
-                           title="Toggle password visibility"></i>
-                    </div>
-                </div>
-
-                <script>
-                function togglePasswordVisibility() {
-                    const pw = document.getElementById('login-password');
-                    const icon = document.getElementById('togglePassword');
-                    const isHidden = pw.type === 'password';
-
-                    pw.type = isHidden ? 'text' : 'password';
-                    icon.classList.toggle('fa-eye', !isHidden);
-                    icon.classList.toggle('fa-eye-slash', isHidden);
-                }
-                </script>
-
-                <button type="submit" class="btn btn-primary w-full mt-2" id="login-submit-btn" style="padding:0.8rem;">
-                    Sign In <i class="fa-solid fa-arrow-right" style="margin-left:6px;"></i>
-                </button>
-
-                <div class="flex justify-between mt-4" style="font-size:0.84rem;">
-                    <a href="signup.php" class="text-primary fw-700">New Student? Register</a>
-                    <a href="forgot_password.php" class="text-muted">Forgot Password?</a>
-                </div>
-
-                <div class="text-center mt-6 pt-4 text-muted" style="border-top:1px solid var(--c-border);font-size:0.84rem;">
-                    Administrator? <a href="admin_login.php" class="text-primary fw-700">Admin Login &rarr;</a>
-                </div>
-            </form>
         </div>
     </div>
 </div>

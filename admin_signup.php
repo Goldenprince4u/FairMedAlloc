@@ -95,8 +95,8 @@ require_once 'includes/header.php';
             </div>
         <?php endif; ?>
 
-        <div class="grid" style="grid-template-columns:minmax(0, 560px) minmax(260px, 320px);gap:1.5rem;align-items:start;">
-            <div class="card" style="padding:2rem;">
+        <div class="mobile-form-grid">
+            <div class="card mobile-form-card">
                 <div style="display:flex;align-items:center;gap:0.75rem;margin-bottom:1.5rem;">
                     <span class="badge badge-warning"><i class="fa-solid fa-user-shield"></i> INTERNAL ACCESS</span>
                 </div>
@@ -144,7 +144,7 @@ require_once 'includes/header.php';
                 </form>
             </div>
 
-            <div class="card" style="padding:1.75rem;">
+            <div class="card mobile-side-card">
                 <h3 style="font-size:1rem;margin-bottom:1rem;">Access Notes</h3>
                 <div style="display:flex;flex-direction:column;gap:0.875rem;">
                     <div class="text-sm text-body">

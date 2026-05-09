@@ -38,6 +38,7 @@ const JOB_CANCELLED_EXCEPTION = '__FAIRMED_JOB_CANCELLED__';
 require_once __DIR__ . '/db_config.php';
 // Note: db_config.php already pulls in includes/Logger.php and includes/DbHelper.php
 require_once __DIR__ . '/includes/AllocationEngine.php';
+require_once __DIR__ . '/includes/CsvImportService.php';
 
 // ── DB connection validation (Issue #6 fix) ───────────────────────────────────
 if (!isset($conn) || !($conn instanceof mysqli) || $conn->connect_error) {
@@ -214,6 +215,12 @@ function resetStaleRunningJobs(mysqli $conn): void
 
 function processAllocationJob(mysqli $conn, array $job): void
 {
+    $jobType = (string)($job['job_type'] ?? 'allocation');
+    if ($jobType === 'csv_import') {
+        processCsvImportJob($conn, $job);
+        return;
+    }
+
     $job_id     = (int)$job['job_id'];
     $retryCount = max(0, (int)($job['retry_count'] ?? 0));
     $maxRetries = (int)($job['max_retries'] ?? 3);
@@ -332,6 +339,125 @@ function processAllocationJob(mysqli $conn, array $job): void
     }
 }
 
+function processCsvImportJob(mysqli $conn, array $job): void
+{
+    $jobId = (int)$job['job_id'];
+    $payload = decodeImportJobPayload($job);
+    $filePath = (string)($payload['file_path'] ?? '');
+    $originalName = (string)($payload['original_name'] ?? basename($filePath));
+
+    if ($filePath === '' || !is_file($filePath)) {
+        markJobFailed($conn, $jobId, 'Queued import file could not be found on the server.', null);
+        return;
+    }
+
+    markJobRunning($conn, $jobId);
+
+    try {
+        $service = new CsvImportService($conn, $jobId);
+        $result = $service->processCsvFile($filePath, function (array $progress) use ($conn, $jobId): void {
+            $statusCheck = $conn->prepare("SELECT status FROM allocation_jobs WHERE job_id = ? LIMIT 1");
+            if ($statusCheck) {
+                $statusCheck->bind_param('i', $jobId);
+                $statusCheck->execute();
+                $statusRow = $statusCheck->get_result()->fetch_assoc();
+                $statusCheck->close();
+                if (($statusRow['status'] ?? '') === 'cancelled') {
+                    throw new RuntimeException(JOB_CANCELLED_EXCEPTION);
+                }
+            }
+
+            $stage = (string)($progress['stage'] ?? 'Processing import');
+            $percent = max(0, min(100, (int)($progress['percent'] ?? 0)));
+            $total = max(0, (int)($progress['total'] ?? 0));
+            $processed = max(0, (int)($progress['processed'] ?? 0));
+
+            $stmt = $conn->prepare(
+                "UPDATE allocation_jobs
+                    SET status = 'running',
+                        progress_stage = ?,
+                        progress_percent = ?,
+                        total_students = ?,
+                        allocated_students = ?,
+                        updated_at = NOW()
+                  WHERE job_id = ?"
+            );
+            if ($stmt) {
+                $stmt->bind_param('siiii', $stage, $percent, $total, $processed, $jobId);
+                $stmt->execute();
+                $stmt->close();
+            }
+        });
+
+        $resultJson = json_encode([
+            'status' => 'success',
+            'job_type' => 'csv_import',
+            'file_name' => $originalName,
+            'imported' => (int)($result['imported'] ?? 0),
+            'duplicates' => (int)($result['duplicates'] ?? 0),
+            'total' => (int)($result['total'] ?? 0),
+            'duration_ms' => (float)($result['duration_ms'] ?? 0),
+            'message' => (string)($result['message'] ?? 'Import completed successfully.'),
+        ]);
+
+        $imported = (int)($result['imported'] ?? 0);
+        $total = (int)($result['total'] ?? 0);
+        $stmt = $conn->prepare(
+            "UPDATE allocation_jobs
+                SET status = 'completed',
+                    progress_stage = 'Completed',
+                    progress_percent = 100,
+                    allocated_students = ?,
+                    total_students = ?,
+                    result_data = ?,
+                    completed_at = NOW(),
+                    updated_at = NOW()
+              WHERE job_id = ?"
+        );
+        if ($stmt) {
+            $stmt->bind_param('iisi', $imported, $total, $resultJson, $jobId);
+            $stmt->execute();
+            $stmt->close();
+        }
+
+        cleanupImportFile($filePath);
+        Logger::info("Worker: CSV import job #$jobId completed - {$imported}/{$total} valid rows imported.");
+    } catch (Throwable $e) {
+        cleanupImportFile($filePath);
+        if ($e instanceof RuntimeException && $e->getMessage() === JOB_CANCELLED_EXCEPTION) {
+            markJobCancelled($conn, $jobId);
+            Logger::info("Worker: CSV import job #$jobId was cancelled by administrator.");
+            return;
+        }
+
+        $errorMsg = substr(
+            $e->getMessage() . ' (' . basename($e->getFile()) . ':' . $e->getLine() . ')',
+            0,
+            500
+        );
+        markJobFailed($conn, $jobId, $errorMsg, null);
+        Logger::error("Worker: CSV import job #$jobId failed - " . $e->getMessage());
+    }
+}
+
+function decodeImportJobPayload(array $job): array
+{
+    $raw = $job['result_data'] ?? null;
+    if (!is_string($raw) || trim($raw) === '') {
+        return [];
+    }
+
+    $decoded = json_decode($raw, true);
+    return is_array($decoded) ? $decoded : [];
+}
+
+function cleanupImportFile(string $filePath): void
+{
+    if ($filePath !== '' && is_file($filePath)) {
+        @unlink($filePath);
+    }
+}
+
 /**
  * Mark a job as running while preserving its first started_at timestamp.
  */
@@ -369,6 +495,26 @@ function markJobCancelled(mysqli $conn, int $job_id): void
         return;
     }
     $stmt->bind_param('i', $job_id);
+    $stmt->execute();
+    $stmt->close();
+}
+
+function markJobFailed(mysqli $conn, int $job_id, string $errorMsg, ?string $resultJson): void
+{
+    $stmt = $conn->prepare(
+        "UPDATE allocation_jobs
+            SET status = 'failed',
+                error_message = ?,
+                result_data = ?,
+                completed_at = NOW(),
+                updated_at = NOW()
+          WHERE job_id = ?"
+    );
+    if (!$stmt) {
+        return;
+    }
+
+    $stmt->bind_param('ssi', $errorMsg, $resultJson, $job_id);
     $stmt->execute();
     $stmt->close();
 }
