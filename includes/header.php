@@ -45,8 +45,11 @@ if (!headers_sent()) {
     <!-- Font Awesome Icons -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
 
-    <!-- Main CSS (the single source of truth – no Tailwind CDN) -->
+    <!-- Main CSS (desktop — the single source of truth) -->
     <link rel="stylesheet" href="css/main.css?v=<?php echo filemtime(__DIR__ . '/../css/main.css'); ?>">
+
+    <!-- Mobile CSS (phones ≤768px — completely separate from desktop) -->
+    <link rel="stylesheet" href="css/mobile.css?v=<?php echo filemtime(__DIR__ . '/../css/mobile.css'); ?>" media="(max-width: 768px)">
 
 </head>
 <body>
