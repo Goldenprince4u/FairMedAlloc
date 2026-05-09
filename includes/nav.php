@@ -166,6 +166,14 @@ if (
         sidebar.classList.contains('open') ? closeSidebar() : openSidebar();
     });
 
-    // Navigation sidebar logic only
+    // Close sidebar when overlay is tapped
+    overlay.addEventListener('click', closeSidebar);
+
+    // Close sidebar when a nav link is tapped (smooth UX on mobile)
+    sidebar.querySelectorAll('.nav-item').forEach(function(link) {
+        link.addEventListener('click', function() {
+            if (window.innerWidth <= 768) closeSidebar();
+        });
+    });
 })();
 </script>
