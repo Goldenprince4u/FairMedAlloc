@@ -299,7 +299,7 @@ def run_min_cost_flow(students, rooms, first_blocks, rng):
     wl_caps   = [1] * num_students
     wl_costs  = [0] * num_students
 
-    print(f"Running OR-Tools solver: building arcs for {num_students} students × {num_rooms} rooms…", flush=True)
+    print(f"Running OR-Tools solver: building arcs for {num_students} students x {num_rooms} rooms...", flush=True)
 
     for s_idx, student in enumerate(students):
         gender    = student.get('gender', '')
@@ -340,7 +340,7 @@ def run_min_cost_flow(students, rooms, first_blocks, rng):
             arc_s_ids.append(student['id'])
             arc_r_ids.append(room['id'])
 
-    print(f"Graph built: {len(arc_tails)} student→room arcs. Adding to solver…", flush=True)
+    print(f"Graph built: {len(arc_tails)} student-to-room arcs. Adding to solver...", flush=True)
 
     # Arc 4: room → sink
     room_tails, room_heads, room_caps, room_costs = [], [], [], []
@@ -375,7 +375,7 @@ def run_min_cost_flow(students, rooms, first_blocks, rng):
     smcf.set_node_supply(source, num_students)
     smcf.set_node_supply(sink,  -num_students)
 
-    print("Solving…", flush=True)
+    print("Solving...", flush=True)
     status = smcf.solve()
     print(f"Solver finished with status: {status}", flush=True)
 

@@ -13,6 +13,7 @@ require_once __DIR__ . '/Logger.php';
 
 class AllocationEngine {
     private const ALGORITHM_VERSION = 'allocation_engine_v3';
+    private const JOB_CANCELLED_SIGNAL = '__FAIRMED_JOB_CANCELLED__';
 
     private $conn;
     private $allocationsHasAlgorithmVersion = null;
@@ -45,6 +46,11 @@ class AllocationEngine {
                     'percent' => max(0, min(100, $percent))
                 ]);
             } catch (Throwable $e) {
+                // The worker uses a dedicated runtime exception as a control signal
+                // when an administrator cancels a running allocation job.
+                if ($e instanceof RuntimeException && $e->getMessage() === self::JOB_CANCELLED_SIGNAL) {
+                    throw $e;
+                }
                 Logger::warning("Progress callback failed: " . $e->getMessage());
             }
         }

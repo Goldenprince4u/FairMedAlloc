@@ -37,6 +37,63 @@ function fairmed_load_env(string $path): array {
     return $values;
 }
 
+function fairmed_is_usable_python_candidate(string $candidate): bool {
+    $trimmed = trim($candidate);
+    if ($trimmed === '') {
+        return false;
+    }
+
+    $parts = array_values(array_filter(str_getcsv($trimmed, ' '), static function ($part) {
+        return $part !== null && $part !== '';
+    }));
+    $binary = trim((string)($parts[0] ?? ''));
+    if ($binary === '') {
+        return false;
+    }
+
+    $looksLikePath = preg_match('/^[A-Za-z]:[\\\\\\/]/', $binary) === 1
+        || str_contains($binary, '/')
+        || str_contains($binary, '\\');
+
+    if (!$looksLikePath) {
+        return false;
+    }
+
+    return file_exists($binary) && is_readable($binary);
+}
+
+function fairmed_resolve_python_bin(array $env): string {
+    $configured = trim((string)(getenv('PYTHON_BIN') ?: ($env['PYTHON_BIN'] ?? ($env['FAIRMED_PYTHON_BIN'] ?? ''))));
+    $root = __DIR__;
+    $candidates = [];
+
+    if ($configured !== '') {
+        $candidates[] = $configured;
+    }
+
+    if (DIRECTORY_SEPARATOR === '\\') {
+        $candidates[] = $root . '\\.venv_solver\\Scripts\\python.exe';
+        $candidates[] = $root . '\\.venv\\Scripts\\python.exe';
+        $candidates[] = $root . '\\.pydeps\\Scripts\\python.exe';
+    } else {
+        $candidates[] = $root . '/.venv_solver/bin/python';
+        $candidates[] = $root . '/.venv/bin/python';
+        $candidates[] = $root . '/.pydeps/bin/python';
+    }
+
+    foreach ($candidates as $candidate) {
+        if (fairmed_is_usable_python_candidate($candidate)) {
+            return $candidate;
+        }
+    }
+
+    if ($configured !== '') {
+        return $configured;
+    }
+
+    return DIRECTORY_SEPARATOR === '\\' ? 'python' : 'python3';
+}
+
 $env = fairmed_load_env(__DIR__ . '/.env');
 
 if (php_sapi_name() !== 'cli' && !headers_sent()) {
@@ -54,7 +111,7 @@ define('DB_NAME', getenv('DB_NAME') ?: ($env['DB_NAME'] ?? 'fairmedalloc'));
 define('ML_SERVICE_URL', rtrim(getenv('ML_SERVICE_URL') ?: ($env['ML_SERVICE_URL'] ?? 'http://127.0.0.1:5051'), '/'));
 define('ML_SERVICE_TIMEOUT', (float)(getenv('ML_SERVICE_TIMEOUT') ?: ($env['ML_SERVICE_TIMEOUT'] ?? 120)));
 
-$pythonBin = trim((string)(getenv('PYTHON_BIN') ?: ($env['PYTHON_BIN'] ?? ($env['FAIRMED_PYTHON_BIN'] ?? ''))));
+$pythonBin = fairmed_resolve_python_bin($env);
 define('PYTHON_BIN', $pythonBin);
 define('FAIRMED_PYTHON_BIN', $pythonBin);
 
