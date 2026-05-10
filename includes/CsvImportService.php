@@ -129,19 +129,24 @@ class CsvImportService
                 $count++;
             }
 
-            $this->emitProgress($progressCallback, 'Scoring medical records', 70, $totalRows, $count);
+            $this->emitProgress($progressCallback, 'Calculating import scores', 70, $totalRows, $count);
 
+            // Keep imports fast and predictable by using deterministic PHP scoring here.
+            // The allocation engine recalculates urgency scores again during allocation runs.
             $batchScores = [];
-            if (!empty($pendingMedical)) {
-                try {
-                    $scoreService = new UrgencyScoreService();
-                    $result = $scoreService->scoreBatch($pendingMedical);
-                    if (($result['status'] ?? '') === 'success' && isset($result['results'])) {
-                        $batchScores = $result['results'];
-                    }
-                } catch (Throwable $e) {
-                    error_log('[FairMedAlloc] Batch scoring failed during CSV import, falling back to PHP rules: ' . $e->getMessage());
+            foreach ($pendingMedical as $student) {
+                $studentId = (int)($student['id'] ?? 0);
+                if ($studentId <= 0) {
+                    continue;
                 }
+                $batchScores[$studentId] = UrgencyScoreService::calculateFallbackScore([
+                    'condition' => $student['condition'] ?? 'None',
+                    'mobility' => $student['mobility'] ?? 'Normal Mobility',
+                    'severity' => $student['severity'] ?? 'Low',
+                    'academic_level' => (int)($student['academic_level'] ?? 100),
+                    'has_special_needs' => (int)($student['has_special_needs'] ?? 0),
+                    'is_requested' => (int)($student['is_requested'] ?? 0),
+                ]);
             }
 
             $stmtMed = $this->conn->prepare("INSERT INTO medical_records (student_id, condition_category, condition_details, severity_level, urgency_score, mobility_status, is_requested_mobility) VALUES (?, ?, ?, ?, ?, ?, ?)");
