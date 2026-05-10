@@ -84,20 +84,20 @@ class CsvImportService
                 $matricKey = strtolower($matric);
                 if (isset($existingUsernames[$matricKey])) {
                     $duplicates++;
-                    $this->emitImportLoopProgress($progressCallback, $totalRows, $processedRows);
+                    $this->emitImportLoopProgress($progressCallback, $totalRows, $processedRows, $rawTotal);
                     continue;
                 }
 
                 // Validate gender and level before touching the DB.
                 if (!in_array(strtolower($gender), $validGenders, true)) {
                     $skipped++;
-                    $this->emitImportLoopProgress($progressCallback, $totalRows, $processedRows);
+                    $this->emitImportLoopProgress($progressCallback, $totalRows, $processedRows, $rawTotal);
                     continue;
                 }
 
                 if (!in_array($level, $validLevels, true)) {
                     $skipped++;
-                    $this->emitImportLoopProgress($progressCallback, $totalRows, $processedRows);
+                    $this->emitImportLoopProgress($progressCallback, $totalRows, $processedRows, $rawTotal);
                     continue;
                 }
 
