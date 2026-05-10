@@ -20,11 +20,14 @@ class CsvImportService
         }
 
         $importStart = microtime(true);
-        $parsedRows = $this->parseCsvRows($filePath);
-        $totalRows = count($parsedRows);
+        $parsed      = $this->parseCsvRows($filePath);
+        $parsedRows  = $parsed['rows'];
+        $parseSkipped = $parsed['parse_skipped'];
+        $totalRows   = count($parsedRows);
 
         if ($totalRows === 0) {
-            throw new RuntimeException('No valid data rows were found in the uploaded CSV.');
+            $parseNote = $parseSkipped > 0 ? " ({$parseSkipped} rows were dropped due to missing columns or blank required fields.)" : '';
+            throw new RuntimeException('No valid data rows were found in the uploaded CSV.' . $parseNote);
         }
 
         $this->persistJobTotals($totalRows, 0, 'Validated CSV rows', 15);
@@ -52,7 +55,7 @@ class CsvImportService
 
         $count = 0;
         $duplicates = 0;
-        $skipped = 0;
+        $skipped = $parseSkipped;   // start from parse-level drops; add validation drops below
         $processedRows = 0;
         $pendingMedical = [];
 
@@ -212,18 +215,35 @@ class CsvImportService
         $this->persistJobTotals($totalRows, $count, 'Completed', 100);
         $this->emitProgress($progressCallback, 'Completed', 100, $totalRows, $count);
 
-        $skipNote = $skipped > 0 ? " {$skipped} row(s) skipped due to invalid gender/level values." : '';
+        $totalSkipped = $skipped;  // includes both parse-level and validation-level drops
+        $skipParts = [];
+        if ($duplicates > 0)     { $skipParts[] = "{$duplicates} duplicate(s)"; }
+        if ($parseSkipped > 0)   { $skipParts[] = "{$parseSkipped} malformed/incomplete row(s)"; }
+        $validationSkipped = $skipped - $parseSkipped;
+        if ($validationSkipped > 0) { $skipParts[] = "{$validationSkipped} row(s) with invalid gender or level"; }
+        $skipNote = !empty($skipParts) ? ' Skipped: ' . implode(', ', $skipParts) . '.' : '';
+
         return [
             'status'      => 'success',
             'imported'    => $count,
             'duplicates'  => $duplicates,
-            'skipped'     => $skipped,
-            'total'       => $totalRows,
+            'skipped'     => $totalSkipped,
+            'total'       => $totalRows + $parseSkipped,  // true total including parse drops
             'duration_ms' => $durationMs,
-            'message'     => "Processed: {$count} students registered. Duplicates skipped: {$duplicates}.{$skipNote} Payment, mobility, and department data were preserved for allocation.",
+            'message'     => "Processed: {$count} students registered.{$skipNote} Payment, mobility, and department data were preserved for allocation.",
         ];
     }
 
+    /**
+     * Parse the CSV file into valid rows.
+     *
+     * Returns an array with two keys:
+     *   'rows'          => array of valid, fully-populated row arrays
+     *   'parse_skipped' => count of rows dropped at parse time (short columns or blank required fields)
+     *
+     * This is deliberately separate from transaction-level validation so that
+     * ALL skip reasons can be reported to the admin in the completion message.
+     */
     private function parseCsvRows(string $filePath): array
     {
         $file = fopen($filePath, 'r');
@@ -231,55 +251,60 @@ class CsvImportService
             throw new RuntimeException('Unable to open uploaded CSV file.');
         }
 
-        fgetcsv($file);
-        $rows = [];
+        fgetcsv($file);  // skip header row
+        $rows         = [];
+        $parseSkipped = 0;
 
         while (($row = fgetcsv($file)) !== false) {
+            // Drop rows with fewer than 10 columns.
             if (count($row) < 10) {
+                $parseSkipped++;
                 continue;
             }
 
-            $matric = trim($row[0]);
-            $name = trim($row[1]);
-            $level = (int)trim($row[2]);
-            $faculty = trim($row[3]);
-            $dept = trim($row[4]);
-            $gender = trim($row[5]);
+            $matric    = trim($row[0]);
+            $name      = trim($row[1]);
+            $level     = (int)trim($row[2]);
+            $faculty   = trim($row[3]);
+            $dept      = trim($row[4]);
+            $gender    = trim($row[5]);
             $condition = UrgencyScoreService::normalizeCondition(trim($row[6]));
-            $severity = trim($row[7]);
-            $mobility = UrgencyScoreService::normalizeMobility(trim($row[8]));
-            $paidStr = trim($row[9]);
+            $severity  = trim($row[7]);
+            $mobility  = UrgencyScoreService::normalizeMobility(trim($row[8]));
+            $paidStr   = trim($row[9]);
 
+            // Drop rows with any blank required field.
             if (
                 $matric === '' || $name === '' || $faculty === '' || $dept === '' || $gender === ''
                 || $condition === '' || $severity === '' || $mobility === '' || $paidStr === ''
             ) {
+                $parseSkipped++;
                 continue;
             }
 
             // Pre-compute the bcrypt hash here — before any DB transaction opens —
             // so the CPU cost does not hold a connection open.
             // Each student's initial password is their own matric number (lowercased).
-            $matricKey = strtolower($matric);
+            $matricKey    = strtolower($matric);
             $passwordHash = password_hash($matricKey, PASSWORD_BCRYPT, ['cost' => 4]);
 
             $rows[] = [
-                'matric'         => $matric,
-                'name'           => $name,
-                'level'          => $level,
-                'faculty'        => $faculty,
-                'department'     => $dept,
-                'gender'         => $gender,
-                'condition'      => $condition,
-                'severity'       => $severity,
-                'mobility'       => $mobility,
-                'is_paid'        => ((int)$paidStr === 1) ? 1 : 0,
-                'password_hash'  => $passwordHash,
+                'matric'        => $matric,
+                'name'          => $name,
+                'level'         => $level,
+                'faculty'       => $faculty,
+                'department'    => $dept,
+                'gender'        => $gender,
+                'condition'     => $condition,
+                'severity'      => $severity,
+                'mobility'      => $mobility,
+                'is_paid'       => ((int)$paidStr === 1) ? 1 : 0,
+                'password_hash' => $passwordHash,
             ];
         }
 
         fclose($file);
-        return $rows;
+        return ['rows' => $rows, 'parse_skipped' => $parseSkipped];
     }
 
     private function loadExistingUsernames(): array
