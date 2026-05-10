@@ -16,23 +16,56 @@ if (isset($names[1])) {
     $initials .= strtoupper(substr($names[0], 1, 1));
 }
 
-// Count unread notifications for badge
-$unread_count = 0;
+// Per-request session sync: re-read profile_pic and full_name from DB so that
+// a photo change on one device/session is reflected on every other already-
+// logged-in session on its very next page load — no re-login required.
+// We piggyback on the existing connection check used for the notification count.
 if (
-    $role === 'student' &&
     isset($_SESSION['user_id']) &&
     isset($conn) &&
     $conn instanceof mysqli
 ) {
-    $uid_nav = (int)$_SESSION['user_id'];
-    $notif_stmt = $conn->prepare("SELECT COUNT(*) as cnt FROM notifications WHERE user_id = ? AND is_read = 0");
-    if ($notif_stmt) {
-        $notif_stmt->bind_param("i", $uid_nav);
-        $notif_stmt->execute();
-        $notif_res = $notif_stmt->get_result();
-        $unread_count = (int)($notif_res->fetch_assoc()['cnt'] ?? 0);
-        $notif_res->free();
-        $notif_stmt->close();
+    $uid_nav    = (int)$_SESSION['user_id'];
+
+    // ── Avatar + display name sync ────────────────────────────────────────────
+    $sync_stmt = $conn->prepare(
+        "SELECT profile_pic, full_name FROM users WHERE user_id = ? LIMIT 1"
+    );
+    if ($sync_stmt) {
+        $sync_stmt->bind_param('i', $uid_nav);
+        $sync_stmt->execute();
+        $sync_row = $sync_stmt->get_result()->fetch_assoc();
+        $sync_stmt->close();
+        if ($sync_row) {
+            // Keep session in sync — cheap write only when value actually changed
+            if (($sync_row['profile_pic'] ?? null) !== ($_SESSION['profile_pic'] ?? null)) {
+                $_SESSION['profile_pic'] = $sync_row['profile_pic'];
+            }
+            if (!empty($sync_row['full_name']) && $sync_row['full_name'] !== ($_SESSION['full_name'] ?? '')) {
+                $_SESSION['full_name'] = $sync_row['full_name'];
+                // Recompute initials from the refreshed name
+                $names    = explode(' ', $sync_row['full_name']);
+                $initials = strtoupper(substr($names[0], 0, 1));
+                $initials .= isset($names[1])
+                    ? strtoupper(substr($names[1], 0, 1))
+                    : strtoupper(substr($names[0], 1, 1));
+            }
+        }
+    }
+
+    // ── Unread notification count ─────────────────────────────────────────────
+    if ($role === 'student') {
+        $notif_stmt = $conn->prepare(
+            "SELECT COUNT(*) as cnt FROM notifications WHERE user_id = ? AND is_read = 0"
+        );
+        if ($notif_stmt) {
+            $notif_stmt->bind_param('i', $uid_nav);
+            $notif_stmt->execute();
+            $notif_res    = $notif_stmt->get_result();
+            $unread_count = (int)($notif_res->fetch_assoc()['cnt'] ?? 0);
+            $notif_res->free();
+            $notif_stmt->close();
+        }
     }
 }
 ?>
@@ -116,6 +149,7 @@ if (
         <!-- User identity row -->
         <div class="flex items-center gap-3 mt-3">
             <?php
+            // Use the DB-refreshed value so all sessions stay in sync
             $nav_pic = $_SESSION['profile_pic'] ?? null;
             if ($nav_pic && $nav_pic !== 'default.png'):
             ?>
