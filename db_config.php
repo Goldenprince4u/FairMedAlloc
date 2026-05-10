@@ -52,7 +52,7 @@ define('DB_USER', getenv('DB_USER') ?: ($env['DB_USER'] ?? 'root'));
 define('DB_PASS', getenv('DB_PASS') ?: ($env['DB_PASS'] ?? ''));
 define('DB_NAME', getenv('DB_NAME') ?: ($env['DB_NAME'] ?? 'fairmedalloc'));
 define('ML_SERVICE_URL', rtrim(getenv('ML_SERVICE_URL') ?: ($env['ML_SERVICE_URL'] ?? 'http://127.0.0.1:5051'), '/'));
-define('ML_SERVICE_TIMEOUT', (float)(getenv('ML_SERVICE_TIMEOUT') ?: ($env['ML_SERVICE_TIMEOUT'] ?? 5)));
+define('ML_SERVICE_TIMEOUT', (float)(getenv('ML_SERVICE_TIMEOUT') ?: ($env['ML_SERVICE_TIMEOUT'] ?? 120)));
 
 $pythonBin = trim((string)(getenv('PYTHON_BIN') ?: ($env['PYTHON_BIN'] ?? ($env['FAIRMED_PYTHON_BIN'] ?? ''))));
 define('PYTHON_BIN', $pythonBin);

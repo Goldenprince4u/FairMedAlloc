@@ -354,22 +354,24 @@ def run_min_cost_flow(students, rooms, first_blocks, rng):
             room_caps.append(cap)
             room_costs.append(0)
 
-    # Arc 5: waitlist → sink
-    smcf.add_arc_with_capacity_and_unit_cost(waitlist_node, sink, num_students, 0)
-
     # ── Bulk-add all arc groups ───────────────────────────────────────────────
+    # Order matters — arc indices are assigned in insertion order.
+    # Layout:
+    #   [0  .. ns-1      ] = source → student         (src_tails,  ns  arcs)
+    #   [ns .. ns+na-1   ] = student → room           (arc_tails,  na  arcs) ← we track these
+    #   [ns+na .. 2ns+na-1] = student → waitlist      (wl_tails,   ns  arcs)
+    #   [2ns+na ..       ] = room → sink              (room_tails, nr  arcs)
+    #   [last            ] = waitlist → sink          (single arc)
     smcf.add_arcs_with_capacity_and_unit_cost(src_tails,  src_heads,  src_caps,  src_costs)
     smcf.add_arcs_with_capacity_and_unit_cost(arc_tails,  arc_heads,  arc_caps,  arc_costs)
     smcf.add_arcs_with_capacity_and_unit_cost(wl_tails,   wl_heads,   wl_caps,   wl_costs)
     smcf.add_arcs_with_capacity_and_unit_cost(room_tails, room_heads, room_caps, room_costs)
+    # waitlist → sink MUST be last so it doesn't shift the student→room arc indices above
+    smcf.add_arc_with_capacity_and_unit_cost(waitlist_node, sink, num_students, 0)
 
     # Build arc→assignment map.
-    # Arc layout after bulk-add:
-    #   [0 .. ns-1]            = source → student (src_tails)   ← ns arcs
-    #   [ns .. ns+na-1]        = student → room   (arc_tails)   ← na arcs  ← we care about these
-    #   [ns+na .. ns+na+ns-1]  = student → wl     (wl_tails)
-    #   [ns+na+ns ..]          = room → sink + wl → sink
-    arc_offset = num_students  # src arcs are indices 0..num_students-1
+    # student→room arcs begin at index num_students (after the ns source→student arcs).
+    arc_offset = num_students
     arc_to_assignment = {}
     for i, (t, h) in enumerate(zip(arc_tails, arc_heads)):
         real_arc = arc_offset + i
@@ -397,6 +399,7 @@ def run_min_cost_flow(students, rooms, first_blocks, rng):
         status_name = 'FEASIBLE'
 
     return assignments, status_name
+
 
 
 
