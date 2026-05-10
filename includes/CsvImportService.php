@@ -19,26 +19,28 @@ class CsvImportService
             throw new RuntimeException('Import file is missing or unreadable.');
         }
 
-        $importStart = microtime(true);
-        $parsed      = $this->parseCsvRows($filePath);
-        $parsedRows  = $parsed['rows'];
+        $importStart  = microtime(true);
+        $parsed       = $this->parseCsvRows($filePath);
+        $parsedRows   = $parsed['rows'];
         $parseSkipped = $parsed['parse_skipped'];
-        $totalRows   = count($parsedRows);
+        $totalRows    = count($parsedRows);    // valid rows — used for % calculations
+        $rawTotal     = $totalRows + $parseSkipped; // true CSV row count — shown in progress UI
 
         if ($totalRows === 0) {
             $parseNote = $parseSkipped > 0 ? " ({$parseSkipped} rows were dropped due to missing columns or blank required fields.)" : '';
             throw new RuntimeException('No valid data rows were found in the uploaded CSV.' . $parseNote);
         }
 
-        $this->persistJobTotals($totalRows, 0, 'Validated CSV rows', 15);
-        $this->emitProgress($progressCallback, 'Validated CSV rows', 15, $totalRows, 0);
+        $this->persistJobTotals($rawTotal, 0, 'Validated CSV rows', 15);
+        $this->emitProgress($progressCallback, 'Validated CSV rows', 15, $rawTotal, 0);
 
         $existingUsernames = $this->loadExistingUsernames();
-        $facultyCache = $this->loadFacultyCache();
-        $departmentCache = $this->loadDepartmentCache();
+        $facultyCache      = $this->loadFacultyCache();
+        $departmentCache   = $this->loadDepartmentCache();
 
-        $this->persistJobTotals($totalRows, 0, 'Loaded reference data', 25);
-        $this->emitProgress($progressCallback, 'Loaded reference data', 25, $totalRows, 0);
+        $this->persistJobTotals($rawTotal, 0, 'Loaded reference data', 25);
+        $this->emitProgress($progressCallback, 'Loaded reference data', 25, $rawTotal, 0);
+
 
         $userInsertSql = FAIRMED_SUPPORTS_MUST_CHANGE_PASSWORD
             ? "INSERT INTO users (username, full_name, password_hash, must_change_password, role) VALUES (?, ?, ?, 1, 'student')"
@@ -157,7 +159,7 @@ class CsvImportService
                 $this->emitImportLoopProgress($progressCallback, $totalRows, $processedRows);
             }
 
-            $this->emitProgress($progressCallback, 'Calculating import scores', 70, $totalRows, $count);
+            $this->emitProgress($progressCallback, 'Calculating import scores', 70, $rawTotal, $count);
 
             // Keep imports fast and predictable by using deterministic PHP scoring here.
             // The allocation engine recalculates urgency scores again during allocation runs.
@@ -210,10 +212,10 @@ class CsvImportService
         }
 
         $durationMs = round((microtime(true) - $importStart) * 1000, 2);
-        Logger::info("CSV import completed: {$count} imported, {$duplicates} duplicates, {$skipped} invalid rows skipped in {$durationMs}ms");
+        Logger::info("CSV import completed: {$count} imported, {$duplicates} duplicates, {$skipped} dropped out of {$rawTotal} CSV rows in {$durationMs}ms");
 
-        $this->persistJobTotals($totalRows, $count, 'Completed', 100);
-        $this->emitProgress($progressCallback, 'Completed', 100, $totalRows, $count);
+        $this->persistJobTotals($rawTotal, $count, 'Completed', 100);
+        $this->emitProgress($progressCallback, 'Completed', 100, $rawTotal, $count);
 
         $totalSkipped = $skipped;  // includes both parse-level and validation-level drops
         $skipParts = [];
@@ -228,7 +230,7 @@ class CsvImportService
             'imported'    => $count,
             'duplicates'  => $duplicates,
             'skipped'     => $totalSkipped,
-            'total'       => $totalRows + $parseSkipped,  // true total including parse drops
+            'total'       => $rawTotal,
             'duration_ms' => $durationMs,
             'message'     => "Processed: {$count} students registered.{$skipNote} Payment, mobility, and department data were preserved for allocation.",
         ];
