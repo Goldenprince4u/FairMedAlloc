@@ -55,7 +55,7 @@ if (
                 <h2 class="sidebar-brand-title" style="margin:0;line-height:1.1;font-size:1.15rem;font-weight:800;color:#fff;letter-spacing:-0.02em;">
                     FairMed<span style="color:var(--c-accent);">Alloc</span>
                 </h2>
-                <span class="sidebar-brand-kicker" style="font-size:0.65rem;color:rgba(255,255,255,0.55);letter-spacing:0.1em;text-transform:uppercase;font-weight:700;">Redeemer's University</span>
+                <span class="sidebar-brand-kicker" style="font-size:0.78rem;color:rgba(255,255,255,0.85);letter-spacing:0.03em;font-weight:600;display:block;margin-top:2px;">Redeemer's University</span>
             </div>
         </div>
     </div>
