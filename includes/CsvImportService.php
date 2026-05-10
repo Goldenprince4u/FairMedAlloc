@@ -156,7 +156,7 @@ class CsvImportService
                 }
 
                 $count++;
-                $this->emitImportLoopProgress($progressCallback, $totalRows, $processedRows);
+                $this->emitImportLoopProgress($progressCallback, $totalRows, $processedRows, $rawTotal);
             }
 
             $this->emitProgress($progressCallback, 'Calculating import scores', 70, $rawTotal, $count);
@@ -387,7 +387,7 @@ class CsvImportService
         ]);
     }
 
-    private function emitImportLoopProgress(?callable $progressCallback, int $totalRows, int $processedRows): void
+    private function emitImportLoopProgress(?callable $progressCallback, int $totalRows, int $processedRows, int $rawTotal): void
     {
         if ($progressCallback === null) {
             return;
@@ -397,12 +397,14 @@ class CsvImportService
             return;
         }
 
+        // % progress is calculated against valid rows so the bar reaches completion correctly.
+        // The displayed total uses $rawTotal so it stays consistent with every other stage update.
         $percent = 25 + (int)floor(($processedRows / max(1, $totalRows)) * 40);
         $this->emitProgress(
             $progressCallback,
             'Importing student records',
             min(69, $percent),
-            $totalRows,
+            $rawTotal,
             $processedRows
         );
     }
