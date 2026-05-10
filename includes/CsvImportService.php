@@ -56,16 +56,10 @@ class CsvImportService
         $processedRows = 0;
         $pendingMedical = [];
 
-        // Pre-compute a single default hash shared by every new student.
-        // The per-row hash (cost=4 × N rows) was the primary import bottleneck;
-        // using a shared hash cuts import time by ~65% on large batches.
-        // must_change_password=1 forces each student to set their own password on
-        // first login, so the shared default is never a real credential.
-        $defaultHash = password_hash('changeme', PASSWORD_BCRYPT, ['cost' => 4]);
-
         // Valid domain values — checked before each INSERT to avoid silent DB errors.
         $validGenders = ['male', 'female'];
         $validLevels  = [100, 200, 300, 400, 500, 600];
+
 
         $this->conn->begin_transaction();
         try {
@@ -104,7 +98,10 @@ class CsvImportService
 
                 $hasMobilityNeed = $mobility !== 'Normal Mobility' ? 1 : 0;
 
-                $stmtUser->bind_param('sss', $matric, $name, $defaultHash);
+                // Each student's initial password is their own matric number (lowercased).
+                // This hash was pre-computed in parseCsvRows() before the transaction
+                // opened, so the CPU work does not extend the transaction window.
+                $stmtUser->bind_param('sss', $matric, $name, $row['password_hash']);
                 if (!$stmtUser->execute()) {
                     throw new RuntimeException('Unable to create student user record.');
                 }
@@ -260,17 +257,24 @@ class CsvImportService
                 continue;
             }
 
+            // Pre-compute the bcrypt hash here — before any DB transaction opens —
+            // so the CPU cost does not hold a connection open.
+            // Each student's initial password is their own matric number (lowercased).
+            $matricKey = strtolower($matric);
+            $passwordHash = password_hash($matricKey, PASSWORD_BCRYPT, ['cost' => 4]);
+
             $rows[] = [
-                'matric' => $matric,
-                'name' => $name,
-                'level' => $level,
-                'faculty' => $faculty,
-                'department' => $dept,
-                'gender' => $gender,
-                'condition' => $condition,
-                'severity' => $severity,
-                'mobility' => $mobility,
-                'is_paid' => ((int)$paidStr === 1) ? 1 : 0,
+                'matric'         => $matric,
+                'name'           => $name,
+                'level'          => $level,
+                'faculty'        => $faculty,
+                'department'     => $dept,
+                'gender'         => $gender,
+                'condition'      => $condition,
+                'severity'       => $severity,
+                'mobility'       => $mobility,
+                'is_paid'        => ((int)$paidStr === 1) ? 1 : 0,
+                'password_hash'  => $passwordHash,
             ];
         }
 
