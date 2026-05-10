@@ -157,6 +157,7 @@ function handleQueueAllocation($conn) {
                     completed_at  = NOW(),
                     updated_at    = NOW()
               WHERE status = 'queued'
+                AND (job_type = 'allocation' OR job_type IS NULL)
                 AND created_at < DATE_SUB(NOW(), INTERVAL 5 MINUTE)"
         );
     } catch (Throwable $ignored) { /* table may not exist yet */ }

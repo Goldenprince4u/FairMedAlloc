@@ -52,11 +52,13 @@ class CsvImportService
 
         $count = 0;
         $duplicates = 0;
+        $processedRows = 0;
         $pendingMedical = [];
 
         $this->conn->begin_transaction();
         try {
             foreach ($parsedRows as $row) {
+                $processedRows++;
                 $matric = $row['matric'];
                 $name = $row['name'];
                 $level = (int)$row['level'];
@@ -71,6 +73,7 @@ class CsvImportService
                 $matricKey = strtolower($matric);
                 if (isset($existingUsernames[$matricKey])) {
                     $duplicates++;
+                    $this->emitImportLoopProgress($progressCallback, $totalRows, $processedRows);
                     continue;
                 }
 
@@ -127,6 +130,7 @@ class CsvImportService
                 }
 
                 $count++;
+                $this->emitImportLoopProgress($progressCallback, $totalRows, $processedRows);
             }
 
             $this->emitProgress($progressCallback, 'Calculating import scores', 70, $totalRows, $count);
@@ -324,5 +328,25 @@ class CsvImportService
             'total' => $totalRows,
             'processed' => $processedRows,
         ]);
+    }
+
+    private function emitImportLoopProgress(?callable $progressCallback, int $totalRows, int $processedRows): void
+    {
+        if ($progressCallback === null) {
+            return;
+        }
+
+        if ($processedRows !== $totalRows && ($processedRows % 100) !== 0) {
+            return;
+        }
+
+        $percent = 25 + (int)floor(($processedRows / max(1, $totalRows)) * 40);
+        $this->emitProgress(
+            $progressCallback,
+            'Importing student records',
+            min(69, $percent),
+            $totalRows,
+            $processedRows
+        );
     }
 }

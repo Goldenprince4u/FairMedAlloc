@@ -103,9 +103,44 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_FILES['csv_file'])) {
                         $dispatch = fairmedDispatchWorker($active_import_job_id);
 
                         if ($dispatch['launched'] ?? false) {
-                            $msg = 'CSV import queued successfully. The background worker is processing it now.';
-                            $msg_type = 'success';
-                            log_admin_action($conn, $admin_id, "Queued CSV import job #{$active_import_job_id}");
+                            usleep(750000);
+
+                            $statusStmt = $conn->prepare(
+                                "SELECT status, error_message
+                                   FROM allocation_jobs
+                                  WHERE job_id = ?
+                                  LIMIT 1"
+                            );
+                            $statusRow = null;
+                            if ($statusStmt) {
+                                $statusStmt->bind_param('i', $active_import_job_id);
+                                $statusStmt->execute();
+                                $statusRow = $statusStmt->get_result()->fetch_assoc();
+                                $statusStmt->close();
+                            }
+
+                            $currentStatus = (string)($statusRow['status'] ?? 'queued');
+                            if ($currentStatus === 'failed') {
+                                $msg = $statusRow['error_message'] ?: 'The background import worker exited before processing the job.';
+                                $msg_type = 'error';
+                            } elseif ($currentStatus === 'queued' && DIRECTORY_SEPARATOR === '\\') {
+                                if (!defined('FAIRMED_WORKER_LIBRARY_MODE')) {
+                                    define('FAIRMED_WORKER_LIBRARY_MODE', true);
+                                }
+                                require_once __DIR__ . '/worker_allocation.php';
+                                runWorkerJobInline($conn, $active_import_job_id);
+                                $msg = 'Background worker launch was delayed, so the CSV import is running inline on this Windows environment.';
+                                $msg_type = 'success';
+                                log_admin_action($conn, $admin_id, "Queued CSV import job #{$active_import_job_id}");
+                            } elseif ($currentStatus === 'queued') {
+                                $msg = 'CSV import queued successfully. Waiting for the background worker to claim it.';
+                                $msg_type = 'success';
+                                log_admin_action($conn, $admin_id, "Queued CSV import job #{$active_import_job_id}");
+                            } else {
+                                $msg = 'CSV import queued successfully. The background worker is processing it now.';
+                                $msg_type = 'success';
+                                log_admin_action($conn, $admin_id, "Queued CSV import job #{$active_import_job_id}");
+                            }
                         } elseif (DIRECTORY_SEPARATOR === '\\') {
                             if (!defined('FAIRMED_WORKER_LIBRARY_MODE')) {
                                 define('FAIRMED_WORKER_LIBRARY_MODE', true);

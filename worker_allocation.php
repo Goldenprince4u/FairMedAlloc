@@ -345,8 +345,10 @@ function processCsvImportJob(mysqli $conn, array $job): void
     $payload = decodeImportJobPayload($job);
     $filePath = (string)($payload['file_path'] ?? '');
     $originalName = (string)($payload['original_name'] ?? basename($filePath));
+    $jobConn = openAuxJobConnection();
 
     if ($filePath === '' || !is_file($filePath)) {
+        closeAuxJobConnection($jobConn);
         markJobFailed($conn, $jobId, 'Queued import file could not be found on the server.', null);
         return;
     }
@@ -355,8 +357,9 @@ function processCsvImportJob(mysqli $conn, array $job): void
 
     try {
         $service = new CsvImportService($conn, $jobId);
-        $result = $service->processCsvFile($filePath, function (array $progress) use ($conn, $jobId): void {
-            $statusCheck = $conn->prepare("SELECT status FROM allocation_jobs WHERE job_id = ? LIMIT 1");
+        $result = $service->processCsvFile($filePath, function (array $progress) use ($conn, $jobConn, $jobId): void {
+            $trackerConn = $jobConn instanceof mysqli ? $jobConn : $conn;
+            $statusCheck = $trackerConn->prepare("SELECT status FROM allocation_jobs WHERE job_id = ? LIMIT 1");
             if ($statusCheck) {
                 $statusCheck->bind_param('i', $jobId);
                 $statusCheck->execute();
@@ -372,7 +375,7 @@ function processCsvImportJob(mysqli $conn, array $job): void
             $total = max(0, (int)($progress['total'] ?? 0));
             $processed = max(0, (int)($progress['processed'] ?? 0));
 
-            $stmt = $conn->prepare(
+            $stmt = $trackerConn->prepare(
                 "UPDATE allocation_jobs
                     SET status = 'running',
                         progress_stage = ?,
@@ -427,6 +430,7 @@ function processCsvImportJob(mysqli $conn, array $job): void
         if ($e instanceof RuntimeException && $e->getMessage() === JOB_CANCELLED_EXCEPTION) {
             markJobCancelled($conn, $jobId);
             Logger::info("Worker: CSV import job #$jobId was cancelled by administrator.");
+            closeAuxJobConnection($jobConn);
             return;
         }
 
@@ -438,6 +442,8 @@ function processCsvImportJob(mysqli $conn, array $job): void
         markJobFailed($conn, $jobId, $errorMsg, null);
         Logger::error("Worker: CSV import job #$jobId failed - " . $e->getMessage());
     }
+
+    closeAuxJobConnection($jobConn);
 }
 
 function decodeImportJobPayload(array $job): array
@@ -455,6 +461,28 @@ function cleanupImportFile(string $filePath): void
 {
     if ($filePath !== '' && is_file($filePath)) {
         @unlink($filePath);
+    }
+}
+
+function openAuxJobConnection(): ?mysqli
+{
+    try {
+        $jobConn = new mysqli(DB_HOST, DB_USER, DB_PASS, DB_NAME, DB_PORT);
+        if ($jobConn->connect_errno) {
+            return null;
+        }
+
+        return $jobConn;
+    } catch (Throwable $e) {
+        Logger::warning('Worker: unable to open auxiliary job tracker connection: ' . $e->getMessage());
+        return null;
+    }
+}
+
+function closeAuxJobConnection(?mysqli $jobConn): void
+{
+    if ($jobConn instanceof mysqli) {
+        @$jobConn->close();
     }
 }
 
