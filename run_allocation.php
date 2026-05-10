@@ -47,6 +47,213 @@ require_once 'includes/header.php';
 ?>
 
 <style>
+    .allocation-run-page {
+        display: flex;
+        flex-direction: column;
+        gap: 1.5rem;
+    }
+
+    .allocation-header {
+        background:
+            radial-gradient(circle at top right, rgba(var(--c-accent-rgb), 0.16), transparent 35%),
+            linear-gradient(135deg, rgba(var(--c-primary-rgb), 0.05), rgba(var(--c-primary-rgb), 0.015)),
+            var(--c-bg-surface);
+        border: 1px solid rgba(var(--c-primary-rgb), 0.08);
+        border-radius: 24px;
+        box-shadow: 0 20px 44px rgba(0, 33, 71, 0.08);
+        padding: 1.6rem 1.75rem;
+        margin-bottom: 0;
+    }
+
+    .allocation-pill-row {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.75rem;
+        margin-top: 1rem;
+    }
+
+    .allocation-pill {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.5rem;
+        padding: 0.6rem 0.85rem;
+        border-radius: 999px;
+        border: 1px solid rgba(var(--c-primary-rgb), 0.08);
+        background: rgba(var(--c-primary-rgb), 0.04);
+        color: var(--c-text-body);
+        font-size: 0.8rem;
+        font-weight: 700;
+        line-height: 1;
+    }
+
+    .allocation-pill i {
+        color: var(--c-primary);
+    }
+
+    .allocation-page-grid {
+        align-items: start;
+        grid-template-columns: minmax(0, 1.08fr) minmax(360px, 0.92fr);
+    }
+
+    .allocation-card {
+        position: relative;
+        overflow: hidden;
+        padding: 2rem;
+        border-radius: 24px;
+        border: 1px solid rgba(var(--c-primary-rgb), 0.08);
+        background:
+            radial-gradient(circle at top right, rgba(var(--c-accent-rgb), 0.12), transparent 32%),
+            linear-gradient(180deg, rgba(var(--c-primary-rgb), 0.03), transparent 60%),
+            var(--c-bg-surface);
+        box-shadow: 0 24px 48px rgba(0, 33, 71, 0.08);
+    }
+
+    .allocation-card::before {
+        content: "";
+        position: absolute;
+        inset: 0 auto auto 0;
+        width: 100%;
+        height: 4px;
+        background: linear-gradient(90deg, var(--c-accent), var(--c-primary));
+        opacity: 0.9;
+    }
+
+    .allocation-section-title {
+        display: flex;
+        align-items: center;
+        gap: 0.75rem;
+        margin-bottom: 1.15rem;
+        font-size: 1rem;
+        font-weight: 800;
+        color: var(--c-text-head);
+    }
+
+    .allocation-section-title i {
+        width: 36px;
+        height: 36px;
+        border-radius: 12px;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        background: rgba(var(--c-primary-rgb), 0.08);
+        color: var(--c-primary);
+    }
+
+    .allocation-meta-grid {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 0.85rem;
+        margin: 1.25rem 0 1.4rem;
+    }
+
+    .allocation-meta-item {
+        padding: 0.95rem 1rem;
+        border-radius: 18px;
+        border: 1px solid rgba(var(--c-primary-rgb), 0.08);
+        background: rgba(var(--c-primary-rgb), 0.035);
+    }
+
+    .allocation-meta-item span {
+        display: block;
+        font-size: 0.72rem;
+        font-weight: 800;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        color: var(--c-text-muted);
+        margin-bottom: 0.35rem;
+    }
+
+    .allocation-meta-item strong {
+        display: block;
+        font-size: 0.92rem;
+        line-height: 1.45;
+        color: var(--c-text-head);
+    }
+
+    .allocation-step-list {
+        list-style: none;
+        padding: 0;
+        margin: 0;
+        display: flex;
+        flex-direction: column;
+        gap: 0.8rem;
+    }
+
+    .allocation-step-list li {
+        display: grid;
+        grid-template-columns: 34px minmax(0, 1fr);
+        gap: 0.9rem;
+        align-items: start;
+        padding: 0.95rem 1rem;
+        border-radius: 18px;
+        border: 1px solid rgba(var(--c-primary-rgb), 0.08);
+        background: rgba(255, 255, 255, 0.58);
+    }
+
+    .allocation-step-index {
+        width: 34px;
+        height: 34px;
+        border-radius: 12px;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        background: rgba(var(--c-primary-rgb), 0.08);
+        color: var(--c-primary);
+        font-size: 0.78rem;
+        font-weight: 900;
+    }
+
+    .allocation-step-copy strong {
+        display: block;
+        margin-bottom: 0.2rem;
+        color: var(--c-text-head);
+    }
+
+    .allocation-step-copy p {
+        margin: 0;
+        font-size: 0.88rem;
+        line-height: 1.6;
+        color: var(--c-text-body);
+    }
+
+    .allocation-action-group {
+        display: flex;
+        flex-direction: column;
+        gap: 0.85rem;
+        margin-top: 1.5rem;
+    }
+
+    .allocation-notice {
+        margin-top: 1.4rem;
+        border-radius: 18px;
+        border: 1px solid rgba(91, 158, 247, 0.22);
+        background: rgba(91, 158, 247, 0.08);
+        padding: 0.95rem 1rem;
+        color: #336ebd;
+        font-size: 0.84rem;
+        line-height: 1.65;
+    }
+
+    .allocation-notice strong {
+        color: #2058a5;
+    }
+
+    .allocation-console {
+        min-height: 100%;
+    }
+
+    .allocation-console-header {
+        font-size: 0.92rem;
+        font-weight: 800;
+        color: rgba(255,255,255,0.92);
+        margin-bottom: 1.25rem;
+        padding-bottom: 0.95rem;
+        border-bottom: 1px solid rgba(255,255,255,0.1);
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+        flex-shrink: 0;
+    }
     /* ── Async Progress UI Styles ───────────────────────────────────────────── */
     .progress-wrap {
         margin-top: 1.25rem;
@@ -123,53 +330,110 @@ require_once 'includes/header.php';
     <?php require_once 'includes/nav.php'; ?>
 
     <main class="main-content">
+        <div class="allocation-run-page">
 
-        <!-- Page Header -->
-        <div class="page-header">
+        <div class="page-header allocation-header">
             <div class="page-header-info">
-                <h1>Run Algorithm</h1>
+                <h1>Run Allocation Engine</h1>
                 <p class="text-muted">Fairness-aware hostel allocation — supports 15,000+ students via background queue.
                 </p>
+                <div class="allocation-pill-row">
+                    <span class="allocation-pill">
+                        <i class="fa-solid fa-layer-group"></i>
+                        15,000+ student queue
+                    </span>
+                    <span class="allocation-pill">
+                        <i class="fa-solid fa-shield-heart"></i>
+                        Medical-priority safeguards
+                    </span>
+                    <span class="allocation-pill">
+                        <i class="fa-solid fa-clock-rotate-left"></i>
+                        Resume-safe progress polling
+                    </span>
+                </div>
             </div>
             <a href="admin_dashboard.php" class="btn btn-outline" id="run-back-btn">
                 <i class="fa-solid fa-arrow-left"></i> Dashboard
             </a>
         </div>
 
-        <div class="grid grid-cols-2">
+        <div class="grid allocation-page-grid">
 
             <!-- ── Control Panel ─────────────────────────────────────────── -->
-            <div class="card" style="padding:2rem;">
-                <div class="form-section-title" style="margin-bottom:1.25rem;">
-                    <span class="form-section-icon" style="background:rgba(0,33,71,0.08);color:var(--c-primary);">
-                        <i class="fa-solid fa-sliders"></i>
-                    </span>
-                    Control Panel
+            <div class="allocation-card">
+                <div class="allocation-section-title">
+                    <i class="fa-solid fa-sliders"></i>
+                    <span>Control Panel</span>
                 </div>
 
-                <p class="text-muted" style="font-size:0.875rem;margin-bottom:1rem;">This process will execute the following steps:</p>
-                <ul class="list-instructions" style="line-height: 1.6; color: rgba(255, 255, 255, 0.85); font-size: 0.9rem; margin-bottom: 1rem; padding-left: 1.5rem;">
-                    <li><strong>Fetch Candidates:</strong> Retrieves all paid and unallocated students from the database.</li>
-                    <li><strong>Calculate Urgency:</strong> Scores each student using the XGBoost model and calibrates them into High, Medium, or Low priority bands.</li>
-                    <li><strong>Optimize Allocation:</strong> Runs the OR-Tools Min-Cost Flow solver to compute the optimal room assignments.</li>
-                    <li><strong>Enforce Constraints:</strong> Applies the PHP Safety Inspector to guarantee clinic-proximal routing, lower bunk beds for mobility students, ground-floor placement, and strict gender separation.</li>
-                    <li><strong>Manage Waitlist:</strong> Waitlists students whose specific constraints cannot be met (with a reason provided) and backfills any remaining space.</li>
-                    <li><strong>Finalize:</strong> Writes a comprehensive audit log and saves all results securely in a single database transaction.</li>
+                <p class="text-muted" style="font-size:0.92rem;margin-bottom:0;">This run coordinates scoring, optimization, safety enforcement, and final audit writes in one guarded workflow.</p>
+
+                <div class="allocation-meta-grid">
+                    <div class="allocation-meta-item">
+                        <span>Engine</span>
+                        <strong>Min-Cost Flow + PHP safety checks</strong>
+                    </div>
+                    <div class="allocation-meta-item">
+                        <span>Scoring</span>
+                        <strong>XGBoost with local Python fallback</strong>
+                    </div>
+                    <div class="allocation-meta-item">
+                        <span>Recovery</span>
+                        <strong>Background queue with resumable status</strong>
+                    </div>
+                </div>
+
+                <ul class="allocation-step-list">
+                    <li>
+                        <span class="allocation-step-index">01</span>
+                        <div class="allocation-step-copy">
+                            <strong>Fetch eligible candidates</strong>
+                            <p>Pull paid, unallocated students and load the current room inventory for this academic session.</p>
+                        </div>
+                    </li>
+                    <li>
+                        <span class="allocation-step-index">02</span>
+                        <div class="allocation-step-copy">
+                            <strong>Score medical urgency</strong>
+                            <p>Compute urgency bands with XGBoost, then normalize scores for routing and fairness rules.</p>
+                        </div>
+                    </li>
+                    <li>
+                        <span class="allocation-step-index">03</span>
+                        <div class="allocation-step-copy">
+                            <strong>Optimize room placement</strong>
+                            <p>Run the OR-Tools solver to maximize fit while respecting gender, capacity, and proximity goals.</p>
+                        </div>
+                    </li>
+                    <li>
+                        <span class="allocation-step-index">04</span>
+                        <div class="allocation-step-copy">
+                            <strong>Apply safety constraints</strong>
+                            <p>Guarantee clinic-adjacent routing, accessible lower-bunk placement, and ground-floor handling where required.</p>
+                        </div>
+                    </li>
+                    <li>
+                        <span class="allocation-step-index">05</span>
+                        <div class="allocation-step-copy">
+                            <strong>Finalize and notify</strong>
+                            <p>Write allocations, audit logs, notifications, and waitlist outcomes inside a controlled transaction.</p>
+                        </div>
+                    </li>
                 </ul>
 
-                <div class="alert"
-                    style="margin-top:1.25rem;background:rgba(0,120,255,0.08);border:1px solid rgba(91,158,247,0.3);color:#5b9ef7;font-size:0.82rem;padding:0.75rem 1rem;border-radius:8px;">
+                <div class="allocation-notice">
                     <i class="fa-solid fa-bolt"></i>
                     <strong>Async mode:</strong> The job runs in the background — you can safely close this tab or
                     navigate away. Progress is polled automatically every few seconds.
                 </div>
 
+                <div class="allocation-action-group">
                 <?php if ($is_locked): ?>
-                    <div class="alert alert-danger" style="margin-top:1.5rem;">
+                    <div class="alert alert-danger">
                         <i class="fa-solid fa-lock"></i> Allocation session is locked for this academic year.
                     </div>
                     <button class="btn btn-secondary w-full" disabled
-                        style="margin-top:1rem;opacity:0.5;cursor:not-allowed;">
+                        style="opacity:0.5;cursor:not-allowed;">
                         <i class="fa-solid fa-lock"></i> Session Locked
                     </button>
                 <?php else: ?>
@@ -179,19 +443,20 @@ require_once 'includes/header.php';
                     </form>
 
                     <button class="btn btn-primary w-full" id="start-alloc-btn" onclick="queueAllocation()"
-                        style="margin-top:1.5rem;padding:0.875rem;">
+                        style="padding:0.95rem;">
                         <i class="fa-solid fa-play"></i> Start Allocation Engine
                     </button>
                     <button class="btn btn-secondary w-full" id="rescore-btn" onclick="rescoreAllScores()"
-                        style="margin-top:0.875rem;padding:0.875rem;">
+                        style="padding:0.95rem;">
                         <i class="fa-solid fa-rotate"></i> Recalculate All Urgency Scores
                     </button>
-                    <button class="btn w-full" id="cancel-job-btn" onclick="cancelCurrentJob()" style="display:none;margin-top:0.875rem;padding:0.875rem;
+                    <button class="btn w-full" id="cancel-job-btn" onclick="cancelCurrentJob()" style="display:none;padding:0.95rem;
                                    background:rgba(255,60,60,0.12);color:#ff6b6b;
                                    border:1px solid rgba(255,60,60,0.3);">
                         <i class="fa-solid fa-xmark"></i> Cancel Job
                     </button>
                 <?php endif; ?>
+                </div>
 
                 <!-- Recent job resumption notice -->
                 <?php if ($recent_job && in_array($recent_job['status'], ['queued', 'running'])): ?>
@@ -207,9 +472,8 @@ require_once 'includes/header.php';
             </div>
 
             <!-- ── Process Log ─────────────────────────────────────────────── -->
-            <div class="card-console" style="display:flex;flex-direction:column;overflow:hidden;">
-                <div
-                    style="font-size:0.875rem;font-weight:700;color:rgba(255,255,255,0.9);margin-bottom:1.25rem;padding-bottom:0.875rem;border-bottom:1px solid rgba(255,255,255,0.1);display:flex;align-items:center;gap:0.5rem;flex-shrink:0;">
+            <div class="card-console allocation-card allocation-console" style="display:flex;flex-direction:column;overflow:hidden;">
+                <div class="allocation-console-header">
                     <i class="fa-solid fa-terminal" style="color:var(--c-accent);"></i> Process Log
                     <span id="job-status-badge" style="margin-left:auto;"></span>
                 </div>
@@ -231,6 +495,7 @@ require_once 'includes/header.php';
                 </div>
             </div>
 
+        </div>
         </div>
     </main>
 </div>
