@@ -588,28 +588,34 @@ function handleCancelJob($conn) {
         $affected = $conn->affected_rows;
     }
 
-    // Always release the admin processing lock so a new job can start immediately
+    // Always release the admin-level processing lock so a new job can be queued.
     releaseProcessingLock($conn, 'admin_processing_lock');
 
-    // Release MySQL worker GET_LOCK in case the background worker is still holding it
-    $conn->query("SELECT RELEASE_LOCK('fairmedalloc_allocation_worker')");
+    // NOTE: We intentionally do NOT call RELEASE_LOCK('fairmedalloc_allocation_worker')
+    // here. MySQL user locks are connection-scoped — only the connection that acquired
+    // the lock can release it. Calling it from the API connection is a no-op if the
+    // worker process holds it, so the call would only mislead the log. The worker
+    // will release its own lock naturally when it reads the 'cancelled' status and
+    // exits at its next cancellation checkpoint (typically within a few seconds of
+    // the next progress flush).
 
     $admin_id = (int)$_SESSION['user_id'];
     if ($affected > 0) {
         log_admin_action($conn, $admin_id, $job_id > 0 ? "Cancelled allocation job #$job_id" : "Cancelled all active allocation jobs");
-        Logger::info("Admin cancelled " . ($job_id > 0 ? "Job #$job_id" : "all active jobs") . " and released all locks.");
+        Logger::info("Admin cancelled " . ($job_id > 0 ? "Job #$job_id" : "all active jobs") . ".");
         sendJsonResponse([
             'status'  => 'success',
-            'message' => $affected . ' job(s) cancelled. You can now start a new allocation.',
+            'message' => $affected . ' job(s) marked as cancelled. '
+                       . 'Any running worker will stop at its next checkpoint (usually within seconds).',
         ]);
     } else {
-        // Even if no jobs were found, still release locks — idempotent clean-up
         sendJsonResponse([
             'status'  => 'success',
-            'message' => 'No active jobs found. Locks released — ready to start a new allocation.',
+            'message' => 'No active jobs found. Ready to start a new allocation.',
         ]);
     }
 }
+
 
 
 /**

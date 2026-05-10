@@ -19,7 +19,9 @@ if (isset($names[1])) {
 // Per-request session sync: re-read profile_pic and full_name from DB so that
 // a photo change on one device/session is reflected on every other already-
 // logged-in session on its very next page load — no re-login required.
-// We piggyback on the existing connection check used for the notification count.
+// $unread_count is initialised here so it is always defined even if the DB
+// block below is skipped (no connection, prepare() failure, etc.).
+$unread_count = 0;
 if (
     isset($_SESSION['user_id']) &&
     isset($conn) &&

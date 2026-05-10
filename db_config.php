@@ -107,23 +107,61 @@ if ($conn->connect_errno) {
 require_once __DIR__ . '/includes/Logger.php';
 require_once __DIR__ . '/includes/DbHelper.php';
 
-$supportsMustChangePassword = false;
-$mustChangeColumn = $conn->query("SHOW COLUMNS FROM users LIKE 'must_change_password'");
-if ($mustChangeColumn instanceof mysqli_result) {
-    $supportsMustChangePassword = $mustChangeColumn->num_rows > 0;
-    $mustChangeColumn->free();
+// ── Schema migration guard ────────────────────────────────────────────────────
+// Migration work (SHOW COLUMNS / ALTER TABLE / alignMedicalSchema) is expensive
+// and can cause lock contention under live traffic. We gate it behind a single
+// settings-table marker ('schema_version' = 'v1') so the inspection and any
+// structural changes only happen ONCE per deployment, not on every request.
+//
+// Flow:
+//   marker present  → define constant immediately, skip all migration work
+//   marker absent   → run SHOW COLUMNS / ALTER TABLE, write marker on success
+//
+// If the settings table itself is missing (very first run), fall back gracefully.
+$_fairmed_schema_version_needed = 'v1';
+$_fairmed_schema_current        = null;
+
+$_sv_res = @$conn->query(
+    "SELECT setting_value FROM settings WHERE setting_key = 'schema_version' LIMIT 1"
+);
+if ($_sv_res instanceof mysqli_result) {
+    $_sv_row = $_sv_res->fetch_assoc();
+    $_fairmed_schema_current = $_sv_row['setting_value'] ?? null;
+    $_sv_res->free();
 }
 
-// Older local databases may be missing the forced-password-change flag.
-if (!$supportsMustChangePassword) {
-    if ($conn->query("ALTER TABLE users ADD COLUMN must_change_password TINYINT(1) NOT NULL DEFAULT 0 AFTER password_hash")) {
-        $supportsMustChangePassword = true;
-    } else {
-        error_log('[FairMedAlloc] Unable to add users.must_change_password automatically: ' . $conn->error);
+if ($_fairmed_schema_current !== $_fairmed_schema_version_needed) {
+    // ── Run migrations ────────────────────────────────────────────────────────
+    $supportsMustChangePassword = false;
+    $mustChangeColumn = $conn->query("SHOW COLUMNS FROM users LIKE 'must_change_password'");
+    if ($mustChangeColumn instanceof mysqli_result) {
+        $supportsMustChangePassword = $mustChangeColumn->num_rows > 0;
+        $mustChangeColumn->free();
     }
+
+    if (!$supportsMustChangePassword) {
+        if ($conn->query("ALTER TABLE users ADD COLUMN must_change_password TINYINT(1) NOT NULL DEFAULT 0 AFTER password_hash")) {
+            $supportsMustChangePassword = true;
+        } else {
+            error_log('[FairMedAlloc] Unable to add users.must_change_password automatically: ' . $conn->error);
+        }
+    }
+
+    DbHelper::alignMedicalSchema($conn);
+
+    // Write version marker so subsequent requests skip all of the above
+    if ($supportsMustChangePassword) {
+        @$conn->query(
+            "INSERT INTO settings (setting_key, setting_value)
+                  VALUES ('schema_version', '{$_fairmed_schema_version_needed}')
+             ON DUPLICATE KEY UPDATE setting_value = VALUES(setting_value)"
+        );
+    }
+} else {
+    // Marker present — schema is already up to date
+    $supportsMustChangePassword = true;
 }
 
 define('FAIRMED_SUPPORTS_MUST_CHANGE_PASSWORD', $supportsMustChangePassword);
 
-DbHelper::alignMedicalSchema($conn);
 ?>
