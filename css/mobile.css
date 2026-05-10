@@ -1042,26 +1042,21 @@
 }
 
 
+
+
 /* =============================================
    GLOBAL MOBILE TEXT CONTRAST OVERRIDES
    ============================================= */
 @media (max-width: 768px) {
-    body, p, li, td, th, label, .text-body, .faq-answer {
-        color: #1e293b !important;
+    :root {
+        --c-text-body: #0f172a;
+        --c-text-muted: #334155;
+        --c-text-light: #475569;
+    }
+    body, p, li, .faq-answer {
         font-weight: 500 !important;
-        font-size: 0.95rem;
-        line-height: 1.6;
     }
-    .text-muted, span.text-muted {
-        color: #334155 !important;
-        opacity: 1 !important;
-    }
-    h1, h2, h3, h4, h5, .text-head {
-        color: #0f172a !important;
+    h1, h2, h3, h4, h5 {
         font-weight: 800 !important;
     }
-    .card p.text-muted {
-        color: #334155 !important;
-    }
 }
-
