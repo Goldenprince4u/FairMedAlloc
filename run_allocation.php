@@ -249,6 +249,8 @@ require_once 'includes/header.php';
     let _currentJobId = null;
     let _pollCount = 0;
     let _idlePollCount = 0;
+    let _orToolsStuckWarned = false;  // track whether stuck-solver warning was shown
+    let _orToolsStuckAt = null;       // timestamp when we first saw ≤30% on a running job
 
     // ── Boot: resume an active job if one exists ─────────────────────────────────
     <?php if ($recent_job && in_array($recent_job['status'], ['queued', 'running'])): ?>
@@ -258,6 +260,9 @@ require_once 'includes/header.php';
                 `&#9654; Resuming progress for Job #${_currentJobId}…`, '#5b9ef7');
             showProgressBar();
             startElapsedTimer();
+            // Show cancel button immediately — the job is already active
+            const cancelBtnResume = document.getElementById('cancel-job-btn');
+            if (cancelBtnResume) cancelBtnResume.style.display = 'block';
             schedulePoll();
         });
     <?php endif; ?>
@@ -447,6 +452,26 @@ require_once 'includes/header.php';
                     logLine(logEl,
                         '&#9888; Job is still queued. If this persists, check Apache/XAMPP PHP CLI launch permissions or start `worker_launcher.php` manually.',
                         'var(--c-warning)');
+                }
+
+                // Stuck-at-OR-Tools detector: if the job is running but stuck at
+                // ≤30% for more than 3 minutes, warn the admin.
+                const pct = data.progress_percent ?? 0;
+                if (jobStatus === 'running' && pct <= 30) {
+                    if (!_orToolsStuckAt) _orToolsStuckAt = Date.now();
+                    const stuckSecs = Math.floor((Date.now() - _orToolsStuckAt) / 1000);
+                    if (stuckSecs >= 180 && !_orToolsStuckWarned) {
+                        _orToolsStuckWarned = true;
+                        logLine(logEl,
+                            '&#9888; <strong>OR-Tools solver has been running for over 3 minutes.</strong> ' +
+                            'This is normal for large datasets. The solver is still active — ' +
+                            'the heartbeat keeps the job alive. If you need to stop it, use the Cancel button.',
+                            '#ffc300');
+                    }
+                } else {
+                    // Progress moved past 30% — reset the stuck tracker
+                    _orToolsStuckAt = null;
+                    _orToolsStuckWarned = false;
                 }
 
                 schedulePoll(POLL_INTERVAL_MS);
