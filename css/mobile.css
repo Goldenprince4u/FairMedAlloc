@@ -341,6 +341,9 @@
     /* =============================================
        AUTH PAGES — full-screen stacked layout
        ============================================= */
+    /* =============================================
+       AUTH PAGES — tight logo strip + overlapping form
+       ============================================= */
     .auth-container {
         flex-direction: column;
         height: auto;
@@ -348,74 +351,110 @@
         overflow: visible;
     }
 
+    /* Brand panel: compact logo strip, not a full half-page */
     .auth-left {
         width: 100%;
         height: auto;
         min-height: auto;
-        padding: 2.5rem 1.25rem 1.75rem;
+        padding: 2rem 1.5rem 3rem;       /* extra bottom padding — form overlaps into it */
         position: static;
         overflow: visible;
         background:
-            radial-gradient(circle at top right, rgba(201, 168, 76, 0.18), transparent 34%),
-            linear-gradient(160deg, rgba(0, 33, 71, 0.98), rgba(2, 56, 98, 0.94));
-        border-radius: 0 0 28px 28px;
-        box-shadow: 0 20px 40px rgba(0, 33, 71, 0.22);
+            radial-gradient(circle at 80% 20%, rgba(201, 168, 76, 0.22), transparent 40%),
+            radial-gradient(circle at 10% 80%, rgba(0,93,168,0.15), transparent 50%),
+            linear-gradient(155deg, #001f45 0%, #023662 100%);
+        border-radius: 0 0 32px 32px;
+        box-shadow: 0 24px 48px rgba(0, 33, 71, 0.28);
     }
 
+    /* Compact logo: smaller, inline with headline */
+    .auth-left img {
+        width: 52px !important;
+        height: 52px !important;
+        margin-bottom: 0.875rem !important;
+        border-width: 2px !important;
+    }
+
+    .brand-content { max-width: 100%; }
+
+    /* Hide the feature checklist — wastes vertical space on mobile */
+    .auth-feature-list { display: none; }
+
+    /* Keep the tagline quote but tighten it */
+    .brand-border {
+        margin-top: 0.625rem;
+        padding-left: 0.875rem;
+        border-left-width: 3px;
+    }
+    .brand-border p {
+        font-size: 0.82rem;
+        line-height: 1.55;
+        opacity: 0.8;
+    }
+
+    /* FIX 2: university name — readable, not buried */
+    .auth-subtitle {
+        font-size: 0.95rem !important;
+        font-weight: 600;
+        letter-spacing: 0.03em;
+        color: rgba(255, 255, 255, 0.88);
+        margin-bottom: 0.875rem;
+        text-transform: none;
+    }
+
+    .auth-headline {
+        font-size: 1.85rem;
+        line-height: 1.1;
+        margin-bottom: 0.35rem;
+    }
+
+    /* FIX 4: form panel slides UP to overlap brand panel — visual connector */
     .auth-right {
         width: 100%;
         height: auto;
         overflow: visible;
-        position: static;
-        padding: 1.5rem 1.25rem 3rem;
+        position: relative;
+        margin-top: -24px;              /* overlap the navy strip */
+        z-index: 2;
+        padding: 0 1rem 3rem;
     }
 
+    /* FIX 3: form box — more breathing room, premium card feel */
     .auth-box {
         width: 100%;
         max-width: 100%;
-        padding-top: 0;
         background:
-            radial-gradient(circle at top right, rgba(var(--c-accent-rgb), 0.14), transparent 40%),
-            linear-gradient(180deg, rgba(var(--c-primary-rgb), 0.04), transparent 60%),
+            radial-gradient(circle at 90% 5%, rgba(var(--c-accent-rgb), 0.12), transparent 40%),
+            linear-gradient(180deg, rgba(var(--c-primary-rgb), 0.03), transparent 70%),
             var(--c-bg-surface);
-        border: 1px solid rgba(var(--c-primary-rgb), 0.08);
-        border-radius: 20px;
-        padding: 1.25rem 1.25rem 1.5rem !important;
-        box-shadow: 0 18px 44px rgba(0, 33, 71, 0.08);
-    }
-
-    .brand-content {
-        max-width: 100%;
-    }
-
-    .auth-left img {
-        width: 64px !important;
-        height: 64px !important;
-        margin-bottom: 1.15rem !important;
+        border: 1px solid rgba(var(--c-primary-rgb), 0.09);
+        border-radius: 24px;
+        padding: 1.75rem 1.5rem 2rem !important;
+        box-shadow:
+            0 2px 0 rgba(255,255,255,0.7) inset,
+            0 24px 56px rgba(0, 33, 71, 0.12),
+            0 8px 24px rgba(0, 33, 71, 0.08);
     }
 
     .auth-box .badge {
         display: inline-flex;
         align-items: center;
         gap: 0.35rem;
-        padding: 0.45rem 0.8rem;
+        padding: 0.45rem 0.875rem;
         border-radius: 999px;
         font-size: 0.68rem !important;
         letter-spacing: 0.11em !important;
-        box-shadow: inset 0 0 0 1px rgba(var(--c-primary-rgb), 0.08);
     }
 
     .auth-box form,
     .mobile-form-card form {
         display: flex;
         flex-direction: column;
-        gap: 0.95rem;
+        gap: 1rem;
     }
 
     .auth-box .form-group,
-    .mobile-form-card .form-group {
-        margin-bottom: 0 !important;
-    }
+    .mobile-form-card .form-group { margin-bottom: 0 !important; }
 
     .auth-box .form-group label,
     .mobile-form-card .form-group label {
@@ -429,25 +468,21 @@
     }
 
     .auth-box .input-group,
-    .mobile-form-card .input-group {
-        position: relative;
-    }
+    .mobile-form-card .input-group { position: relative; }
 
     .auth-box .input-auth,
     .mobile-form-card .input-auth {
-        min-height: 50px;
+        min-height: 52px;
         border-radius: 16px;
         border: 1px solid rgba(var(--c-primary-rgb), 0.12);
-        background: linear-gradient(180deg, rgba(255,255,255,0.96), rgba(248,250,252,0.94));
-        box-shadow: inset 0 1px 0 rgba(255,255,255,0.6);
+        background: linear-gradient(180deg, rgba(255,255,255,0.97), rgba(248,250,252,0.95));
+        box-shadow: inset 0 1px 0 rgba(255,255,255,0.8), 0 1px 3px rgba(0,0,0,0.04);
         padding-left: 1rem;
         padding-right: 1rem;
     }
 
     .auth-box select.input-auth,
-    .mobile-form-card select.input-auth {
-        padding-right: 2.75rem;
-    }
+    .mobile-form-card select.input-auth { padding-right: 2.75rem; }
 
     .auth-box .text-xs.text-muted,
     .mobile-form-card .text-xs.text-muted {
@@ -460,28 +495,21 @@
         line-height: 1.55;
     }
 
-    .auth-box .alert {
-        border-radius: 16px;
-        margin-bottom: 1rem;
-    }
-
-    .auth-box .grid.grid-cols-2 {
-        gap: 0.85rem;
-    }
+    .auth-box .alert { border-radius: 16px; margin-bottom: 1rem; }
+    .auth-box .grid.grid-cols-2 { gap: 0.85rem; }
 
     .auth-box .btn.btn-primary,
     .mobile-form-card .btn.btn-primary {
-        min-height: 52px;
+        min-height: 54px;
         border-radius: 16px;
         font-weight: 800;
         letter-spacing: 0.01em;
-        box-shadow: 0 14px 24px rgba(var(--c-primary-rgb), 0.18);
+        font-size: 0.95rem;
+        box-shadow: 0 16px 28px rgba(var(--c-primary-rgb), 0.22);
     }
 
     .auth-box .text-center.mt-4,
-    .auth-box .text-center.mt-6.pt-4.text-muted {
-        margin-top: 0.95rem !important;
-    }
+    .auth-box .text-center.mt-6.pt-4.text-muted { margin-top: 1rem !important; }
 
     .auth-box .mt-6.pt-4.text-muted {
         border-top-style: dashed !important;
@@ -489,10 +517,18 @@
         line-height: 1.7;
     }
 
-    .mobile-form-grid {
-        gap: 1rem;
+    #login-form > .flex.justify-between.mt-4 {
+        flex-direction: column;
+        align-items: stretch;
+        gap: 0.75rem;
+    }
+    #login-form > .flex.justify-between.mt-4 a {
+        display: block;
+        text-align: left;
     }
 
+    /* Signup / other form pages */
+    .mobile-form-grid { gap: 1rem; }
     .mobile-form-card,
     .mobile-side-card {
         border-radius: 20px;
@@ -503,24 +539,10 @@
         border: 1px solid rgba(var(--c-primary-rgb), 0.08);
         box-shadow: 0 18px 36px rgba(0, 33, 71, 0.08);
     }
-
-    .mobile-form-card > div:first-child {
-        margin-bottom: 1rem !important;
-    }
-
-    .mobile-form-card [style*="justify-content:flex-end"] {
-        justify-content: stretch !important;
-    }
-
-    .mobile-form-card [style*="justify-content:flex-end"] .btn {
-        width: 100%;
-    }
-
-    .mobile-side-card h3 {
-        font-size: 1rem !important;
-        margin-bottom: 0.85rem !important;
-    }
-
+    .mobile-form-card > div:first-child { margin-bottom: 1rem !important; }
+    .mobile-form-card [style*="justify-content:flex-end"] { justify-content: stretch !important; }
+    .mobile-form-card [style*="justify-content:flex-end"] .btn { width: 100%; }
+    .mobile-side-card h3 { font-size: 1rem !important; margin-bottom: 0.85rem !important; }
     .mobile-side-card .text-sm.text-body {
         padding: 0.85rem 0.9rem;
         border-radius: 14px;
@@ -529,79 +551,14 @@
         line-height: 1.55;
     }
 
-    .auth-form-shell {
-        grid-template-columns: 1fr;
-        gap: 1rem;
-    }
-
-    .auth-form-main {
-        border-radius: 20px;
-        padding: 1.25rem;
-    }
-
-    .auth-form-aside {
-        gap: 0.85rem;
-    }
-
-    .auth-aside-card {
-        border-radius: 16px;
-        padding: 1rem;
-    }
-
-    .auth-aside-card h3 {
-        font-size: 0.9rem;
-        margin-bottom: 0.75rem;
-    }
-
-    .auth-aside-list li {
-        font-size: 0.82rem;
-        gap: 0.65rem;
-    }
-
-    .auth-links-row {
-        flex-direction: column;
-        align-items: stretch;
-        gap: 0.75rem;
-    }
-
-    .auth-links-row a {
-        display: block;
-        text-align: left;
-    }
-
-    .auth-headline {
-        font-size: 1.9rem;
-        line-height: 1.1;
-        margin-bottom: 0.5rem;
-    }
-
-    #login-form > .flex.justify-between.mt-4 {
-        flex-direction: column;
-        align-items: stretch;
-        gap: 0.75rem;
-    }
-
-    #login-form > .flex.justify-between.mt-4 a {
-        display: block;
-        text-align: left;
-    }
-
-    .auth-subtitle {
-        font-size: 0.74rem;
-        margin-bottom: 1rem;
-        letter-spacing: 0.14em;
-    }
-
-    /* Condense branding panel — hide the feature checklist */
-    .auth-feature-list { display: none; }
-
-    .brand-border {
-        margin-top: 0.875rem;
-        padding-left: 1rem;
-        border-left-width: 4px;
-    }
-
-    .brand-border p { font-size: 0.85rem; line-height: 1.6; }
+    .auth-form-shell { grid-template-columns: 1fr; gap: 1rem; }
+    .auth-form-main  { border-radius: 20px; padding: 1.25rem; }
+    .auth-form-aside { gap: 0.85rem; }
+    .auth-aside-card { border-radius: 16px; padding: 1rem; }
+    .auth-aside-card h3 { font-size: 0.9rem; margin-bottom: 0.75rem; }
+    .auth-aside-list li { font-size: 0.82rem; gap: 0.65rem; }
+    .auth-links-row { flex-direction: column; align-items: stretch; gap: 0.75rem; }
+    .auth-links-row a { display: block; text-align: left; }
 
     /* =============================================
        PROFILE BANNER — stack avatar + info vertically
@@ -753,13 +710,14 @@
     .stat-info h3 { font-size: 1.25rem; }
     .stat-info p  { font-size: 0.65rem; }
 
-    .auth-left  { padding: 2rem 1rem 1.5rem; }
-    .auth-right { padding: 1.25rem 1rem 2.5rem; }
+    .auth-left  { padding: 1.75rem 1.25rem 2.75rem; }
+    .auth-right { padding: 0 0.875rem 2.5rem; }
     .auth-headline { font-size: 1.75rem; }
+    .auth-subtitle { font-size: 0.9rem !important; }
     .sidebar-brand-title { font-size: 1.28rem !important; }
     .sidebar-brand-kicker { font-size: 0.8rem !important; }
     .auth-box .input-auth,
-    .mobile-form-card .input-auth { min-height: 48px; }
+    .mobile-form-card .input-auth { min-height: 50px; }
 
     .page-header-info h1 { font-size: 1.15rem; }
 }
@@ -793,11 +751,12 @@
     th { font-size: 0.7rem; padding: 0.5rem 0.625rem; }
     td { font-size: 0.78rem; padding: 0.5rem 0.625rem; }
 
-    .auth-left  { padding: 1.75rem 0.875rem 1.25rem; }
-    .auth-right { padding: 1.25rem 0.875rem 2rem; }
+    .auth-left  { padding: 1.5rem 1rem 2.5rem; }
+    .auth-right { padding: 0 0.75rem 2rem; }
     .auth-headline { font-size: 1.6rem; }
+    .auth-subtitle { font-size: 0.88rem !important; }
     .brand-border p { font-size: 0.8rem; }
-    .auth-box { padding: 1rem 1rem 1.35rem !important; }
+    .auth-box { padding: 1.5rem 1.25rem 1.75rem !important; }
     .auth-box .badge { width: 100%; justify-content: center; }
     .auth-box .grid.grid-cols-2 { gap: 0.75rem; }
     .auth-box .input-auth,
@@ -856,9 +815,11 @@
     .btn { font-size: 0.78rem; padding: 0.55rem 0.875rem; }
     .btn-sm { font-size: 0.72rem; padding: 0.35rem 0.625rem; }
 
-    .auth-headline { font-size: 1.45rem; }
-    .auth-left  { padding: 1.5rem 0.75rem 1rem; }
-    .auth-right { padding: 1rem 0.75rem 2rem; }
+    .auth-headline { font-size: 1.4rem; }
+    .auth-left  { padding: 1.35rem 0.875rem 2.25rem; }
+    .auth-right { padding: 0 0.625rem 2rem; }
+    .auth-subtitle { font-size: 0.82rem !important; }
+    .auth-box   { padding: 1.35rem 1rem 1.5rem !important; }
     .mobile-form-card,
     .mobile-side-card { padding: 0.95rem !important; }
 
@@ -930,9 +891,11 @@
     .btn { font-size: 0.75rem; padding: 0.5rem 0.75rem; min-height: 40px; }
     .btn-sm { font-size: 0.68rem; padding: 0.3rem 0.5rem; }
 
-    .auth-left  { padding: 1.25rem 0.625rem 0.875rem; }
-    .auth-right { padding: 0.875rem 0.625rem 1.5rem; }
+    .auth-left  { padding: 1.25rem 0.625rem 2rem; }
+    .auth-right { padding: 0 0.5rem 1.5rem; }
     .auth-headline { font-size: 1.3rem; }
+    .auth-subtitle { font-size: 0.78rem !important; }
+    .auth-box   { padding: 1.25rem 0.875rem 1.35rem !important; }
 
     .sidebar { max-width: 260px; }
     .sidebar-toggle { width: 38px; height: 38px; top: 0.75rem; left: 0.75rem; }
