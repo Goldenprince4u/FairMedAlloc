@@ -255,10 +255,14 @@ class AllocationEngine {
                 $solverBackend = strtolower((string)$this->getSettingValue('allocation_solver_backend', 'ortools'));
                 if ($solverBackend === 'ortools') {
                     $alloc_script = __DIR__ . '/../ml_models/allocate.py';
-                    $solver_output = $this->executeShellCommand(array_merge(
-                        $this->getPythonCommandParts(),
-                        [$alloc_script, $students_csv_file, $rooms_csv_file, $output_csv_file]
-                    ));
+                    $solver_output = $this->executeShellCommand(
+                        array_merge(
+                            $this->getPythonCommandParts(),
+                            [$alloc_script, $students_csv_file, $rooms_csv_file, $output_csv_file]
+                        ),
+                        $this->conn,
+                        $this->jobId
+                    );
 
                     if (is_string($solver_output) && preg_match('/Solver status:\s*([A-Z_]+)/', $solver_output, $matches) === 1) {
                         $solver_status = strtoupper((string)$matches[1]);
@@ -717,16 +721,81 @@ class AllocationEngine {
 
 
 
-    private function executeShellCommand(array $command_parts) {
+    /**
+     * Execute a shell command and return its combined stdout+stderr output.
+     *
+     * When $heartbeatConn and $heartbeatJobId are provided, the method uses
+     * proc_open instead of shell_exec so it can touch allocation_jobs.updated_at
+     * every 60 seconds while the process is running. This prevents the stale-job
+     * detector (STALE_JOB_MINUTES = 45) from incorrectly resetting a long OR-Tools
+     * solve that emits no progress callbacks between 30% and completion.
+     *
+     * Falls back to shell_exec if proc_open is unavailable.
+     */
+    private function executeShellCommand(array $command_parts, ?mysqli $heartbeatConn = null, ?int $heartbeatJobId = null): ?string
+    {
         $escaped_parts = array_map([$this, 'escapeCommandPart'], $command_parts);
-        $command = implode(' ', $escaped_parts);
-        $output = @shell_exec($command . ' 2>&1');
+        $command       = implode(' ', $escaped_parts);
 
-        if (!is_string($output)) {
-            return null;
+        // Use proc_open when heartbeat is needed so we can poll the process
+        // without blocking and periodically touch updated_at.
+        if ($heartbeatConn instanceof mysqli && $heartbeatJobId !== null && function_exists('proc_open')) {
+            $descriptors = [
+                0 => ['pipe', 'r'],
+                1 => ['pipe', 'w'],
+                2 => ['pipe', 'w'],
+            ];
+            $process = @proc_open($command, $descriptors, $pipes);
+            if (is_resource($process)) {
+                fclose($pipes[0]);
+                stream_set_blocking($pipes[1], false);
+                stream_set_blocking($pipes[2], false);
+
+                $output      = '';
+                $lastBeat    = time();
+                $beatInterval = 60; // touch updated_at every 60 s during solve
+
+                while (true) {
+                    $chunk = fread($pipes[1], 8192);
+                    if (is_string($chunk) && $chunk !== '') {
+                        $output .= $chunk;
+                    }
+                    $err = fread($pipes[2], 8192);
+                    if (is_string($err) && $err !== '') {
+                        $output .= $err;
+                    }
+
+                    $status = proc_get_status($process);
+                    if (!$status['running']) {
+                        // Drain remaining output
+                        $output .= stream_get_contents($pipes[1]);
+                        $output .= stream_get_contents($pipes[2]);
+                        break;
+                    }
+
+                    // Heartbeat: keep updated_at fresh so stale-job detector
+                    // does not reset this job while the solver is running.
+                    $now = time();
+                    if ($now - $lastBeat >= $beatInterval) {
+                        $lastBeat = $now;
+                        @$heartbeatConn->query(
+                            "UPDATE allocation_jobs SET updated_at = NOW() WHERE job_id = {$heartbeatJobId}"
+                        );
+                    }
+
+                    usleep(500000); // poll every 0.5 s
+                }
+
+                fclose($pipes[1]);
+                fclose($pipes[2]);
+                proc_close($process);
+                return trim($output);
+            }
+            // proc_open failed — fall through to shell_exec
         }
 
-        return trim($output);
+        $output = @shell_exec($command . ' 2>&1');
+        return is_string($output) ? trim($output) : null;
     }
 
     private function escapeCommandPart($value) {

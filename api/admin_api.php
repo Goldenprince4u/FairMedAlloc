@@ -264,22 +264,23 @@ function handleQueueAllocation($conn) {
     ];
 
     if ($shouldInlineFallback) {
-        // Inline fallback is intentionally limited to Windows/local environments.
-        // On Linux (Render), running OR-Tools in the HTTP request holds the web
-        // worker open for minutes and starves poll requests — return a clean error
-        // instead so the admin knows the background worker needs attention.
+        // On Linux (Render): a still-queued job after 750ms is NORMAL.
+        // The supervised background worker may not have claimed it yet.
+        // Returning a 500 would strand the job in 'queued' AND block the
+        // next attempt via the duplicate-job check for 5 minutes.
+        // Correct behaviour: return job_id so the UI can poll.
+        // The 5-min stale-queued cleanup marks it failed if never claimed.
         if (DIRECTORY_SEPARATOR !== '\\') {
             sendJsonResponse([
-                'status'  => 'error',
-                'message' => 'The background worker could not be started on this server. '
-                           . 'Check Render logs: the worker process may have crashed or PHP CLI is not accessible. '
-                           . 'You can retry the allocation once the worker is healthy.',
-            ], 500);
+                'status'  => 'queued',
+                'job_id'  => $job_id,
+                'message' => 'Allocation job queued. The background worker will process it shortly.',
+                'warning' => 'Worker has not claimed the job yet — polling will confirm when it starts.',
+            ]);
             return;
         }
 
-        // Windows / local XAMPP — safe to run inline because concurrency is low
-        // and the browser stays connected throughout.
+        // Windows / local XAMPP — safe to run inline.
         flushJsonResponse($response);
         if (!defined('FAIRMED_WORKER_LIBRARY_MODE')) {
             define('FAIRMED_WORKER_LIBRARY_MODE', true);
