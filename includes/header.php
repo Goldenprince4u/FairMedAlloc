@@ -11,8 +11,8 @@ if (!headers_sent()) {
     header("Content-Security-Policy: "
         . "default-src 'self'; "
         . "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; "
-        . "style-src 'self' https://cdnjs.cloudflare.com https://fonts.googleapis.com 'unsafe-inline'; "
-        . "font-src 'self' https://cdnjs.cloudflare.com https://fonts.gstatic.com; "
+        . "style-src 'self' https://cdnjs.cloudflare.com 'unsafe-inline'; "
+        . "font-src 'self' https://cdnjs.cloudflare.com; "
         . "img-src 'self' data:; "
         . "connect-src 'self'; "
         . "frame-ancestors 'none';"
@@ -41,11 +41,6 @@ if (!headers_sent()) {
             document.documentElement.setAttribute('data-theme', t);
         })();
     </script>
-
-    <!-- Google Fonts: Inter -->
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 
     <!-- Font Awesome Icons -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">

@@ -51,8 +51,8 @@
     --c-info-bg:    #eff6ff;
 
     /* -- Typography -- */
-    --font-heading: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-    --font-body:    "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    --font-heading: Arial, Helvetica, "Liberation Sans", sans-serif;
+    --font-body:    Arial, Helvetica, "Liberation Sans", sans-serif;
     --font-mono:    "Courier New", Consolas, monospace;
 
     /* -- Easing -- */
