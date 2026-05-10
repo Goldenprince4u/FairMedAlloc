@@ -225,13 +225,34 @@ function handleQueueAllocation($conn) {
 
     // Fire the worker in the background (non-blocking).
     $dispatch = fairmedDispatchWorker($job_id);
-    $shouldInlineFallback = false;
+
+    // ── Hard launch failure: exec()/proc_open failed outright ─────────────────
+    // This is different from a slow claim (worker launched but hasn't picked
+    // up the job yet). A hard failure means PHP CLI is misconfigured, the
+    // script is missing, or the OS blocked the spawn entirely.
+    // Mark the job failed immediately so the duplicate-job guard doesn't block
+    // the next attempt, then return a clear error on ALL platforms.
     if (!($dispatch['launched'] ?? false)) {
-        $shouldInlineFallback = true;
+        $failMsg = $dispatch['message'] ?? 'The background worker process could not be started.';
+        $conn->query(
+            "UPDATE allocation_jobs
+                SET status        = 'failed',
+                    error_message = '" . $conn->real_escape_string($failMsg) . "',
+                    completed_at  = NOW(),
+                    updated_at    = NOW()
+              WHERE job_id = $job_id"
+        );
+        sendJsonResponse([
+            'status'  => 'error',
+            'message' => $failMsg . ' Check server configuration (PHP CLI path, script permissions).',
+        ], 500);
+        return;
     }
 
+    // ── Slow claim check: give the worker 750ms to pick up the job ────────────
     usleep(750000);
-    $warning = null;
+    $warning   = null;
+    $slowClaim = false;
     $statusStmt = $conn->prepare(
         "SELECT status, error_message
            FROM allocation_jobs
@@ -251,8 +272,8 @@ function handleQueueAllocation($conn) {
             return;
         }
         if (($statusRow['status'] ?? 'queued') === 'queued') {
-            $warning = 'Background worker launch did not claim the job quickly; continuing with inline server-side processing.';
-            $shouldInlineFallback = true;
+            $slowClaim = true;
+            $warning   = 'Worker launched but has not claimed the job yet — polling will confirm when it starts.';
         }
     }
 
@@ -263,19 +284,16 @@ function handleQueueAllocation($conn) {
         'warning' => $warning
     ];
 
-    if ($shouldInlineFallback) {
-        // On Linux (Render): a still-queued job after 750ms is NORMAL.
-        // The supervised background worker may not have claimed it yet.
-        // Returning a 500 would strand the job in 'queued' AND block the
-        // next attempt via the duplicate-job check for 5 minutes.
-        // Correct behaviour: return job_id so the UI can poll.
-        // The 5-min stale-queued cleanup marks it failed if never claimed.
+    if ($slowClaim) {
+        // Linux (Render): a slow claim is normal under a supervised process manager.
+        // Return job_id immediately so the UI can poll for the actual start.
+        // The 5-min stale-queued cleanup marks it failed if the worker never claims it.
         if (DIRECTORY_SEPARATOR !== '\\') {
             sendJsonResponse([
                 'status'  => 'queued',
                 'job_id'  => $job_id,
                 'message' => 'Allocation job queued. The background worker will process it shortly.',
-                'warning' => 'Worker has not claimed the job yet — polling will confirm when it starts.',
+                'warning' => $warning,
             ]);
             return;
         }
@@ -292,6 +310,7 @@ function handleQueueAllocation($conn) {
 
     sendJsonResponse($response);
 }
+
 
 /**
  * Launch worker_allocation.php as a background process.
