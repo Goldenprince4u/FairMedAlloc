@@ -65,6 +65,24 @@ $renderDbUnavailable = static function (): void {
             "Check DB_HOST, DB_USER, DB_PASS, DB_NAME, and DB_PORT in your .env file.\n");
         exit(1);
     }
+
+    // API routes must always receive JSON so the frontend poll loop never crashes
+    // on an unexpected HTML token ('<') in JSON.parse().
+    // Detect API context by script path (/api/ prefix or X-Requested-With header).
+    $scriptName  = $_SERVER['SCRIPT_NAME'] ?? $_SERVER['PHP_SELF'] ?? '';
+    $isApiRoute  = strpos($scriptName, '/api/') !== false;
+    $isXhrOrJson = (($_SERVER['HTTP_X_REQUESTED_WITH'] ?? '') === 'XMLHttpRequest')
+                || strpos($_SERVER['HTTP_ACCEPT'] ?? '', 'application/json') !== false;
+
+    if ($isApiRoute || $isXhrOrJson) {
+        http_response_code(503);
+        header('Content-Type: application/json');
+        die(json_encode([
+            'status'  => 'error',
+            'message' => 'The database is temporarily unavailable. Please try again shortly.',
+        ]));
+    }
+
     die("
         <h3>Service Temporarily Unavailable</h3>
         <p>The application is unable to connect to the database. Please try again shortly, or contact the system administrator.</p>

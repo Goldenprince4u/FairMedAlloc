@@ -37,58 +37,68 @@ if (!isset($_SESSION['logged_in']) || ($_SESSION['role'] ?? '') !== 'admin') {
 $action = $_GET['action'] ?? '';
 
 // --- 2. Action Router ---
-// Direct the request to the appropriate function block below
-switch ($action) {
-    case 'run_algorithm':
-        handleRunAlgorithm($conn);
-        break;
+// Wrapped in a top-level try/catch so any uncaught exception still returns
+// JSON instead of an HTML 500 page (which breaks the UI's JSON.parse()).
+try {
+    switch ($action) {
+        case 'run_algorithm':
+            handleRunAlgorithm($conn);
+            break;
 
-    // ── Async queue actions ───────────────────────────────────────────────────
-    case 'queue_allocation':
-        handleQueueAllocation($conn);
-        break;
+        // ── Async queue actions ───────────────────────────────────────────────────
+        case 'queue_allocation':
+            handleQueueAllocation($conn);
+            break;
 
-    case 'job_status':
-        handleJobStatus($conn);
-        break;
+        case 'job_status':
+            handleJobStatus($conn);
+            break;
 
-    case 'worker_health':
-        handleWorkerHealth($conn);
-        break;
+        case 'worker_health':
+            handleWorkerHealth($conn);
+            break;
 
-    case 'cancel_job':
-        handleCancelJob($conn);
-        break;
-    // ─────────────────────────────────────────────────────────────────────────
+        case 'cancel_job':
+            handleCancelJob($conn);
+            break;
+        // ─────────────────────────────────────────────────────────────────────────
 
-    case 'rescore_all':
-        handleRescoreAll($conn);
-        break;
+        case 'rescore_all':
+            handleRescoreAll($conn);
+            break;
 
-    case 'manual_assign':
-        handleManualAssign($conn);
-        break;
+        case 'manual_assign':
+            handleManualAssign($conn);
+            break;
 
-    case 'get_rooms':
-        handleGetRooms($conn);
-        break;
+        case 'get_rooms':
+            handleGetRooms($conn);
+            break;
 
-    case 'analytics':
-        handleAnalytics($conn);
-        break;
+        case 'analytics':
+            handleAnalytics($conn);
+            break;
 
-    case 'hostel_stats':
-        handleHostelStats($conn);
-        break;
+        case 'hostel_stats':
+            handleHostelStats($conn);
+            break;
 
-    case 'ml_status':
-        handleMlStatus();
-        break;
+        case 'ml_status':
+            handleMlStatus();
+            break;
 
-    default:
-        // Reject unknown or missing actions
-        sendJsonResponse(['status' => 'error', 'message' => 'Invalid action'], 400);
-        break;
+        default:
+            // Reject unknown or missing actions
+            sendJsonResponse(['status' => 'error', 'message' => 'Invalid action'], 400);
+            break;
+    }
+} catch (Throwable $topLevelErr) {
+    // Safety net: convert any uncaught fatal/exception into a JSON response.
+    // This prevents HTML error pages breaking the frontend JSON.parse().
+    sendJsonResponse([
+        'status'  => 'error',
+        'message' => 'An unexpected server error occurred. Please try again.',
+    ], 500);
 }
 
 function sendJsonResponse(array $payload, int $statusCode = 200): void {
@@ -254,6 +264,22 @@ function handleQueueAllocation($conn) {
     ];
 
     if ($shouldInlineFallback) {
+        // Inline fallback is intentionally limited to Windows/local environments.
+        // On Linux (Render), running OR-Tools in the HTTP request holds the web
+        // worker open for minutes and starves poll requests — return a clean error
+        // instead so the admin knows the background worker needs attention.
+        if (DIRECTORY_SEPARATOR !== '\\') {
+            sendJsonResponse([
+                'status'  => 'error',
+                'message' => 'The background worker could not be started on this server. '
+                           . 'Check Render logs: the worker process may have crashed or PHP CLI is not accessible. '
+                           . 'You can retry the allocation once the worker is healthy.',
+            ], 500);
+            return;
+        }
+
+        // Windows / local XAMPP — safe to run inline because concurrency is low
+        // and the browser stays connected throughout.
         flushJsonResponse($response);
         if (!defined('FAIRMED_WORKER_LIBRARY_MODE')) {
             define('FAIRMED_WORKER_LIBRARY_MODE', true);
@@ -388,19 +414,33 @@ function handleJobStatus($conn) {
         return;
     }
 
-    $stmt = $conn->prepare(
-        "SELECT job_id, job_type, status, progress_stage, progress_percent,
-                total_students, allocated_students,
-                result_data, error_message,
-                created_at, started_at, completed_at
-           FROM allocation_jobs
-          WHERE job_id = ?
-          LIMIT 1"
-    );
-    $stmt->bind_param('i', $job_id);
-    $stmt->execute();
-    $row = $stmt->get_result()->fetch_assoc();
-    $stmt->close();
+    try {
+        $stmt = $conn->prepare(
+            "SELECT job_id, job_type, status, progress_stage, progress_percent,
+                    total_students, allocated_students,
+                    result_data, error_message,
+                    created_at, started_at, completed_at
+               FROM allocation_jobs
+              WHERE job_id = ?
+              LIMIT 1"
+        );
+        if (!$stmt) {
+            sendJsonResponse(['status' => 'error', 'message' => 'Database error: could not prepare status query.'], 500);
+            return;
+        }
+        $stmt->bind_param('i', $job_id);
+        $stmt->execute();
+        $row = $stmt->get_result()->fetch_assoc();
+        $stmt->close();
+    } catch (Throwable $e) {
+        // DB transient error — return JSON so the frontend poll loop doesn't
+        // crash on an unexpected token (HTML 500 page).
+        sendJsonResponse([
+            'status'  => 'error',
+            'message' => 'Unable to fetch job status. The database may be temporarily unavailable.',
+        ], 503);
+        return;
+    }
 
     if (!$row) {
         sendJsonResponse(['status' => 'error', 'message' => 'Job not found'], 404);
@@ -408,18 +448,18 @@ function handleJobStatus($conn) {
     }
 
     $payload = [
-        'status'           => 'success',
-        'job_id'           => (int)$row['job_id'],
-        'job_type'         => (string)($row['job_type'] ?? 'allocation'),
-        'job_status'       => $row['status'],
-        'progress_stage'   => $row['progress_stage']   ?? '',
-        'progress_percent' => (int)$row['progress_percent'],
-        'total_students'   => (int)$row['total_students'],
+        'status'             => 'success',
+        'job_id'             => (int)$row['job_id'],
+        'job_type'           => (string)($row['job_type'] ?? 'allocation'),
+        'job_status'         => $row['status'],
+        'progress_stage'     => $row['progress_stage']   ?? '',
+        'progress_percent'   => (int)$row['progress_percent'],
+        'total_students'     => (int)$row['total_students'],
         'allocated_students' => (int)$row['allocated_students'],
-        'created_at'       => $row['created_at'],
-        'started_at'       => $row['started_at'],
-        'completed_at'     => $row['completed_at'],
-        'error_message'    => $row['error_message'] ?? '',
+        'created_at'         => $row['created_at'],
+        'started_at'         => $row['started_at'],
+        'completed_at'       => $row['completed_at'],
+        'error_message'      => $row['error_message'] ?? '',
     ];
 
     // Decode result_data for the frontend when the job finished

@@ -28,9 +28,13 @@ if (!defined('FAIRMED_WORKER_LIBRARY_MODE') && php_sapi_name() !== 'cli') {
 
 // ── Constants ────────────────────────────────────────────────────────────────
 const WORKER_LOCK_NAME   = 'fairmedalloc_allocation_worker';
-const LOCK_WAIT_SECONDS  = 1;    // how long GET_LOCK waits before giving up
-const STALE_JOB_MINUTES  = 20;   // "running" jobs older than this are reset
+const LOCK_WAIT_SECONDS  = 1;     // how long GET_LOCK waits before giving up
+const STALE_JOB_MINUTES  = 45;   // "running" jobs older than this are reset.
+                                  // Raised from 20 → 45 because OR-Tools can
+                                  // run for 30+ min on large datasets with no
+                                  // progress update between 30% and completion.
 const PROGRESS_FLUSH_SEC = 3;    // minimum seconds between DB progress writes
+const HEARTBEAT_SEC      = 300;  // touch updated_at every 5 min during solver
 const RETRY_DELAY_SEC    = 10;   // seconds to wait before a retry attempt
 const JOB_CANCELLED_EXCEPTION = '__FAIRMED_JOB_CANCELLED__';
 
@@ -233,9 +237,19 @@ function processAllocationJob(mysqli $conn, array $job): void
             $engine->setJobId($job_id);  // enables total_students tracking in the DB
 
             // Rate-limited progress callback (Issue #4: already uses prepared statements)
-            $lastFlush = 0;
-            $progressCallback = function (array $progress) use ($conn, $job_id, &$lastFlush): void {
+            $lastFlush     = 0;
+            $lastHeartbeat = 0;
+            $progressCallback = function (array $progress) use ($conn, $job_id, &$lastFlush, &$lastHeartbeat): void {
                 $now = time();
+
+                // Heartbeat: touch updated_at every HEARTBEAT_SEC even when we
+                // skip the full progress write, so the stale-job detector never
+                // resets a legitimately running OR-Tools solve.
+                if ($now - $lastHeartbeat >= HEARTBEAT_SEC) {
+                    $lastHeartbeat = $now;
+                    $conn->query("UPDATE allocation_jobs SET updated_at = NOW() WHERE job_id = {$job_id}");
+                }
+
                 if ($now - $lastFlush < PROGRESS_FLUSH_SEC) {
                     return;
                 }
