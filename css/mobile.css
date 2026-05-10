@@ -148,8 +148,8 @@
     h1 { font-size: 1.5rem; line-height: 1.25; margin-bottom: 0.6rem; }
     h2 { font-size: 1.25rem; line-height: 1.3; }
     h3 { font-size: 1.05rem; }
-    h4 { font-size: 0.95rem; }
-    p  { font-size: 0.9rem; line-height: 1.65; }
+    h4 { font-size: 1rem; }
+    p  { font-size: 0.95rem; line-height: 1.6; }
 
     /* =============================================
        PAGE HEADER — stack title + actions vertically
@@ -402,9 +402,10 @@
         border-left-width: 3px;
     }
     .brand-border p {
-        font-size: 0.82rem;
-        line-height: 1.55;
-        opacity: 0.8;
+        font-size: 0.9rem;
+        line-height: 1.5;
+        opacity: 1;
+        color: rgba(255, 255, 255, 0.95);
     }
 
     /* FIX 2: university name — readable, not buried */
@@ -475,11 +476,11 @@
     .mobile-form-card .form-group label {
         display: block;
         margin-bottom: 0.45rem;
-        font-size: 0.77rem;
-        font-weight: 800;
-        letter-spacing: 0.04em;
+        font-size: 0.82rem;
+        font-weight: 700;
+        letter-spacing: 0.03em;
         text-transform: uppercase;
-        color: var(--c-text-muted);
+        color: var(--c-text-body);
     }
 
     .auth-box .input-group,
@@ -506,8 +507,9 @@
         border-radius: 14px;
         background: rgba(var(--c-primary-rgb), 0.05);
         border: 1px solid rgba(var(--c-primary-rgb), 0.08);
-        font-size: 0.72rem;
-        line-height: 1.55;
+        font-size: 0.8rem;
+        line-height: 1.5;
+        color: var(--c-text-body) !important;
     }
 
     .auth-box .alert { border-radius: 16px; margin-bottom: 1rem; }
@@ -563,7 +565,8 @@
         border-radius: 14px;
         background: rgba(var(--c-primary-rgb), 0.04);
         border: 1px solid rgba(var(--c-primary-rgb), 0.07);
-        line-height: 1.55;
+        line-height: 1.5;
+        color: var(--c-text-body);
     }
 
     .auth-form-shell { grid-template-columns: 1fr; gap: 1rem; }
@@ -1037,3 +1040,28 @@
     .upload-zone { padding: 1.25rem 0.625rem; }
     .upload-zone p { font-size: 0.8rem; }
 }
+
+
+/* =============================================
+   GLOBAL MOBILE TEXT CONTRAST OVERRIDES
+   ============================================= */
+@media (max-width: 768px) {
+    body, p, li, td, th, label, .text-body, .faq-answer {
+        color: #1e293b !important;
+        font-weight: 500 !important;
+        font-size: 0.95rem;
+        line-height: 1.6;
+    }
+    .text-muted, span.text-muted {
+        color: #334155 !important;
+        opacity: 1 !important;
+    }
+    h1, h2, h3, h4, h5, .text-head {
+        color: #0f172a !important;
+        font-weight: 800 !important;
+    }
+    .card p.text-muted {
+        color: #334155 !important;
+    }
+}
+

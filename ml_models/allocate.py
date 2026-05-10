@@ -259,6 +259,8 @@ def placement_bonus(student, room, first_blocks):
 # OR-Tools Min-Cost Flow solver (The new ultra-fast Graph Matcher!)
 # ---------------------------------------------------------------------------
 
+import array
+
 def run_min_cost_flow(students, rooms, first_blocks, rng):
     """
     Min-Cost Flow solver using OR-Tools SimpleMinCostFlow.
@@ -281,23 +283,26 @@ def run_min_cost_flow(students, rooms, first_blocks, rng):
 
     # ── Build arc lists ───────────────────────────────────────────────────────
     # Arc 1: source → student (capacity 1, cost 0)
-    src_tails = [source] * num_students
-    src_heads = list(range(1, num_students + 1))
-    src_caps  = [1] * num_students
-    src_costs = [0] * num_students
+    src_tails = array.array('i', [source] * num_students)
+    src_heads = array.array('i', range(1, num_students + 1))
+    src_caps  = array.array('i', [1] * num_students)
+    src_costs = array.array('q', [0] * num_students)
 
     # Arc 2: student → room (filtered by hard constraints)
-    arc_tails, arc_heads, arc_caps, arc_costs = [], [], [], []
+    arc_tails = array.array('i')
+    arc_heads = array.array('i')
+    arc_caps  = array.array('i')
+    arc_costs = array.array('q')
     # Memory-efficient alternative to arc_to_assignment dict:
     # Two parallel lists indexed by arc position (arc index - arc_offset).
-    arc_s_ids = []   # student_id for each student→room arc
-    arc_r_ids = []   # room_id    for each student→room arc
+    arc_s_ids = array.array('i')   # student_id for each student→room arc
+    arc_r_ids = array.array('i')   # room_id    for each student→room arc
 
     # Arc 3: student → waitlist
-    wl_tails = list(range(1, num_students + 1))
-    wl_heads  = [waitlist_node] * num_students
-    wl_caps   = [1] * num_students
-    wl_costs  = [0] * num_students
+    wl_tails = array.array('i', range(1, num_students + 1))
+    wl_heads  = array.array('i', [waitlist_node] * num_students)
+    wl_caps   = array.array('i', [1] * num_students)
+    wl_costs  = array.array('q', [0] * num_students)
 
     print(f"Running OR-Tools solver: building arcs for {num_students} students x {num_rooms} rooms...", flush=True)
 
@@ -343,7 +348,10 @@ def run_min_cost_flow(students, rooms, first_blocks, rng):
     print(f"Graph built: {len(arc_tails)} student-to-room arcs. Adding to solver...", flush=True)
 
     # Arc 4: room → sink
-    room_tails, room_heads, room_caps, room_costs = [], [], [], []
+    room_tails = array.array('i')
+    room_heads = array.array('i')
+    room_caps  = array.array('i')
+    room_costs = array.array('q')
     for r_idx, room in enumerate(rooms):
         cap = int(float(room.get('available_capacity', 0)))
         if cap > 0:
