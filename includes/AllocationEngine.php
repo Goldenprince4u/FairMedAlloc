@@ -284,7 +284,7 @@ class AllocationEngine {
                         }
                         fclose($fp_out);
                     } else {
-                        throw new Exception("OR-Tools solver failed to produce valid assignments. Output: " . substr((string)$solver_output, 0, 500));
+                        throw new Exception("OR-Tools solver failed to produce valid assignments. Output: " . substr((string)$solver_output, 0, 3000));
                     }
                 } else {
                     throw new Exception("Only 'ortools' is supported. Found: " . $solverBackend);
@@ -701,6 +701,14 @@ class AllocationEngine {
     /**
      * Helper: Assign Bed based on configuration (LB/UB/SB)
      */
+    private function getWaitlistFallbackForMobility(int $student_id): array {
+        // Fallback: Assign to a dedicated 'Waitlist' category or specific pending status
+        // to ensure flow remains feasible when all prox-rooms are exhausted.
+        return [
+            'status' => 'waitlist',
+            'reason' => 'No eligible clinic-proximal arc available'
+        ];
+    }
 
     private function getSettingValue($setting_key, $default_value) {
         $stmt = $this->conn->prepare("SELECT setting_value FROM settings WHERE setting_key = ? LIMIT 1");

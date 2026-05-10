@@ -72,15 +72,21 @@ if (!function_exists('fairmedDispatchWorker')) {
                 foreach ($pipes as $pipe) {
                     @fclose($pipe);
                 }
-                proc_close($proc);
+                // Do NOT call proc_close() — that blocks until the child exits,
+                // defeating the purpose of background dispatch. With
+                // create_process_group:true the child is in its own Windows
+                // job object / process group and survives the parent.
+                // Let the handle go out of scope; PHP will not wait for it.
+                unset($proc);
                 Logger::info("dispatchWorker: proc_open (detached) launched Job #$job_id");
                 return ['launched' => true, 'message' => null];
             }
 
-            $cmd = escapeshellarg($php) . ' ' . escapeshellarg($script) . ' --job-id=' . (int)$job_id . ' > NUL 2>&1';
+            $cmd = 'start /b "" ' . escapeshellarg($php) . ' ' . escapeshellarg($script) . ' --job-id=' . (int)$job_id;
             $handle = @popen($cmd, 'r');
             if ($handle !== false) {
-                pclose($handle);
+                // Do NOT call pclose() — it blocks until the spawned process exits.
+                // The pipe handle will be closed by PHP's garbage collector.
                 Logger::info("dispatchWorker: popen (fallback) launched Job #$job_id");
                 return ['launched' => true, 'message' => null];
             }

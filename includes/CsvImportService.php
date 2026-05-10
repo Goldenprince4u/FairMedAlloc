@@ -288,7 +288,7 @@ class CsvImportService
             // so the CPU cost does not hold a connection open.
             // Each student's initial password is their own matric number (lowercased).
             $matricKey    = strtolower($matric);
-            $passwordHash = password_hash($matricKey, PASSWORD_BCRYPT, ['cost' => 4]);
+            $passwordHash = password_hash($matricKey, PASSWORD_BCRYPT, ['cost' => 8]);
 
             $rows[] = [
                 'matric'        => $matric,

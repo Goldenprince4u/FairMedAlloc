@@ -4,59 +4,99 @@
  * Handles student-specific data retrieval.
  */
 class Student {
-    private $conn;
-    private $user_id;
+    private mysqli $conn;
+    private int $user_id;
 
-    public function __construct($db, $user_id) {
-        $this->conn = $db;
+    public function __construct(mysqli $db, int $user_id) {
+        $this->conn    = $db;
         $this->user_id = $user_id;
     }
 
     /**
-     * Get full profile with medical records
+     * Get full profile with medical records.
+     * Uses a correlated subquery on the medical LEFT JOIN to prevent duplicate
+     * rows when a student has more than one medical_records entry.
      */
-    public function getProfile() {
-        $stmt = $this->conn->prepare("SELECT p.*, m.condition_category, m.mobility_status, u.profile_pic, u.full_name, u.email,
-                                             u.username AS matric_no,
-                                             d.name as department, f.name as faculty
-                                      FROM student_profiles p 
-                                      JOIN users u ON p.user_id = u.user_id 
-                                      JOIN departments d ON p.department_id = d.department_id
-                                      JOIN faculties f ON d.faculty_id = f.faculty_id
-                                      LEFT JOIN medical_records m ON p.user_id = m.student_id 
-                                      WHERE p.user_id = ?");
-        $stmt->bind_param("i", $this->user_id);
+    public function getProfile(): ?array {
+        $stmt = $this->conn->prepare(
+            "SELECT p.*, m.condition_category, m.mobility_status,
+                    u.profile_pic, u.full_name, u.email,
+                    u.username AS matric_no,
+                    d.name AS department, f.name AS faculty
+             FROM   student_profiles p
+             JOIN   users       u ON p.user_id       = u.user_id
+             JOIN   departments d ON p.department_id = d.department_id
+             JOIN   faculties   f ON d.faculty_id    = f.faculty_id
+             LEFT JOIN medical_records m
+                    ON  p.user_id = m.student_id
+                    AND m.id = (
+                        SELECT id FROM medical_records
+                        WHERE student_id = p.user_id
+                        ORDER BY id DESC LIMIT 1
+                    )
+             WHERE  p.user_id = ?
+             LIMIT  1"
+        );
+        if (!$stmt) { return null; }
+        $stmt->bind_param('i', $this->user_id);
         $stmt->execute();
-        return $stmt->get_result()->fetch_assoc();
+        $row = $stmt->get_result()->fetch_assoc();
+        $stmt->close();
+        return $row;
     }
 
     /**
-     * Get allocation details
+     * Get allocation details.
+     * Returns the most-recent allocation (ORDER BY created_at DESC) in case
+     * re-allocations occur.
      */
-    public function getAllocation() {
-        $stmt = $this->conn->prepare("SELECT a.*, r.room_number, h.name as hostel_name, h.block_name 
-                                      FROM allocations a 
-                                      JOIN rooms r ON a.room_id = r.room_id 
-                                      JOIN hostels h ON r.hostel_id = h.hostel_id 
-                                      WHERE a.student_id = ?");
-        $stmt->bind_param("i", $this->user_id);
+    public function getAllocation(): ?array {
+        $stmt = $this->conn->prepare(
+            "SELECT a.*, r.room_number, h.name AS hostel_name, h.block_name
+             FROM   allocations a
+             JOIN   rooms   r ON a.room_id  = r.room_id
+             JOIN   hostels h ON r.hostel_id = h.hostel_id
+             WHERE  a.student_id = ?
+             ORDER BY a.created_at DESC
+             LIMIT 1"
+        );
+        if (!$stmt) { return null; }
+        $stmt->bind_param('i', $this->user_id);
         $stmt->execute();
-        return $stmt->get_result()->fetch_assoc();
+        $row = $stmt->get_result()->fetch_assoc();
+        $stmt->close();
+        return $row;
     }
 
     /**
-     * Check payment status
+     * Check payment status.
+     * Uses a lightweight single-column query instead of re-running getProfile(),
+     * which would fire the expensive multi-table JOIN a second time.
      */
-    public function hasPaid() {
-        $profile = $this->getProfile();
-        if (!empty($profile['is_paid'])) {
-            return true;
+    public function hasPaid(): bool {
+        $stmt = $this->conn->prepare(
+            "SELECT is_paid FROM student_profiles WHERE user_id = ? LIMIT 1"
+        );
+        if ($stmt) {
+            $stmt->bind_param('i', $this->user_id);
+            $stmt->execute();
+            $row = $stmt->get_result()->fetch_assoc();
+            $stmt->close();
+            if (!empty($row['is_paid'])) {
+                return true;
+            }
         }
 
-        $stmt = $this->conn->prepare("SELECT status FROM payments WHERE student_id = ? AND status = 'paid' LIMIT 1");
-        $stmt->bind_param("i", $this->user_id);
-        $stmt->execute();
-        return $stmt->get_result()->num_rows > 0;
+        // Fallback: check the payments table in case is_paid flag lags behind
+        $stmt2 = $this->conn->prepare(
+            "SELECT status FROM payments WHERE student_id = ? AND status = 'paid' LIMIT 1"
+        );
+        if (!$stmt2) { return false; }
+        $stmt2->bind_param('i', $this->user_id);
+        $stmt2->execute();
+        $found = $stmt2->get_result()->num_rows > 0;
+        $stmt2->close();
+        return $found;
     }
 }
 ?>

@@ -168,7 +168,7 @@ function handleQueueAllocation($conn) {
                     updated_at    = NOW()
               WHERE status = 'queued'
                 AND (job_type = 'allocation' OR job_type IS NULL)
-                AND created_at < DATE_SUB(NOW(), INTERVAL 5 MINUTE)"
+                AND created_at < DATE_SUB(NOW(), INTERVAL 10 MINUTE)"
         );
     } catch (Throwable $ignored) { /* table may not exist yet */ }
 
@@ -345,16 +345,17 @@ function dispatchWorker(int $job_id): array {
         );
         if (is_resource($proc)) {
             foreach ($pipes as $pipe) { @fclose($pipe); }
-            proc_close($proc);
+            // Do NOT call proc_close() — it blocks until the child exits.
+            // With create_process_group:true the worker is detached.
+            unset($proc);
             Logger::info("dispatchWorker: proc_open (detached) launched Job #$job_id");
             return ['launched' => true, 'message' => null];
         }
 
-        // Fallback: plain popen without "start" (works in interactive XAMPP sessions)
-        $cmd = escapeshellarg($php) . ' ' . escapeshellarg($script) . ' --job-id=' . (int)$job_id . ' > NUL 2>&1';
+        $cmd = 'start /b "" ' . escapeshellarg($php) . ' ' . escapeshellarg($script) . ' --job-id=' . (int)$job_id;
         $handle = @popen($cmd, 'r');
         if ($handle !== false) {
-            pclose($handle);
+            // Do NOT call pclose() — it blocks until the child exits.
             Logger::info("dispatchWorker: popen (fallback) launched Job #$job_id");
             return ['launched' => true, 'message' => null];
         }
@@ -375,9 +376,7 @@ function dispatchWorker(int $job_id): array {
             Logger::info("dispatchWorker: exec launched Job #$job_id");
             return ['launched' => true, 'message' => null];
         }
-        if ($rc !== 0) {
-            Logger::error("dispatchWorker: exec() returned code $rc for Job #$job_id — command: $cmd");
-        }
+        Logger::error("dispatchWorker: exec() returned code $rc for Job #$job_id — command: $cmd");
     }
     return [
         'launched' => false,
@@ -616,38 +615,18 @@ function handleCancelJob($conn) {
     }
 }
 
-
-
 /**
- * Invokes the core Allocation Engine to process mathematical hostel placements.
- * NOTE: This is the SYNCHRONOUS path. For bulk data use queue_allocation instead.
+ * run_algorithm — DEPRECATED synchronous path.
+ * Kept as a stub so existing bookmarks/scripts get a clear message rather
+ * than a 400 "Invalid action" error. Direct callers should use
+ * queue_allocation instead, which runs the engine in a background worker.
  */
 function handleRunAlgorithm($conn) {
-    if ($_SERVER["REQUEST_METHOD"] !== "POST") {
-        sendJsonResponse(['status' => 'error', 'message' => 'POST required'], 405);
-        return;
-    }
-
-    check_csrf();
-
-    require_once '../includes/AllocationEngine.php';
-    if (!acquireProcessingLock($conn, 'admin_processing_lock')) {
-        sendJsonResponse(['status' => 'error', 'message' => 'Another admin processing job is already running.'], 409);
-        return;
-    }
-
-    try {
-        $engine = new AllocationEngine($conn);
-        $result = $engine->run();
-        if (($result['status'] ?? '') === 'success') {
-            log_admin_action($conn, (int)$_SESSION['user_id'], 'Triggered allocation engine');
-        }
-        sendJsonResponse($result);
-    } catch (Throwable $e) {
-        sendJsonResponse(['status' => 'error', 'message' => $e->getMessage()], 500);
-    } finally {
-        releaseProcessingLock($conn, 'admin_processing_lock');
-    }
+    sendJsonResponse([
+        'status'  => 'error',
+        'message' => 'The synchronous run_algorithm action has been removed. '
+                   . 'Use action=queue_allocation (POST) to run the allocation engine via the background worker.'
+    ], 410); // 410 Gone
 }
 
 function handleRescoreAll($conn) {

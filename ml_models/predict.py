@@ -19,7 +19,7 @@ import os
 import sys
 import warnings
 
-logging.basicConfig(level=logging.ERROR)
+logging.basicConfig(level=logging.WARNING)
 warnings.filterwarnings(
     "ignore",
     message=".*If you are loading a serialized model.*",

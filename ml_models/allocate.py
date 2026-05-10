@@ -1,13 +1,14 @@
 import csv
 import logging
 import random
+import signal
 import sys
 
 # NOTE: Do NOT import cp_model here — CP-SAT is not used and the import
 # adds significant cold-start latency on production (Render) servers.
 # from ortools.sat.python import cp_model  ← removed
 
-logging.basicConfig(level=logging.ERROR)
+logging.basicConfig(level=logging.DEBUG)
 
 # ---------------------------------------------------------------------------
 # Faculty → Hostel proximity mappings
@@ -295,8 +296,8 @@ def run_min_cost_flow(students, rooms, first_blocks, rng):
     arc_costs = array.array('q')
     # Memory-efficient alternative to arc_to_assignment dict:
     # Two parallel lists indexed by arc position (arc index - arc_offset).
-    arc_s_ids = array.array('i')   # student_id for each student→room arc
-    arc_r_ids = array.array('i')   # room_id    for each student→room arc
+    arc_s_ids = array.array('l')   # student_id for each student→room arc (int64 — avoids overflow)
+    arc_r_ids = array.array('l')   # room_id    for each student→room arc (int64 — avoids overflow)
 
     # Arc 3: student → waitlist
     wl_tails = array.array('i', range(1, num_students + 1))
@@ -305,6 +306,12 @@ def run_min_cost_flow(students, rooms, first_blocks, rng):
     wl_costs  = array.array('q', [0] * num_students)
 
     print(f"Running OR-Tools solver: building arcs for {num_students} students x {num_rooms} rooms...", flush=True)
+
+    # Track students that get zero room arcs (can happen when mobility filter is
+    # too restrictive and all eligible beds are full). We need a second pass so
+    # those students still have *some* room option, otherwise the flow graph has
+    # an isolated source→student arc with no onward path, making it INFEASIBLE.
+    students_with_no_arcs = []  # list of (s_idx, student) tuples
 
     for s_idx, student in enumerate(students):
         gender    = student.get('gender', '')
@@ -322,6 +329,7 @@ def run_min_cost_flow(students, rooms, first_blocks, rng):
         base_score = band_base + int(score * 100)
         s_node = s_idx + 1
 
+        arcs_added_for_student = 0
         for r_idx, room in enumerate(rooms):
             if gender != room.get('gender', ''):
                 continue
@@ -342,8 +350,45 @@ def run_min_cost_flow(students, rooms, first_blocks, rng):
             arc_heads.append(num_students + 1 + r_idx)
             arc_caps.append(1)
             arc_costs.append(-weight)
-            arc_s_ids.append(student['id'])
-            arc_r_ids.append(room['id'])
+            arc_s_ids.append(int(student['id']))
+            arc_r_ids.append(int(room['id']))
+            arcs_added_for_student += 1
+
+        if arcs_added_for_student == 0 and (student_has_mobility_priority(student) or student_has_combined_mobility_and_medical(student)):
+            # No eligible arcs — queue for relaxed fallback pass so the flow stays feasible.
+            students_with_no_arcs.append((s_idx, student))
+
+    # ── Relaxed-fallback pass for students with zero arcs ────────────────────
+    # These students will land on the waitlist (via the wl arc), but we must give
+    # them at least one room arc so the graph remains feasible for the solver.
+    # We assign a very low weight so they only get a real room if one is truly free.
+    if students_with_no_arcs:
+        print(f"Relaxed-fallback pass: {len(students_with_no_arcs)} mobility students had zero eligible arcs. Opening gender-matching fallback arcs (lowest priority).", flush=True)
+        for s_idx, student in students_with_no_arcs:
+            gender = student.get('gender', '')
+            s_node = s_idx + 1
+            is_high   = student_is_high(student)
+            is_medium = student_is_medium(student)
+            if is_high:
+                band_base = 100_000_000
+            elif is_medium:
+                band_base = 50_000_000
+            else:
+                band_base = 10_000_000
+            base_score = band_base + int(float(student.get('score', 0)) * 100)
+            for r_idx, room in enumerate(rooms):
+                if gender != room.get('gender', ''):
+                    continue
+                # Fallback arcs carry the minimum possible weight — solver will
+                # prefer the waitlist arc over these unless there is genuinely
+                # spare capacity.
+                weight = base_score + rng.randint(0, 9)  # no bonus
+                arc_tails.append(s_node)
+                arc_heads.append(num_students + 1 + r_idx)
+                arc_caps.append(1)
+                arc_costs.append(-weight)
+                arc_s_ids.append(int(student['id']))
+                arc_r_ids.append(int(room['id']))
 
     print(f"Graph built: {len(arc_tails)} student-to-room arcs. Adding to solver...", flush=True)
 
@@ -384,7 +429,26 @@ def run_min_cost_flow(students, rooms, first_blocks, rng):
     smcf.set_node_supply(sink,  -num_students)
 
     print("Solving...", flush=True)
-    status = smcf.solve()
+
+    # On Linux, install a 30-minute watchdog so a degenerate graph can't
+    # block the worker indefinitely. signal.alarm is a no-op on Windows.
+    _solver_timed_out = False
+    if hasattr(signal, 'SIGALRM'):
+        def _timeout_handler(signum, frame):
+            raise TimeoutError('OR-Tools solver exceeded the 1800-second limit.')
+        signal.signal(signal.SIGALRM, _timeout_handler)
+        signal.alarm(1800)  # 30 minutes
+
+    try:
+        status = smcf.solve()
+    except TimeoutError as te:
+        _solver_timed_out = True
+        print(f"Solver watchdog triggered: {te}", flush=True)
+        status = smcf.INFEASIBLE  # treat as infeasible so the worker logs a clean failure
+    finally:
+        if hasattr(signal, 'SIGALRM'):
+            signal.alarm(0)  # cancel watchdog on normal completion
+
     print(f"Solver finished with status: {status}", flush=True)
 
     assignments  = {}

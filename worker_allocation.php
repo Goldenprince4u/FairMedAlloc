@@ -343,7 +343,7 @@ function processAllocationJob(mysqli $conn, array $job): void
             Logger::error("Worker: Job #$job_id threw exception — " . $e->getMessage());
             $errorMsg = substr(
                 $e->getMessage() . ' (' . basename($e->getFile()) . ':' . $e->getLine() . ')',
-                0, 500
+                0, 2000
             );
             if (!retryJobOrFail($conn, $job_id, $retryCount, $maxRetries, $errorMsg, null)) {
                 return;
@@ -451,7 +451,7 @@ function processCsvImportJob(mysqli $conn, array $job): void
         $errorMsg = substr(
             $e->getMessage() . ' (' . basename($e->getFile()) . ':' . $e->getLine() . ')',
             0,
-            500
+            2000
         );
         markJobFailed($conn, $jobId, $errorMsg, null);
         Logger::error("Worker: CSV import job #$jobId failed - " . $e->getMessage());

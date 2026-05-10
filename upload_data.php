@@ -30,7 +30,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_FILES['csv_file'])) {
         $msg = "File too large. Maximum upload size is 5MB.";
         $msg_type = 'error';
     } else {
-        $allowed_mimes = ['text/csv', 'text/plain', 'application/csv', 'application/vnd.ms-excel'];
+        $allowed_mimes = ['text/csv', 'text/plain', 'application/csv'];
         $finfo = new finfo(FILEINFO_MIME_TYPE);
         $detected = $finfo->file($_FILES['csv_file']['tmp_name']);
         $ext = strtolower(pathinfo($_FILES['csv_file']['name'], PATHINFO_EXTENSION));
@@ -246,7 +246,7 @@ require_once 'includes/header.php';
                 <form method="post" enctype="multipart/form-data" id="csv-upload-form">
                     <?php csrf_field(); ?>
                     <input type="file" name="csv_file" id="csv-file-input" class="hidden" accept=".csv,text/csv"
-                        onchange="this.form.submit()">
+                        onchange="handleCsvFileSelect(this)">
                     <label for="csv-file-input" class="btn btn-primary" id="csv-browse-btn" style="cursor:pointer;">
                         <i class="fa-solid fa-folder-open"></i> Browse File
                     </label>
@@ -378,5 +378,21 @@ require_once 'includes/header.php';
 </script>
 <?php endif; ?>
 
+<script>
+function handleCsvFileSelect(input) {
+    if (!input.files || input.files.length === 0) return;
+    const file = input.files[0];
+    const ext  = file.name.split('.').pop().toLowerCase();
+    if (ext !== 'csv') {
+        alert(
+            'Invalid file type: "' + file.name + '"\n\n' +
+            'Only .csv files are accepted. Please export your data as CSV (UTF-8) and try again.'
+        );
+        input.value = '';  // reset so the same file can\'t be resubmitted
+        return;
+    }
+    input.form.submit();
+}
+</script>
 </body>
 </html>
