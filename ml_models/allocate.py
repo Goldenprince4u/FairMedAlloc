@@ -279,22 +279,25 @@ def run_min_cost_flow(students, rooms, first_blocks, rng):
     sink          = num_students + num_rooms + 2
     waitlist_node = num_students + num_rooms + 1
 
-    # ── Build arc lists (batched) ─────────────────────────────────────────────
-    # Batching replaces O(n) individual add_arc_with_capacity_and_unit_cost()
-    # calls (each a separate Python→C++ crossing) with 4 bulk calls.
+    # ── Build arc lists ───────────────────────────────────────────────────────
+    # Arc 1: source → student (capacity 1, cost 0)
+    src_tails = [source] * num_students
+    src_heads = list(range(1, num_students + 1))
+    src_caps  = [1] * num_students
+    src_costs = [0] * num_students
 
-    # Arc 1: source → each student node (capacity 1, cost 0)
-    src_tails     = [source]       * num_students
-    src_heads     = list(range(1, num_students + 1))
-    src_caps      = [1]            * num_students
-    src_costs     = [0]            * num_students
-
-    # Arc 2: student → room arcs (filtered by hard constraints)
+    # Arc 2: student → room (filtered by hard constraints)
     arc_tails, arc_heads, arc_caps, arc_costs = [], [], [], []
-    arc_to_assignment = {}          # arc_index → (student_id, room_id)
+    # Memory-efficient alternative to arc_to_assignment dict:
+    # Two parallel lists indexed by arc position (arc index - arc_offset).
+    arc_s_ids = []   # student_id for each student→room arc
+    arc_r_ids = []   # room_id    for each student→room arc
 
-    # Arc 3: student → waitlist (one per student, built in the same pass)
-    wl_tails, wl_heads, wl_caps, wl_costs = [], [], [], []
+    # Arc 3: student → waitlist
+    wl_tails = list(range(1, num_students + 1))
+    wl_heads  = [waitlist_node] * num_students
+    wl_caps   = [1] * num_students
+    wl_costs  = [0] * num_students
 
     print(f"Running OR-Tools solver: building arcs for {num_students} students × {num_rooms} rooms…", flush=True)
 
@@ -312,6 +315,7 @@ def run_min_cost_flow(students, rooms, first_blocks, rng):
             band_base = 10_000_000
 
         base_score = band_base + int(score * 100)
+        s_node = s_idx + 1
 
         for r_idx, room in enumerate(rooms):
             if gender != room.get('gender', ''):
@@ -329,18 +333,12 @@ def run_min_cost_flow(students, rooms, first_blocks, rng):
             bonus  = placement_bonus(student, room, first_blocks)
             weight = base_score + bonus + rng.randint(0, 99)
 
-            arc_tails.append(s_idx + 1)
+            arc_tails.append(s_node)
             arc_heads.append(num_students + 1 + r_idx)
             arc_caps.append(1)
             arc_costs.append(-weight)
-            # Arc index will be: num_students (src arcs) + current position
-            arc_to_assignment[num_students + len(arc_tails) - 1] = (student['id'], room['id'])
-
-        # Student → waitlist
-        wl_tails.append(s_idx + 1)
-        wl_heads.append(waitlist_node)
-        wl_caps.append(1)
-        wl_costs.append(0)
+            arc_s_ids.append(student['id'])
+            arc_r_ids.append(room['id'])
 
     print(f"Graph built: {len(arc_tails)} student→room arcs. Adding to solver…", flush=True)
 
@@ -355,29 +353,24 @@ def run_min_cost_flow(students, rooms, first_blocks, rng):
             room_costs.append(0)
 
     # ── Bulk-add all arc groups ───────────────────────────────────────────────
-    # Order matters — arc indices are assigned in insertion order.
-    # Layout:
-    #   [0  .. ns-1      ] = source → student         (src_tails,  ns  arcs)
-    #   [ns .. ns+na-1   ] = student → room           (arc_tails,  na  arcs) ← we track these
-    #   [ns+na .. 2ns+na-1] = student → waitlist      (wl_tails,   ns  arcs)
-    #   [2ns+na ..       ] = room → sink              (room_tails, nr  arcs)
-    #   [last            ] = waitlist → sink          (single arc)
+    # Order defines arc indices. Layout:
+    #   [0  .. ns-1      ] source → student   (src,  ns arcs)
+    #   [ns .. ns+na-1   ] student → room     (arc,  na arcs) ← we track these via arc_s/r_ids
+    #   [ns+na..2ns+na-1 ] student → waitlist (wl,   ns arcs)
+    #   [2ns+na ..       ] room → sink        (room, nr arcs)
+    #   [last            ] waitlist → sink    (1 arc)
     smcf.add_arcs_with_capacity_and_unit_cost(src_tails,  src_heads,  src_caps,  src_costs)
     smcf.add_arcs_with_capacity_and_unit_cost(arc_tails,  arc_heads,  arc_caps,  arc_costs)
     smcf.add_arcs_with_capacity_and_unit_cost(wl_tails,   wl_heads,   wl_caps,   wl_costs)
     smcf.add_arcs_with_capacity_and_unit_cost(room_tails, room_heads, room_caps, room_costs)
-    # waitlist → sink MUST be last so it doesn't shift the student→room arc indices above
     smcf.add_arc_with_capacity_and_unit_cost(waitlist_node, sink, num_students, 0)
 
-    # Build arc→assignment map.
-    # student→room arcs begin at index num_students (after the ns source→student arcs).
-    arc_offset = num_students
-    arc_to_assignment = {}
-    for i, (t, h) in enumerate(zip(arc_tails, arc_heads)):
-        real_arc = arc_offset + i
-        s_node   = t - 1                       # student index (0-based)
-        r_node   = h - num_students - 1        # room index (0-based)
-        arc_to_assignment[real_arc] = (students[s_node]['id'], rooms[r_node]['id'])
+    # Free the large arc lists — OR-Tools has copied them into C++ memory.
+    # Releasing here cuts Python heap by ~100-300 MB before the solve starts.
+    del src_tails, src_heads, src_caps, src_costs
+    del arc_tails, arc_heads, arc_caps, arc_costs
+    del wl_tails, wl_heads, wl_caps, wl_costs
+    del room_tails, room_heads, room_caps, room_costs
 
     smcf.set_node_supply(source, num_students)
     smcf.set_node_supply(sink,  -num_students)
@@ -388,17 +381,20 @@ def run_min_cost_flow(students, rooms, first_blocks, rng):
 
     assignments  = {}
     status_name  = 'INFEASIBLE'
+    arc_offset   = num_students   # student→room arcs begin here
 
     if status == smcf.OPTIMAL:
         status_name = 'OPTIMAL'
-        for arc in range(smcf.num_arcs()):
-            if smcf.flow(arc) > 0 and arc in arc_to_assignment:
-                s_id, r_id = arc_to_assignment[arc]
-                assignments[s_id] = r_id
+        na = len(arc_s_ids)
+        for i in range(na):
+            arc = arc_offset + i
+            if smcf.flow(arc) > 0:
+                assignments[arc_s_ids[i]] = arc_r_ids[i]
     elif status == smcf.FEASIBLE:
         status_name = 'FEASIBLE'
 
     return assignments, status_name
+
 
 
 
