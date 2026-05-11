@@ -35,4 +35,6 @@ scratch/
 .venv_solver/
 backup.sql
 backup_utf8.sql
+.pydeps/
+tmp/
 

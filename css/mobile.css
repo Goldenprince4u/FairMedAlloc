@@ -17,6 +17,13 @@
  */
 
 /* ============================================================
+   BOTTOM NAVIGATION BAR — hidden on desktop, shown on mobile
+   ============================================================ */
+.mobile-bottom-nav {
+    display: none;
+}
+
+/* ============================================================
    MOBILE BASE — applies to ALL phones ≤768px
    ============================================================ */
 @media (max-width: 768px) {
@@ -28,6 +35,109 @@
         overflow-x: hidden;
         -webkit-text-size-adjust: 100%;
     }
+
+    /* =============================================
+       MOBILE BOTTOM NAV BAR
+       ============================================= */
+    .mobile-bottom-nav {
+        display: flex;
+        position: fixed;
+        bottom: 0;
+        left: 0;
+        right: 0;
+        height: 62px;
+        background: var(--c-bg-surface);
+        border-top: 1px solid var(--c-border);
+        z-index: 250;
+        /* iPhone Home Indicator safe area */
+        padding-bottom: env(safe-area-inset-bottom, 0px);
+        box-shadow: 0 -4px 20px rgba(0, 0, 0, 0.08);
+        backdrop-filter: blur(10px);
+        -webkit-backdrop-filter: blur(10px);
+    }
+
+    .mobile-nav-item {
+        flex: 1;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 3px;
+        color: var(--c-text-muted);
+        text-decoration: none;
+        font-size: 0.6rem;
+        font-weight: 600;
+        letter-spacing: 0.02em;
+        padding: 6px 4px;
+        min-height: 44px; /* WCAG touch target */
+        transition: color 0.18s ease, background 0.18s ease;
+        border-radius: 0;
+        position: relative;
+    }
+
+    .mobile-nav-item i {
+        font-size: 1.15rem;
+        line-height: 1;
+    }
+
+    /* Active tab — primary color + indicator line */
+    .mobile-nav-item.active {
+        color: var(--c-primary);
+    }
+
+    .mobile-nav-item.active::before {
+        content: '';
+        position: absolute;
+        top: 0;
+        left: 20%;
+        right: 20%;
+        height: 2px;
+        background: var(--c-primary);
+        border-radius: 0 0 3px 3px;
+    }
+
+    /* Tap highlight */
+    .mobile-nav-item:active {
+        background: rgba(var(--c-primary-rgb, 37, 99, 235), 0.06);
+    }
+
+    /* Notification badge on Home icon */
+    .mobile-nav-icon-wrap {
+        position: relative;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        line-height: 1;
+    }
+
+    .mobile-nav-badge {
+        position: absolute;
+        top: -5px;
+        right: -7px;
+        background: var(--c-danger);
+        color: #fff;
+        font-size: 0.5rem;
+        font-weight: 700;
+        border-radius: 999px;
+        min-width: 14px;
+        height: 14px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 0 3px;
+        border: 1.5px solid var(--c-bg-surface);
+    }
+
+    /* Push page content above the bottom bar */
+    .main-content {
+        padding-bottom: calc(62px + env(safe-area-inset-bottom, 0px) + 1.5rem) !important;
+    }
+
+    /* Hide the sidebar toggle button label on mobile — icon only */
+    .sidebar-toggle-label {
+        display: none;
+    }
+
 
     /* =============================================
        SIDEBAR — off-canvas drawer

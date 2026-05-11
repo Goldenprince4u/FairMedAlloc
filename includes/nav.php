@@ -214,3 +214,61 @@ if (
     });
 })();
 </script>
+
+<!-- ═══════════════════════════════════════════════════════
+     MOBILE BOTTOM NAVIGATION BAR
+     Visible only on ≤768px. Provides app-like quick access
+     to the most-used pages without opening the sidebar.
+     ═══════════════════════════════════════════════════════ -->
+<nav class="mobile-bottom-nav" id="mobileBottomNav" aria-label="Quick navigation">
+
+    <?php if ($role === 'admin'): ?>
+
+        <a href="admin_dashboard.php" class="mobile-nav-item <?php echo active('admin_dashboard.php'); ?>" aria-label="Dashboard">
+            <i class="fa-solid fa-gauge-high"></i>
+            <span>Home</span>
+        </a>
+        <a href="upload_data.php" class="mobile-nav-item <?php echo active('upload_data.php'); ?>" aria-label="Import Data">
+            <i class="fa-solid fa-cloud-arrow-up"></i>
+            <span>Import</span>
+        </a>
+        <a href="run_allocation.php" class="mobile-nav-item <?php echo active('run_allocation.php'); ?>" aria-label="Run Allocation">
+            <i class="fa-solid fa-wand-magic-sparkles"></i>
+            <span>Allocate</span>
+        </a>
+        <a href="admin_reports.php" class="mobile-nav-item <?php echo active('admin_reports.php'); ?>" aria-label="Reports">
+            <i class="fa-solid fa-chart-pie"></i>
+            <span>Reports</span>
+        </a>
+        <a href="view_table.php" class="mobile-nav-item <?php echo active('view_table.php'); ?>" aria-label="View Data">
+            <i class="fa-solid fa-table-cells"></i>
+            <span>Data</span>
+        </a>
+
+    <?php else: ?>
+
+        <a href="student_dashboard.php" class="mobile-nav-item <?php echo active('student_dashboard.php'); ?>" aria-label="Dashboard">
+            <span class="mobile-nav-icon-wrap">
+                <i class="fa-solid fa-house"></i>
+                <?php if ($unread_count > 0): ?>
+                    <span class="mobile-nav-badge"><?php echo $unread_count > 9 ? '9+' : $unread_count; ?></span>
+                <?php endif; ?>
+            </span>
+            <span>Home</span>
+        </a>
+        <a href="profile.php" class="mobile-nav-item <?php echo active('profile.php'); ?>" aria-label="My Profile">
+            <i class="fa-solid fa-user"></i>
+            <span>Profile</span>
+        </a>
+        <a href="print_slip.php" class="mobile-nav-item <?php echo active('print_slip.php'); ?>" aria-label="Allocation Slip">
+            <i class="fa-solid fa-print"></i>
+            <span>My Slip</span>
+        </a>
+        <a href="help.php" class="mobile-nav-item <?php echo active('help.php'); ?>" aria-label="Help">
+            <i class="fa-solid fa-circle-question"></i>
+            <span>Help</span>
+        </a>
+
+    <?php endif; ?>
+
+</nav>
