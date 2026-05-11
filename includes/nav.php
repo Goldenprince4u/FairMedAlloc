@@ -1,14 +1,15 @@
 <?php
 $current_page = basename($_SERVER['PHP_SELF']);
-$role         = $_SESSION['role'] ?? 'student';
+$role = $_SESSION['role'] ?? 'student';
 
-function active($p) {
+function active($p)
+{
     global $current_page;
     return $current_page === $p ? 'active' : '';
 }
 
 // Generate initials from username
-$names    = explode(" ", $_SESSION['full_name'] ?? $_SESSION['username'] ?? 'U');
+$names = explode(" ", $_SESSION['full_name'] ?? $_SESSION['username'] ?? 'U');
 $initials = strtoupper(substr($names[0], 0, 1));
 if (isset($names[1])) {
     $initials .= strtoupper(substr($names[1], 0, 1));
@@ -27,7 +28,7 @@ if (
     isset($conn) &&
     $conn instanceof mysqli
 ) {
-    $uid_nav    = (int)$_SESSION['user_id'];
+    $uid_nav = (int) $_SESSION['user_id'];
 
     // ── Avatar + display name sync ────────────────────────────────────────────
     $sync_stmt = $conn->prepare(
@@ -46,7 +47,7 @@ if (
             if (!empty($sync_row['full_name']) && $sync_row['full_name'] !== ($_SESSION['full_name'] ?? '')) {
                 $_SESSION['full_name'] = $sync_row['full_name'];
                 // Recompute initials from the refreshed name
-                $names    = explode(' ', $sync_row['full_name']);
+                $names = explode(' ', $sync_row['full_name']);
                 $initials = strtoupper(substr($names[0], 0, 1));
                 $initials .= isset($names[1])
                     ? strtoupper(substr($names[1], 0, 1))
@@ -63,8 +64,8 @@ if (
         if ($notif_stmt) {
             $notif_stmt->bind_param('i', $uid_nav);
             $notif_stmt->execute();
-            $notif_res    = $notif_stmt->get_result();
-            $unread_count = (int)($notif_res->fetch_assoc()['cnt'] ?? 0);
+            $notif_res = $notif_stmt->get_result();
+            $unread_count = (int) ($notif_res->fetch_assoc()['cnt'] ?? 0);
             $notif_res->free();
             $notif_stmt->close();
         }
@@ -82,9 +83,7 @@ if (
     <!-- Brand Header Strip -->
     <div class="sidebar-brand">
         <div class="sidebar-brand-row flex items-center gap-3">
-            <img src="assets/logo.jpeg"
-                 alt="Redeemer's University Logo"
-                 class="sidebar-brand-logo">
+            <img src="assets/logo.jpeg" alt="Redeemer's University Logo" class="sidebar-brand-logo">
             <div class="sidebar-brand-copy">
                 <h2 class="sidebar-brand-title">
                     FairMed<span style="color:var(--c-accent);">Alloc</span>
@@ -153,25 +152,25 @@ if (
             // Use the DB-refreshed value so all sessions stay in sync
             $nav_pic = $_SESSION['profile_pic'] ?? null;
             if ($nav_pic && $nav_pic !== 'default.png'):
-            ?>
-            <img src="uploads/profile_pics/<?php echo htmlspecialchars(basename($nav_pic)); ?>"
-                 id="nav-avatar-img"
-                 alt="Profile photo"
-                 style="width:36px;height:36px;border-radius:50%;object-fit:cover;flex-shrink:0;border:2px solid rgba(255,255,255,0.25);"
-                 onerror="this.style.display='none';document.getElementById('nav-avatar-initials').style.display='flex';">
+                ?>
+                <img src="uploads/profile_pics/<?php echo htmlspecialchars(basename($nav_pic)); ?>" id="nav-avatar-img"
+                    alt="Profile photo"
+                    style="width:36px;height:36px;border-radius:50%;object-fit:cover;flex-shrink:0;border:2px solid rgba(255,255,255,0.25);"
+                    onerror="this.style.display='none';document.getElementById('nav-avatar-initials').style.display='flex';">
             <?php else: ?>
-            <div class="avatar-initials" id="nav-avatar-initials"><?php echo htmlspecialchars($initials); ?></div>
+                <div class="avatar-initials" id="nav-avatar-initials"><?php echo htmlspecialchars($initials); ?></div>
             <?php endif; ?>
             <div class="flex-1" style="overflow: hidden;">
-                <div class="fw-700 text-sm" style="color: var(--c-text-head); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">
+                <div class="fw-700 text-sm"
+                    style="color: var(--c-text-head); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">
                     <?php echo htmlspecialchars($_SESSION['full_name'] ?? $_SESSION['username']); ?>
                 </div>
                 <div class="text-xs text-muted capitalize"><?php echo $role; ?></div>
             </div>
             <a href="logout.php" title="Logout" class="nav-logout-btn" aria-label="Logout"
-               style="display:flex; align-items:center; justify-content:center; width:32px; height:32px; border-radius:8px; color:var(--c-text-muted); transition: all 0.2s; flex-shrink:0;"
-               onmouseover="this.style.background='rgba(248,81,73,0.1)'; this.style.color='var(--c-danger)';"
-               onmouseout="this.style.background='transparent'; this.style.color='var(--c-text-muted)';">
+                style="display:flex; align-items:center; justify-content:center; width:32px; height:32px; border-radius:8px; color:var(--c-text-muted); transition: all 0.2s; flex-shrink:0;"
+                onmouseover="this.style.background='rgba(248,81,73,0.1)'; this.style.color='var(--c-danger)';"
+                onmouseout="this.style.background='transparent'; this.style.color='var(--c-text-muted)';">
                 <i class="fa-solid fa-arrow-right-from-bracket"></i>
             </a>
         </div>
@@ -179,39 +178,39 @@ if (
 </aside>
 
 <script>
-(function() {
-    const toggle  = document.getElementById('sidebarToggle');
-    const sidebar = document.getElementById('sidebar');
-    const overlay = document.getElementById('sidebarOverlay');
+    (function () {
+        const toggle = document.getElementById('sidebarToggle');
+        const sidebar = document.getElementById('sidebar');
+        const overlay = document.getElementById('sidebarOverlay');
 
-    if (!toggle || !sidebar || !overlay) return;
+        if (!toggle || !sidebar || !overlay) return;
 
-    function openSidebar() {
-        sidebar.classList.add('open');
-        overlay.classList.add('open');
-        toggle.innerHTML = '<i class="fa-solid fa-xmark"></i>';
-    }
+        function openSidebar() {
+            sidebar.classList.add('open');
+            overlay.classList.add('open');
+            toggle.innerHTML = '<i class="fa-solid fa-xmark"></i>';
+        }
 
-    function closeSidebar() {
-        sidebar.classList.remove('open');
-        overlay.classList.remove('open');
-        toggle.innerHTML = '<i class="fa-solid fa-bars"></i>';
-    }
+        function closeSidebar() {
+            sidebar.classList.remove('open');
+            overlay.classList.remove('open');
+            toggle.innerHTML = '<i class="fa-solid fa-bars"></i>';
+        }
 
-    toggle.addEventListener('click', () => {
-        sidebar.classList.contains('open') ? closeSidebar() : openSidebar();
-    });
-
-    // Close sidebar when overlay is tapped
-    overlay.addEventListener('click', closeSidebar);
-
-    // Close sidebar when a nav link is tapped (smooth UX on mobile)
-    sidebar.querySelectorAll('.nav-item').forEach(function(link) {
-        link.addEventListener('click', function() {
-            if (window.innerWidth <= 768) closeSidebar();
+        toggle.addEventListener('click', () => {
+            sidebar.classList.contains('open') ? closeSidebar() : openSidebar();
         });
-    });
-})();
+
+        // Close sidebar when overlay is tapped
+        overlay.addEventListener('click', closeSidebar);
+
+        // Close sidebar when a nav link is tapped (smooth UX on mobile)
+        sidebar.querySelectorAll('.nav-item').forEach(function (link) {
+            link.addEventListener('click', function () {
+                if (window.innerWidth <= 768) closeSidebar();
+            });
+        });
+    })();
 </script>
 
 <!-- ═══════════════════════════════════════════════════════
@@ -223,7 +222,8 @@ if (
 
     <?php if ($role === 'admin'): ?>
 
-        <a href="admin_dashboard.php" class="mobile-nav-item <?php echo active('admin_dashboard.php'); ?>" aria-label="Dashboard">
+        <a href="admin_dashboard.php" class="mobile-nav-item <?php echo active('admin_dashboard.php'); ?>"
+            aria-label="Dashboard">
             <i class="fa-solid fa-gauge-high"></i>
             <span>Home</span>
         </a>
@@ -231,7 +231,8 @@ if (
             <i class="fa-solid fa-cloud-arrow-up"></i>
             <span>Import</span>
         </a>
-        <a href="run_allocation.php" class="mobile-nav-item <?php echo active('run_allocation.php'); ?>" aria-label="Run Allocation">
+        <a href="run_allocation.php" class="mobile-nav-item <?php echo active('run_allocation.php'); ?>"
+            aria-label="Run Allocation">
             <i class="fa-solid fa-wand-magic-sparkles"></i>
             <span>Allocate</span>
         </a>
@@ -246,7 +247,8 @@ if (
 
     <?php else: ?>
 
-        <a href="student_dashboard.php" class="mobile-nav-item <?php echo active('student_dashboard.php'); ?>" aria-label="Dashboard">
+        <a href="student_dashboard.php" class="mobile-nav-item <?php echo active('student_dashboard.php'); ?>"
+            aria-label="Dashboard">
             <span class="mobile-nav-icon-wrap">
                 <i class="fa-solid fa-house"></i>
                 <?php if ($unread_count > 0): ?>
@@ -259,7 +261,8 @@ if (
             <i class="fa-solid fa-user"></i>
             <span>Profile</span>
         </a>
-        <a href="print_slip.php" class="mobile-nav-item <?php echo active('print_slip.php'); ?>" aria-label="Allocation Slip">
+        <a href="print_slip.php" class="mobile-nav-item <?php echo active('print_slip.php'); ?>"
+            aria-label="Allocation Slip">
             <i class="fa-solid fa-print"></i>
             <span>My Slip</span>
         </a>
