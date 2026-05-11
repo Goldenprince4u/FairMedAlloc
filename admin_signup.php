@@ -73,6 +73,42 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
 $page_title = "Create Admin | FairMedAlloc";
 require_once 'includes/header.php';
 ?>
+<style>
+    /* Mobile-first responsive overrides for admin signup form */
+    @media (max-width: 768px) {
+        input[type="text"],
+        input[type="email"],
+        input[type="password"],
+        input[type="number"],
+        input[type="date"],
+        select,
+        textarea {
+            font-size: 1rem !important;
+            padding: 0.875rem 1rem !important;
+            min-height: 48px;
+        }
+        .input-group {
+            position: relative;
+        }
+        .input-icon {
+            font-size: 1rem;
+            left: 12px;
+        }
+        .form-group {
+            margin-bottom: 1.25rem;
+        }
+        .form-group label {
+            font-size: 0.95rem;
+            font-weight: 600;
+        }
+        .page-header {
+            flex-direction: column;
+        }
+        .page-header-info h1 {
+            font-size: clamp(1.25rem, 5vw, 1.75rem) !important;
+        }
+    }
+</style>
 
 <div class="app-shell">
     <?php require_once 'includes/nav.php'; ?>

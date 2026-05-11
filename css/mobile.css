@@ -98,8 +98,385 @@
 
     /* Tap highlight */
     .mobile-nav-item:active {
-        background: rgba(var(--c-primary-rgb, 37, 99, 235), 0.06);
+        background: rgba(0, 33, 71, 0.05);
     }
+
+    /* =============================================
+       FORMS & INPUTS — mobile responsive
+       ============================================= */
+    .input-auth,
+    input[type="text"],
+    input[type="email"],
+    input[type="password"],
+    input[type="number"],
+    input[type="date"],
+    input[type="time"],
+    select,
+    textarea {
+        /* WCAG: minimum 16px on mobile to prevent zoom on iOS */
+        font-size: 1rem !important;
+        padding: 0.875rem 1rem !important;
+        width: 100%;
+        border-radius: 6px;
+        border: 1px solid var(--c-border);
+        background: var(--c-bg-surface);
+        color: var(--c-text-body);
+        line-height: 1.5;
+        transition: border-color 0.2s, box-shadow 0.2s;
+    }
+
+    .input-auth:focus,
+    input:focus,
+    select:focus,
+    textarea:focus {
+        outline: none;
+        border-color: var(--c-primary);
+        box-shadow: 0 0 0 3px rgba(0, 33, 71, 0.1);
+    }
+
+    .form-group {
+        margin-bottom: 1.25rem;
+    }
+
+    .form-group label {
+        display: block;
+        margin-bottom: 0.5rem;
+        font-size: 0.95rem;
+        font-weight: 600;
+        color: var(--c-text-head);
+    }
+
+    /* =============================================
+       AUTH LAYOUT — mobile-first redesign
+       ============================================= */
+    .auth-container {
+        display: flex;
+        min-height: 100vh;
+        background: var(--c-primary);
+    }
+
+    .auth-left {
+        display: none; /* Hidden on mobile */
+    }
+
+    .auth-right {
+        width: 100%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 1.5rem;
+    }
+
+    .auth-box {
+        width: 100%;
+        max-width: 100%;
+        background: var(--c-bg-surface);
+        border-radius: 12px;
+        padding: 2rem 1.5rem;
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+    }
+
+    .badge {
+        font-size: var(--font-size-xs) !important;
+        padding: 0.4rem 0.8rem !important;
+        display: inline-block;
+    }
+
+    .btn {
+        width: 100% !important;
+        padding: 0.875rem 1rem !important;
+        font-size: 1rem !important;
+        border-radius: 6px;
+        border: none;
+        font-weight: 600;
+        cursor: pointer;
+        transition: background-color 0.2s, transform 0.1s;
+        min-height: 44px;  /* WCAG touch target */
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        text-decoration: none;
+    }
+
+    .btn:active {
+        transform: scale(0.98);
+    }
+
+    .btn-primary {
+        background: var(--c-primary);
+        color: white;
+    }
+
+    .btn-primary:hover {
+        background: var(--c-primary-light);
+    }
+
+    .btn-outline {
+        background: transparent;
+        border: 1px solid var(--c-border);
+        color: var(--c-text-body);
+    }
+
+    .btn-outline:hover {
+        background: var(--c-bg-surface-2);
+    }
+
+    /* Mobile alerts */
+    .alert {
+        padding: 1rem;
+        border-radius: 6px;
+        margin-bottom: 1.5rem;
+        font-size: 0.95rem;
+        line-height: 1.5;
+    }
+
+    .alert-danger {
+        background: var(--c-danger-bg);
+        color: var(--c-danger);
+        border: 1px solid var(--c-danger);
+    }
+
+    .alert-success {
+        background: var(--c-success-bg);
+        color: var(--c-success);
+        border: 1px solid var(--c-success);
+    }
+
+    /* =============================================
+       LANDING PAGE — mobile responsive
+       ============================================= */
+    .lp-nav {
+        padding: 0 1rem !important;
+        height: 56px !important;
+    }
+
+    .lp-nav-brand {
+        font-size: 1rem !important;
+    }
+
+    .lp-nav-brand img {
+        width: 28px !important;
+        height: 28px !important;
+    }
+
+    .lp-nav-links {
+        gap: 0.75rem !important;
+    }
+
+    .lp-nav-links a {
+        font-size: 0.8rem !important;
+    }
+
+    .lp-nav-links .btn {
+        padding: 0.35rem 0.8rem !important;
+        font-size: 0.75rem !important;
+    }
+
+    .lp-hero {
+        padding: 3rem 1.5rem 2rem !important;
+        min-height: auto !important;
+    }
+
+    .lp-hero-inner {
+        max-width: 100%;
+    }
+
+    .lp-hero h1 {
+        font-size: clamp(1.5rem, 7vw, 2.25rem) !important;
+        line-height: 1.2 !important;
+    }
+
+    .lp-hero p {
+        font-size: 0.95rem !important;
+        line-height: 1.6 !important;
+        margin-bottom: 1.75rem !important;
+    }
+
+    .lp-hero-btns {
+        flex-direction: column !important;
+        gap: 0.75rem !important;
+        margin-bottom: 2rem !important;
+    }
+
+    .lp-hero-btns .btn {
+        width: 100% !important;
+        padding: 0.75rem 1rem !important;
+    }
+
+    .lp-strip {
+        flex-direction: column !important;
+        gap: 1rem !important;
+        padding: 1rem !important;
+    }
+
+    .lp-strip-item {
+        font-size: 0.8rem !important;
+        justify-content: center;
+    }
+
+    .lp-features {
+        padding: 2.5rem 1.5rem !important;
+    }
+
+    .lp-section-label {
+        margin-bottom: 2rem !important;
+    }
+
+    .lp-section-label h2 {
+        font-size: 1.5rem !important;
+    }
+
+    .lp-section-label p {
+        font-size: 0.9rem !important;
+    }
+
+    .lp-features-grid {
+        grid-template-columns: 1fr !important;
+        gap: 1rem !important;
+    }
+
+    .lp-feature-card {
+        padding: 1.5rem !important;
+        border-radius: 8px;
+    }
+
+    .lp-feature-card h3 {
+        font-size: 1rem !important;
+    }
+
+    .lp-feature-card p {
+        font-size: 0.875rem !important;
+    }
+
+    .lp-cta {
+        padding: 2.5rem 1.5rem !important;
+    }
+
+    .lp-cta h2 {
+        font-size: 1.5rem !important;
+    }
+
+    .lp-cta p {
+        font-size: 0.9rem !important;
+    }
+
+    .lp-footer {
+        flex-direction: column !important;
+        padding: 1rem !important;
+        text-align: center;
+    }
+
+    .lp-footer p,
+    .lp-footer a {
+        font-size: 0.8rem !important;
+    }
+
+    /* =============================================
+       UTILITY CLASSES — mobile helpers
+       ============================================= */
+    .w-full {
+        width: 100% !important;
+    }
+
+    .mt-2 {
+        margin-top: 0.5rem !important;
+    }
+
+    .mt-4 {
+        margin-top: 1rem !important;
+    }
+
+    .mt-6 {
+        margin-top: 1.5rem !important;
+    }
+
+    .mb-4 {
+        margin-bottom: 1rem !important;
+    }
+
+    .mb-6 {
+        margin-bottom: 1.5rem !important;
+    }
+
+    .mb-8 {
+        margin-bottom: 2rem !important;
+    }
+
+    .pt-4 {
+        padding-top: 1rem !important;
+    }
+
+    .text-center {
+        text-align: center !important;
+    }
+
+    .text-muted {
+        color: var(--c-text-muted) !important;
+        font-size: 0.9rem !important;
+    }
+
+    .text-primary {
+        color: var(--c-primary) !important;
+    }
+
+    .fw-700 {
+        font-weight: 700 !important;
+    }
+
+    .flex {
+        display: flex !important;
+    }
+
+    .justify-between {
+        justify-content: space-between !important;
+    }
+
+    .input-group {
+        position: relative;
+        display: flex;
+        align-items: center;
+    }
+
+    .input-icon {
+        position: absolute;
+        left: 12px;
+        color: var(--c-text-muted);
+        font-size: 0.9rem;
+        pointer-events: none;
+    }
+
+    /* =============================================
+       TABLET & LARGER MOBILE — 600px+
+       ============================================= */
+    @media (min-width: 600px) {
+        .auth-right {
+            padding: 2rem;
+        }
+
+        .auth-box {
+            max-width: 420px;
+            padding: 2.5rem;
+        }
+
+        .lp-features-grid {
+            grid-template-columns: repeat(2, 1fr) !important;
+        }
+    }
+
+    /* =============================================
+       LARGE MOBILE — 768px+
+       ============================================= */
+    @media (min-width: 768px) {
+        .mobile-bottom-nav {
+            display: none !important;
+        }
+
+        /* Override mobile styles on larger screens */
+        body {
+            padding-bottom: 0 !important;
+        }
+    }
+
 
     /* Notification badge on Home icon */
     .mobile-nav-icon-wrap {
@@ -255,11 +632,11 @@
     /* =============================================
        TYPOGRAPHY — proportional mobile scale
        ============================================= */
-    h1 { font-size: 1.5rem; line-height: 1.25; margin-bottom: 0.6rem; }
-    h2 { font-size: 1.25rem; line-height: 1.3; }
-    h3 { font-size: 1.05rem; }
-    h4 { font-size: 1rem; }
-    p  { font-size: 0.95rem; line-height: 1.6; }
+    h1 { font-size: 1.8rem; line-height: 1.25; margin-bottom: 0.6rem; }
+    h2 { font-size: 1.5rem; line-height: 1.3; }
+    h3 { font-size: 1.25rem; }
+    h4 { font-size: 1.1rem; }
+    p  { font-size: 1.05rem; line-height: 1.6; }
 
     /* =============================================
        PAGE HEADER — stack title + actions vertically
