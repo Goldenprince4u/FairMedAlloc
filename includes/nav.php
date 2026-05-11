@@ -81,12 +81,15 @@ if (
 <aside class="sidebar" id="sidebar">
     <!-- Brand Header Strip -->
     <div class="sidebar-brand">
-        <div class="sidebar-brand-row flex items-center justify-center text-center">
-            <div class="sidebar-brand-copy" style="width: 100%;">
-                <h2 class="sidebar-brand-title" style="font-size: 1.6rem; color: #ffffff;">
-                    FairMedAlloc
+        <div class="sidebar-brand-row flex items-center gap-3">
+            <img src="assets/logo.jpeg"
+                 alt="Redeemer's University Logo"
+                 class="sidebar-brand-logo">
+            <div class="sidebar-brand-copy">
+                <h2 class="sidebar-brand-title">
+                    FairMed<span style="color:var(--c-accent);">Alloc</span>
                 </h2>
-                <span class="sidebar-brand-kicker" style="font-size: 0.8rem; color: rgba(255,255,255,0.8);">Redeemer's University</span>
+                <span class="sidebar-brand-kicker">Redeemer's University</span>
             </div>
         </div>
     </div>
