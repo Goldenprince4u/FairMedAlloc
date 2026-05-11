@@ -179,5 +179,5 @@ WHERE m.mobility_status IN ('Wheelchair User','Crutches/Walker','Artificial Limb
 
 ---
 
-**Report Generated:** May 5, 2026
+**Report Generated:** May 11, 2026
 **Full Report:** [TECHNICAL_AUDIT_REPORT.md](TECHNICAL_AUDIT_REPORT.md)
