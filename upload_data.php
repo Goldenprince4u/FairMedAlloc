@@ -15,6 +15,10 @@ if (!isset($_SESSION['logged_in']) || ($_SESSION['role'] ?? '') !== 'admin') {
     exit();
 }
 
+// Ensure large imports don't timeout when running inline on Windows
+set_time_limit(0);
+ignore_user_abort(true);
+
 $msg = '';
 $msg_type = 'success';
 $active_import_job_id = isset($_GET['job_id']) ? max(0, (int)$_GET['job_id']) : 0;
@@ -249,6 +253,10 @@ require_once 'includes/header.php';
                     <span class="text-muted">Progress: <strong id="import-job-percent" class="text-head">0%</strong></span>
                     <span class="text-muted">Rows: <strong id="import-job-count" class="text-head">0 / 0</strong></span>
                 </div>
+                
+                <button id="cancel-import-btn" type="button" class="btn btn-outline border-danger text-danger mt-4" style="width: 100%; font-size: 0.85rem;">
+                    <i class="fa-solid fa-stop"></i> Cancel Import
+                </button>
 
                 <div id="import-job-result" class="alert alert-info" style="display:none;margin-top:1rem;">
                     <i class="fa-solid fa-circle-info"></i>
@@ -392,6 +400,22 @@ require_once 'includes/header.php';
             clearInterval(timer);
             timer = null;
         }
+        const cancelBtn = document.getElementById('cancel-import-btn');
+        if (cancelBtn) cancelBtn.style.display = 'none';
+    }
+
+    const cancelBtn = document.getElementById('cancel-import-btn');
+    if (cancelBtn) {
+        cancelBtn.addEventListener('click', async () => {
+            try {
+                await fetch(`api/admin_api.php?action=cancel_job&job_id=${jobId}`, {
+                    method: 'POST'
+                });
+                stageEl.textContent = 'Cancelling...';
+            } catch (e) {
+                console.error(e);
+            }
+        });
     }
 
     pollJob();
