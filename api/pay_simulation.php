@@ -40,14 +40,16 @@ if (!verify_csrf_token($csrf_token)) {
 // Define mock variables for the simulated transaction
 $user_id = $_SESSION['user_id'];
 $amount = 50000.00; // Simulated School Fee amount
-$ref = 'REF-' . strtoupper(uniqid()); // Generate dummy transaction reference
+
+$conn->begin_transaction();
 
 // --- 2. Deduplication Check ---
 // Check if the student has already paid to prevent double processing
-$stmt = $conn->prepare("SELECT payment_id FROM payments WHERE student_id = ? AND status = 'paid'");
+$stmt = $conn->prepare("SELECT payment_id FROM payments WHERE student_id = ? AND status = 'paid' FOR UPDATE");
 $stmt->bind_param("i", $user_id);
 $stmt->execute();
 if ($stmt->get_result()->num_rows > 0) {
+    $conn->commit();
     require_once '../includes/Student.php';
     $student = new Student($conn, $user_id);
     $allocation = $student->getAllocation();
@@ -60,6 +62,7 @@ if ($stmt->get_result()->num_rows > 0) {
 
 // --- 3. Process Transaction ---
 // Insert a finalized 'paid' record corresponding to this student
+$ref = 'REF-' . strtoupper(bin2hex(random_bytes(8))); // Generate dummy transaction reference
 $stmt = $conn->prepare("INSERT INTO payments (student_id, amount, reference_no, status) VALUES (?, ?, ?, 'paid')");
 $stmt->bind_param("ids", $user_id, $amount, $ref);
 
@@ -67,6 +70,8 @@ if ($stmt->execute()) {
     $paid_stmt = $conn->prepare("UPDATE student_profiles SET is_paid = 1 WHERE user_id = ?");
     $paid_stmt->bind_param("i", $user_id);
     $paid_stmt->execute();
+    
+    $conn->commit();
 
     $message = 'Portal payment of &#8358;50,000 confirmed. You are now eligible for hostel allocation.';
     require_once '../includes/AllocationEngine.php';
@@ -89,6 +94,7 @@ if ($stmt->execute()) {
         'message' => $message
     ]);
 } else {
+    $conn->rollback();
     echo json_encode(['status' => 'error', 'message' => 'Database error. Please try again.']);
 }
 ?>

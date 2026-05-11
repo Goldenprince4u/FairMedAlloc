@@ -97,7 +97,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && empty($_POST['remove_photo'])) {
             $upload_dir = __DIR__ . "/uploads/profile_pics/";
             if (!file_exists($upload_dir)) mkdir($upload_dir, 0755, true);
 
-            $new_name = "u{$user_id}_" . time() . "." . $ext;
+            $random_bytes = bin2hex(random_bytes(16));
+            $new_name = "u{$user_id}_{$random_bytes}." . $ext;
 
             if (move_uploaded_file($_FILES['profile_pic']['tmp_name'], $upload_dir . $new_name)) {
                 // Fetch and delete the old profile picture from disk

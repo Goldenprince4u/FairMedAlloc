@@ -143,11 +143,16 @@ $query_sql = "
     LEFT JOIN allocations a ON p.user_id = a.student_id 
     LEFT JOIN rooms r ON a.room_id = r.room_id 
     LEFT JOIN hostels h ON r.hostel_id = h.hostel_id
+    WHERE {$search_cond}
     ORDER BY m.urgency_score DESC, u.username ASC 
     LIMIT ? OFFSET ?
 ";
 $stmt = $conn->prepare($query_sql);
-$stmt->bind_param("ii", $limit, $offset);
+if ($search !== '') {
+    $stmt->bind_param($search_types . "ii", ...array_merge($search_params, [$limit, $offset]));
+} else {
+    $stmt->bind_param("ii", $limit, $offset);
+}
 $stmt->execute();
 $result = $stmt->get_result();
 
