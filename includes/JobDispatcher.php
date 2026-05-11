@@ -30,6 +30,10 @@ if (!function_exists('fairmedResolvePhpCliBinary')) {
             if (!is_string($candidate) || trim($candidate) === '') {
                 continue;
             }
+            // Exclude binaries like httpd.exe
+            if (DIRECTORY_SEPARATOR === '\\' && stripos(basename($candidate), 'php') === false) {
+                continue;
+            }
             if ($candidate === 'php') {
                 return $candidate;
             }
