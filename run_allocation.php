@@ -546,20 +546,6 @@ require_once 'includes/header.php';
 
     function renderCompletionResult(logEl, data) {
         const res = data.result ?? {};
-
-        if (res.prediction_mode) {
-            logLine(logEl, `&#10003; Urgency scoring: ${res.prediction_mode}`, 'var(--c-success)');
-        }
-        if (res.solver_mode) {
-            let optLabel = 'FEASIBLE (time-limit reached — still a valid allocation)';
-            if (res.optimal) {
-                optLabel = 'OPTIMAL';
-            } else if ((res.solver_status ?? '') === 'FALLBACK' || /fallback/i.test(res.solver_mode)) {
-                optLabel = 'FALLBACK (Python solver unavailable)';
-            }
-            logLine(logEl, `&#10003; Solver: ${res.solver_mode} — ${optLabel}`, 'var(--c-success)');
-        }
-
         const total = data.total_students || res.total || 0;
         const allocated = data.allocated_students || res.allocated || 0;
 
@@ -568,6 +554,19 @@ require_once 'includes/header.php';
                 '&#9888; No eligible students found (check that students are marked as paid).',
                 'var(--c-warning)');
         } else {
+            if (res.prediction_mode && res.prediction_mode !== 'unknown') {
+                logLine(logEl, `&#10003; Urgency scoring: ${res.prediction_mode}`, 'var(--c-success)');
+            }
+            if (res.solver_mode && res.solver_mode !== 'unknown') {
+                let optLabel = 'FEASIBLE (time-limit reached — still a valid allocation)';
+                if (res.optimal) {
+                    optLabel = 'OPTIMAL';
+                } else if ((res.solver_status ?? '') === 'FALLBACK' || /fallback/i.test(res.solver_mode)) {
+                    optLabel = 'FALLBACK (Python solver unavailable)';
+                }
+                logLine(logEl, `&#10003; Solver: ${res.solver_mode} — ${optLabel}`, 'var(--c-success)');
+            }
+
             logLine(logEl,
                 `&#10003; Allocated: <strong>${allocated}</strong> of <strong>${total}</strong> eligible students`,
                 'var(--c-success)');
