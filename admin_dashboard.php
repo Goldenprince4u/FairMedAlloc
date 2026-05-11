@@ -181,39 +181,35 @@ require_once 'includes/header.php';
                 Management Modules
             </h2>
         </div>
-        <div class="grid grid-cols-2 mb-8">
+        <div class="grid grid-cols-2 mb-8 gap-4">
 
-            <div class="card flex items-start gap-4" style="padding:1.75rem;">
-                <div class="stat-icon" style="background:rgba(59,130,246,0.1); color:var(--c-info);"><i class="fa-solid fa-table-list"></i></div>
+            <div class="card" style="padding:1.75rem;">
                 <div>
-                    <h4 class="mb-2">Allocation Matrix</h4>
+                    <h4 class="mb-2" style="font-size: 1.35rem; font-weight: 800; color: var(--c-primary);">Allocation Matrix</h4>
                     <p class="text-muted text-sm mb-4">View comprehensive list of all students and their allocation status, urgency scores, and hostel placements.</p>
                     <a href="view_table.php" class="btn btn-sm btn-primary">Open Matrix <i class="fa-solid fa-arrow-right ml-1"></i></a>
                 </div>
             </div>
 
-            <div class="card flex items-start gap-4" style="padding:1.75rem;">
-                <div class="stat-icon" style="background: rgba(245,158,11,0.1); color: var(--c-warning);"><i class="fa-solid fa-chart-pie"></i></div>
+            <div class="card" style="padding:1.75rem;">
                 <div>
-                    <h4 class="mb-2">System Reports</h4>
+                    <h4 class="mb-2" style="font-size: 1.35rem; font-weight: 800; color: var(--c-primary);">System Reports</h4>
                     <p class="text-muted text-sm mb-4">Analytics, allocation progress charts, medical condition distribution and payment overviews.</p>
                     <a href="admin_reports.php" class="btn btn-sm btn-secondary">View Analytics <i class="fa-solid fa-arrow-right ml-1"></i></a>
                 </div>
             </div>
 
-            <div class="card flex items-start gap-4" style="padding:1.75rem;">
-                <div class="stat-icon" style="background: rgba(16,185,129,0.1); color: var(--c-success);"><i class="fa-solid fa-wand-magic-sparkles"></i></div>
+            <div class="card" style="padding:1.75rem;">
                 <div>
-                    <h4 class="mb-2">Run Allocation</h4>
+                    <h4 class="mb-2" style="font-size: 1.35rem; font-weight: 800; color: var(--c-primary);">Run Allocation</h4>
                     <p class="text-muted text-sm mb-4">Execute the fairness-aware ML allocation engine to assign students to hostels based on medical priority.</p>
                     <a href="run_allocation.php" class="btn btn-sm btn-primary">Start Engine <i class="fa-solid fa-arrow-right ml-1"></i></a>
                 </div>
             </div>
 
-            <div class="card flex items-start gap-4" style="padding:1.75rem;">
-                <div class="stat-icon" style="background: rgba(0,33,71,0.08); color: var(--c-primary);"><i class="fa-solid fa-gears"></i></div>
+            <div class="card" style="padding:1.75rem;">
                 <div>
-                    <h4 class="mb-2">System Settings</h4>
+                    <h4 class="mb-2" style="font-size: 1.35rem; font-weight: 800; color: var(--c-primary);">System Settings</h4>
                     <p class="text-muted text-sm mb-4">Configure academic session, the High urgency threshold for clinic proximity, and allocation status (open/locked).</p>
                     <a href="settings.php" class="btn btn-sm btn-secondary">Manage Settings <i class="fa-solid fa-arrow-right ml-1"></i></a>
                 </div>
