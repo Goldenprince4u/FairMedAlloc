@@ -104,8 +104,6 @@ require_once 'includes/header.php';
     /* Mobile-first responsive overrides for admin login */
     @media (max-width: 768px) {
         .input-auth {
-            padding-left: 1rem !important;
-            padding-right: 1rem !important;
             font-size: 1rem !important;
             min-height: 48px;
         }

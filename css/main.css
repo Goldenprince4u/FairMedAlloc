@@ -882,17 +882,23 @@ textarea:focus {
 /* "input-auth" — larger styled inputs for auth pages */
 .input-auth {
     width: 100%;
-    padding: 0.875rem 1.125rem;
-    border: 1.5px solid var(--c-border);
+    padding: 1rem 1.25rem;
+    border: 2px solid var(--c-border);
     border-radius: var(--radius-sm);
     background: var(--c-bg-surface-2);
     font-family: var(--font-body);
-    font-size: 0.95rem;
+    font-size: 1.05rem;
     font-weight: 500;
     transition: all 0.2s var(--ease-smooth);
     color: var(--c-text-head);
     outline: none;
     display: block;
+}
+
+.input-auth::placeholder {
+    color: var(--c-text-light);
+    font-weight: 500;
+    opacity: 0.8;
 }
 
 .input-auth:focus {
@@ -1175,7 +1181,7 @@ tr:hover td { background: var(--c-bg-surface-2); }
 
 /* --- Left: Fixed Brand Panel --- */
 .auth-left {
-    width: 45%;
+    width: 35%;
     background: var(--c-primary);
     color: white;
     display: flex;
@@ -1193,7 +1199,7 @@ tr:hover td { background: var(--c-bg-surface-2); }
 
 /* --- Right: Scrollable Form Panel --- */
 .auth-right {
-    width: 55%;
+    width: 65%;
     display: flex;
     align-items: flex-start; /* Align to top so form doesn't jump while scrolling */
     justify-content: center;
@@ -1206,7 +1212,7 @@ tr:hover td { background: var(--c-bg-surface-2); }
 /* Inner auth form wrapper — centred with a readable max-width */
 .auth-box {
     width: 100%;
-    max-width: 440px;
+    max-width: 500px;
     padding-top: 2rem;       /* Top breathing room when user scrolls up */
     padding-bottom: 2rem;    /* Bottom breathing room */
 }

@@ -197,7 +197,6 @@ require_once 'includes/header.php';
         select,
         textarea {
             font-size: 1rem !important;
-            padding: 0.875rem 1rem !important;
             min-height: 48px;
         }
         .input-group {
