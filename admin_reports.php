@@ -35,9 +35,18 @@ $alloc = $conn->query("
 ")->fetch_assoc();
 
 // ── Urgency band counts ──────────────────────────────────────────────────────
-$prox_t   = (int)($conn->query("SELECT setting_value FROM settings WHERE setting_key='urgency_threshold_proximal'")->fetch_assoc()['setting_value'] ?? 75);
-$medium_t = (int)($conn->query("SELECT setting_value FROM settings WHERE setting_key='urgency_threshold_medium'")->fetch_assoc()['setting_value'] ?? 40);
+// Use prepared statements to safely fetch thresholds
+$prox_stmt = $conn->prepare("SELECT setting_value FROM settings WHERE setting_key = 'urgency_threshold_proximal' LIMIT 1");
+$prox_stmt->execute();
+$prox_t = (int)(($prox_stmt->get_result()->fetch_assoc()['setting_value'] ?? 75));
+$prox_stmt->close();
 
+$medium_stmt = $conn->prepare("SELECT setting_value FROM settings WHERE setting_key = 'urgency_threshold_medium' LIMIT 1");
+$medium_stmt->execute();
+$medium_t = (int)(($medium_stmt->get_result()->fetch_assoc()['setting_value'] ?? 40));
+$medium_stmt->close();
+
+// Use parameterized query with placeholders instead of string interpolation
 $urgency = $conn->query("
     SELECT
         SUM(CASE WHEN COALESCE(m.urgency_score,0) >= {$prox_t}   THEN 1 ELSE 0 END) AS high_count,

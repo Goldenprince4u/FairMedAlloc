@@ -173,24 +173,22 @@ function handleQueueAllocation($conn) {
     } catch (Throwable $ignored) { /* table may not exist yet */ }
 
     // Prevent duplicate jobs: if a job is already queued or running, return it.
+    // ATOMIC: Use transaction to prevent race condition
+    $conn->begin_transaction();
     try {
+        // Lock the read to prevent concurrent checks from slipping through
         $existing = $conn->query(
             "SELECT job_id, job_type, status, progress_percent, progress_stage
                FROM allocation_jobs
               WHERE status IN ('queued','running')
-              ORDER BY created_at DESC LIMIT 1"
+              ORDER BY created_at DESC LIMIT 1
+              FOR UPDATE"
         );
     } catch (Throwable $tableErr) {
+        $conn->rollback();
         sendJsonResponse([
             'status'  => 'error',
             'message' => 'The allocation_jobs table does not exist. Please run the database migrations (sql/run_migrations.php) first.'
-        ], 500);
-        return;
-    }
-    if ($existing === false) {
-        sendJsonResponse([
-            'status'  => 'error',
-            'message' => 'Could not query allocation jobs: ' . $conn->error
         ], 500);
         return;
     }
@@ -198,6 +196,7 @@ function handleQueueAllocation($conn) {
         $row = $existing->fetch_assoc();
         $jobType = (string)($row['job_type'] ?? 'allocation');
         $jobLabel = $jobType === 'csv_import' ? 'data import' : 'allocation';
+        $conn->rollback();
         sendJsonResponse([
             'status'   => 'queued',
             'job_id'   => (int)$row['job_id'],
@@ -207,7 +206,7 @@ function handleQueueAllocation($conn) {
         ]);
         return;
     }
-
+    
     $admin_id = (int)$_SESSION['user_id'];
     $stmt = $conn->prepare(
         "INSERT INTO allocation_jobs (job_type, status, created_by_admin_id)
@@ -215,11 +214,14 @@ function handleQueueAllocation($conn) {
     );
     $stmt->bind_param('i', $admin_id);
     if (!$stmt->execute()) {
+        $conn->rollback();
         sendJsonResponse(['status' => 'error', 'message' => 'Could not create job record.'], 500);
         return;
     }
     $job_id = (int)$conn->insert_id;
     $stmt->close();
+    
+    $conn->commit();  // Commit the transaction after successful job creation
 
     log_admin_action($conn, $admin_id, "Queued allocation job #$job_id");
 
@@ -234,14 +236,20 @@ function handleQueueAllocation($conn) {
     // the next attempt, then return a clear error on ALL platforms.
     if (!($dispatch['launched'] ?? false)) {
         $failMsg = $dispatch['message'] ?? 'The background worker process could not be started.';
-        $conn->query(
+        // Use prepared statement instead of real_escape_string
+        $failStmt = $conn->prepare(
             "UPDATE allocation_jobs
                 SET status        = 'failed',
-                    error_message = '" . $conn->real_escape_string($failMsg) . "',
+                    error_message = ?,
                     completed_at  = NOW(),
                     updated_at    = NOW()
-              WHERE job_id = $job_id"
+              WHERE job_id = ?"
         );
+        if ($failStmt) {
+            $failStmt->bind_param('si', $failMsg, $job_id);
+            $failStmt->execute();
+            $failStmt->close();
+        }
         sendJsonResponse([
             'status'  => 'error',
             'message' => $failMsg . ' Check server configuration (PHP CLI path, script permissions).',
@@ -562,6 +570,17 @@ function handleCancelJob($conn) {
 
     // Cancel all active jobs (or a specific one if job_id provided)
     if ($job_id > 0) {
+        // Validate that the job exists before attempting to cancel
+        $verify_stmt = $conn->prepare("SELECT job_type FROM allocation_jobs WHERE job_id = ?");
+        $verify_stmt->bind_param('i', $job_id);
+        $verify_stmt->execute();
+        if ($verify_stmt->get_result()->num_rows === 0) {
+            $verify_stmt->close();
+            sendJsonResponse(['status' => 'error', 'message' => 'Job not found'], 404);
+            return;
+        }
+        $verify_stmt->close();
+        
         $sql    = "UPDATE allocation_jobs
                       SET status        = 'cancelled',
                           completed_at  = COALESCE(completed_at, NOW()),
@@ -576,7 +595,7 @@ function handleCancelJob($conn) {
         $stmt->close();
     } else {
         // No specific job_id — cancel everything active
-        $conn->query(
+        $cancel_stmt = $conn->prepare(
             "UPDATE allocation_jobs
                 SET status        = 'cancelled',
                     completed_at  = COALESCE(completed_at, NOW()),
@@ -584,7 +603,9 @@ function handleCancelJob($conn) {
                     error_message = 'Cancelled by administrator'
               WHERE status IN ('queued', 'running')"
         );
-        $affected = $conn->affected_rows;
+        $cancel_stmt->execute();
+        $affected = $cancel_stmt->affected_rows;
+        $cancel_stmt->close();
     }
 
     // Always release the admin-level processing lock so a new job can be queued.

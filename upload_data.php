@@ -408,10 +408,17 @@ require_once 'includes/header.php';
     if (cancelBtn) {
         cancelBtn.addEventListener('click', async () => {
             try {
-                await fetch(`api/admin_api.php?action=cancel_job&job_id=${jobId}`, {
-                    method: 'POST'
+                const csrfInput = document.querySelector('input[name="csrf_token"]');
+                const csrfToken = csrfInput ? csrfInput.value : '';
+                const body = new URLSearchParams({ csrf_token: csrfToken, job_id: jobId });
+                
+                await fetch('api/admin_api.php?action=cancel_job', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                    body: body
                 });
                 stageEl.textContent = 'Cancelling...';
+                cancelBtn.disabled = true;
             } catch (e) {
                 console.error(e);
             }

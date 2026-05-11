@@ -61,6 +61,9 @@ if (isset($_GET['export']) && $_GET['export'] === 'csv') {
         $base_joins WHERE $search_cond ORDER BY m.urgency_score DESC, u.username ASC";
         
     $stmt = $conn->prepare($export_sql);
+    if (!$stmt) {
+        die('Export error: Could not prepare CSV export query.');
+    }
     if ($search !== '') {
         $stmt->bind_param($search_types, ...$search_params);
     }
@@ -103,10 +106,21 @@ $page = isset($_GET['page']) ? (int)$_GET['page'] : 1;
 $limit = 50;
 $offset = ($page - 1) * $limit;
 
-// Count Total Records
-$count_sql = "SELECT COUNT(*) as total FROM student_profiles p JOIN users u ON p.user_id = u.user_id";
-$total_result = $conn->query($count_sql);
+// Count Total Records (MUST include search condition for accurate pagination)
+$count_sql = "SELECT COUNT(*) as total FROM student_profiles p 
+    JOIN users u ON p.user_id = u.user_id 
+    JOIN departments d ON p.department_id = d.department_id
+    LEFT JOIN medical_records m ON p.user_id = m.student_id 
+    LEFT JOIN allocations a ON p.user_id = a.student_id 
+    WHERE {$search_cond}";
+$count_stmt = $conn->prepare($count_sql);
+if ($search !== '') {
+    $count_stmt->bind_param($search_types, ...$search_params);
+}
+$count_stmt->execute();
+$total_result = $count_stmt->get_result();
 $total_rows = (int)($total_result->fetch_assoc()['total'] ?? 0);
+$count_stmt->close();
 $total_pages = max(1, ceil($total_rows / $limit));
 // Clamp page to valid range
 $page = max(1, min($page, $total_pages));

@@ -15,8 +15,11 @@ if (!isset($_SESSION['logged_in']) || ($_SESSION['role'] ?? '') !== 'admin') {
 
 $high_urgency_threshold = 75;
 $medium_urgency_threshold = 40;
-$threshold_rows = $conn->query("SELECT setting_key, setting_value FROM settings WHERE setting_key IN ('urgency_threshold_proximal', 'urgency_threshold_medium')");
-if ($threshold_rows) {
+// Use prepared statement to safely fetch threshold settings
+$threshold_stmt = $conn->prepare("SELECT setting_key, setting_value FROM settings WHERE setting_key IN ('urgency_threshold_proximal', 'urgency_threshold_medium')");
+if ($threshold_stmt) {
+    $threshold_stmt->execute();
+    $threshold_rows = $threshold_stmt->get_result();
     while ($threshold_row = $threshold_rows->fetch_assoc()) {
         if (($threshold_row['setting_key'] ?? '') === 'urgency_threshold_proximal') {
             $high_urgency_threshold = (int)$threshold_row['setting_value'];
@@ -25,6 +28,8 @@ if ($threshold_rows) {
             $medium_urgency_threshold = (int)$threshold_row['setting_value'];
         }
     }
+    $threshold_rows->free();
+    $threshold_stmt->close();
 }
 
 // Aggregation Stats (Optimized Single Query)
