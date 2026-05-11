@@ -502,17 +502,24 @@ def allocate(students_csv, rooms_csv, output_csv):
 
     print(f"Solver status: {solver_status}")
 
-    # Write output CSV
+    # Write output CSV.
+    # IMPORTANT: all_assignments is keyed by *integers* (arc_s_ids uses int()),
+    # but parse_csv() returns all values as strings. We must cast sid → int for
+    # the dict lookup, otherwise "1234" never matches key 1234 and every student
+    # is silently skipped → 0 allocations despite an OPTIMAL solver result.
+    written = 0
     with open(output_csv, 'w', newline='') as f:
         writer = csv.writer(f)
         writer.writerow(['student_id', 'room_id'])
         for student in students:
-            sid = student['id']
-            if sid in all_assignments:
-                writer.writerow([sid, all_assignments[sid]])
+            sid     = student['id']          # str from CSV
+            sid_int = int(sid)               # int key used in all_assignments
+            if sid_int in all_assignments:
+                writer.writerow([sid, all_assignments[sid_int]])
+                written += 1
 
     total_assigned = len(all_assignments)
-    print(f"Success: {total_assigned}/{total} students assigned. Wrote to {output_csv}")
+    print(f"Success: {written}/{total} students written to CSV ({total_assigned} solver assignments). Wrote to {output_csv}")
 
 if __name__ == "__main__":
     if len(sys.argv) == 4:
