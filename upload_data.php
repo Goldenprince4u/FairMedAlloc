@@ -182,6 +182,28 @@ if ($active_import_job_id <= 0 && $admin_id > 0) {
     }
 }
 
+// Resolve a human-friendly sequential upload number (Upload #1, #2 …)
+// independent of the raw job_id which is shared with allocation jobs.
+$upload_sequence_num = 0;
+if ($active_import_job_id > 0) {
+    $seqStmt = $conn->prepare(
+        "SELECT COUNT(*) AS upload_num
+           FROM allocation_jobs
+          WHERE job_type = 'csv_import'
+            AND job_id <= ?"
+    );
+    if ($seqStmt) {
+        $seqStmt->bind_param('i', $active_import_job_id);
+        $seqStmt->execute();
+        $seqRow = $seqStmt->get_result()->fetch_assoc();
+        $seqStmt->close();
+        $upload_sequence_num = (int)($seqRow['upload_num'] ?? 0);
+    }
+    if ($upload_sequence_num <= 0) {
+        $upload_sequence_num = $active_import_job_id; // safe fallback
+    }
+}
+
 $page_title = "Import Data | FairMedAlloc";
 require_once 'includes/header.php';
 ?>
@@ -212,7 +234,7 @@ require_once 'includes/header.php';
             <div class="card mobile-form-card mb-6" id="import-job-panel">
                 <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:1rem;flex-wrap:wrap;margin-bottom:1rem;">
                     <div>
-                        <div class="badge badge-primary mb-3">IMPORT JOB #<?php echo $active_import_job_id; ?></div>
+                        <div class="badge badge-primary mb-3">UPLOAD #<?php echo $upload_sequence_num; ?></div>
                         <h3 style="margin-bottom:0.25rem;">Background Import Status</h3>
                         <p class="text-muted" id="import-job-stage" style="margin:0;">Waiting for worker update...</p>
                     </div>
