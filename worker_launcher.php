@@ -61,16 +61,19 @@ $dbUser    = getenv('DB_USER')    ?: ($env['DB_USER']    ?? 'root');
 $dbPass    = getenv('DB_PASS')    ?: ($env['DB_PASS']    ?? '');
 $dbName    = getenv('DB_NAME')    ?: ($env['DB_NAME']    ?? 'fairmedalloc');
 
-const DEFAULT_INTERVAL      = 2;    // seconds between poll cycles
-const DEFAULT_MAX_JOBS      = 1;    // one job at a time
-const DB_CONNECT_TIMEOUT    = 120;  // max seconds to wait for DB on cold-start
-const DB_RETRY_MAX_DELAY    = 16;   // cap on exponential back-off (seconds)
+const DEFAULT_INTERVAL   = 2;    // seconds between poll cycles
+const DEFAULT_MAX_JOBS   = 1;    // one job at a time
+const DEFAULT_DB_TIMEOUT = 120;  // max seconds to wait for DB on cold-start
+const DB_RETRY_MAX_DELAY = 16;   // cap on exponential back-off (seconds)
 
-$interval = (int)(getenv('FAIRMED_WORKER_INTERVAL') ?: DEFAULT_INTERVAL);
-$max_jobs  = (int)(getenv('FAIRMED_WORKER_MAX_JOBS')  ?: DEFAULT_MAX_JOBS);
+$interval = max(1, (int)(getenv('FAIRMED_WORKER_INTERVAL') ?: DEFAULT_INTERVAL));
+$max_jobs = max(1, (int)(getenv('FAIRMED_WORKER_MAX_JOBS') ?: DEFAULT_MAX_JOBS));
+$dbConnectTimeout = max(5, (int)(getenv('DB_CONNECT_TIMEOUT') ?: DEFAULT_DB_TIMEOUT));
 
 // ── DB connection with retry loop ─────────────────────────────────────────────
 Logger::info("Worker Launcher starting — waiting for database at {$dbHost}:{$dbPort}…");
+
+Logger::info("Worker Launcher settings: interval={$interval}s, max_jobs={$max_jobs}, db_timeout={$dbConnectTimeout}s");
 
 $conn           = null;
 $retryDelay     = 2;
@@ -92,10 +95,10 @@ while (true) {
     }
 
     $elapsed = time() - $retryStart;
-    if ($elapsed >= DB_CONNECT_TIMEOUT) {
+    if ($elapsed >= $dbConnectTimeout) {
         fwrite(STDERR,
             "[FairMedAlloc] FATAL: Worker Launcher could not connect to the database after " .
-            DB_CONNECT_TIMEOUT . "s. Last error: {$err}\n" .
+            $dbConnectTimeout . "s. Last error: {$err}\n" .
             "Check DB_HOST, DB_USER, DB_PASS, DB_NAME, DB_PORT environment variables.\n"
         );
         exit(1);

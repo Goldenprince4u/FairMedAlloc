@@ -32,6 +32,11 @@ COPY supervisord.conf /etc/supervisor/conf.d/supervisord.conf
 # Set environment variable so the PHP worker knows exactly where Python is
 ENV PYTHON_BIN="/opt/venv/bin/python"
 ENV FAIRMED_PYTHON_BIN="/opt/venv/bin/python"
+ENV DB_CONNECT_TIMEOUT="120"
+ENV FAIRMED_ENABLE_ML_SERVICE="1"
+ENV FAIRMED_ENABLE_WORKER="1"
+ENV FAIRMED_ML_BIND_HOST="127.0.0.1"
+ENV FAIRMED_ML_BIND_PORT="5051"
 
 # Expose standard web port
 EXPOSE 80

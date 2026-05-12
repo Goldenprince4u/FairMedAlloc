@@ -21,8 +21,49 @@ $studentObj = new Student($conn, $user_id);
 $student = $studentObj->getProfile();
 
 if (!$student) {
-    session_destroy();
-    header("Location: login.php?error=profile_missing");
+    $profileLookupStatus = $studentObj->getLastProfileLookupStatus();
+
+    if ($profileLookupStatus === 'missing_profile') {
+        session_destroy();
+        header("Location: login.php?error=profile_missing");
+        exit();
+    }
+
+    http_response_code(503);
+    $page_title = "Profile Unavailable | FairMedAlloc";
+    require_once 'includes/header.php';
+    ?>
+    <div class="app-shell">
+        <?php require_once 'includes/nav.php'; ?>
+
+        <main class="main-content">
+            <div class="page-header">
+                <div class="page-header-info">
+                    <h1>Profile Temporarily Unavailable</h1>
+                    <p class="text-muted">We could not load your student profile right now.</p>
+                </div>
+            </div>
+
+            <div class="card" style="max-width:720px;padding:1.75rem;">
+                <div class="alert alert-danger mb-4">
+                    <i class="fa-solid fa-circle-exclamation"></i>
+                    Your session is still active, but the profile lookup failed on the server. Please try refreshing this page. If the problem persists, contact the administrator.
+                </div>
+
+                <div style="display:flex;gap:0.75rem;flex-wrap:wrap;">
+                    <a href="student_dashboard.php" class="btn btn-primary">
+                        <i class="fa-solid fa-rotate-right"></i> Try Again
+                    </a>
+                    <a href="logout.php" class="btn btn-outline">
+                        <i class="fa-solid fa-right-from-bracket"></i> Sign Out
+                    </a>
+                </div>
+            </div>
+        </main>
+    </div>
+    </body>
+    </html>
+    <?php
     exit();
 }
 

@@ -6,6 +6,7 @@
 class Student {
     private mysqli $conn;
     private int $user_id;
+    private string $lastProfileLookupStatus = 'not_loaded';
 
     public function __construct(mysqli $db, int $user_id) {
         $this->conn    = $db;
@@ -18,6 +19,7 @@ class Student {
      * rows when a student has more than one medical_records entry.
      */
     public function getProfile(): ?array {
+        $this->lastProfileLookupStatus = 'query_error';
         $stmt = $this->conn->prepare(
             "SELECT p.*, m.condition_category, m.mobility_status,
                     u.profile_pic, u.full_name, u.email,
@@ -29,20 +31,32 @@ class Student {
              JOIN   faculties   f ON d.faculty_id    = f.faculty_id
              LEFT JOIN medical_records m
                     ON  p.user_id = m.student_id
-                    AND m.id = (
-                        SELECT id FROM medical_records
+                    AND m.record_id = (
+                        SELECT record_id FROM medical_records
                         WHERE student_id = p.user_id
-                        ORDER BY id DESC LIMIT 1
+                        ORDER BY record_id DESC LIMIT 1
                     )
              WHERE  p.user_id = ?
              LIMIT  1"
         );
-        if (!$stmt) { return null; }
+        if (!$stmt) {
+            error_log('[FairMedAlloc] Student::getProfile prepare failed: ' . $this->conn->error);
+            return null;
+        }
         $stmt->bind_param('i', $this->user_id);
-        $stmt->execute();
+        if (!$stmt->execute()) {
+            error_log('[FairMedAlloc] Student::getProfile execute failed for user ' . $this->user_id . ': ' . $stmt->error);
+            $stmt->close();
+            return null;
+        }
         $row = $stmt->get_result()->fetch_assoc();
         $stmt->close();
-        return $row;
+        $this->lastProfileLookupStatus = $row ? 'ok' : 'missing_profile';
+        return $row ?: null;
+    }
+
+    public function getLastProfileLookupStatus(): string {
+        return $this->lastProfileLookupStatus;
     }
 
     /**

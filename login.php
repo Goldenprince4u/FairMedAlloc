@@ -5,7 +5,7 @@ require_once 'includes/security_helper.php';
 
 $error = '';
 if (isset($_GET['error']) && $_GET['error'] === 'profile_missing') {
-    $error = 'Profile data incomplete. Please log in again to sync.';
+    $error = 'Your student profile could not be found. Please contact the administrator or restore the student records before signing in again.';
 }
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {

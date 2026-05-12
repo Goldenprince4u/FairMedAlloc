@@ -63,20 +63,82 @@ function clearCurrentSessionAllocations(mysqli $conn, string $session, int $admi
     }
 }
 
-function deleteAllImportedData(mysqli $conn, int $admin_id): void {
+function getImportedStudentDataCounts(mysqli $conn): array {
+    $counts = [
+        'students' => 0,
+        'profiles' => 0,
+        'medical_records' => 0,
+        'payments' => 0,
+        'allocations' => 0,
+        'student_notifications' => 0,
+        'audit_logs' => 0,
+    ];
+
+    $sql = "
+        SELECT
+            (SELECT COUNT(*) FROM users WHERE role = 'student') AS students,
+            (SELECT COUNT(*) FROM student_profiles) AS profiles,
+            (SELECT COUNT(*) FROM medical_records) AS medical_records,
+            (SELECT COUNT(*) FROM payments) AS payments,
+            (SELECT COUNT(*) FROM allocations) AS allocations,
+            (SELECT COUNT(*)
+               FROM notifications n
+              WHERE EXISTS (
+                    SELECT 1
+                      FROM users u
+                     WHERE u.user_id = n.user_id
+                       AND u.role = 'student'
+                )
+            ) AS student_notifications,
+            (SELECT COUNT(*) FROM algorithm_audit_logs) AS audit_logs
+    ";
+
+    $result = $conn->query($sql);
+    if ($result instanceof mysqli_result) {
+        $row = $result->fetch_assoc();
+        foreach ($counts as $key => $value) {
+            $counts[$key] = (int)($row[$key] ?? 0);
+        }
+        $result->free();
+    }
+
+    return $counts;
+}
+
+function deleteAllImportedData(mysqli $conn, int $admin_id): array {
+    $counts = getImportedStudentDataCounts($conn);
     $conn->begin_transaction();
     try {
         $conn->query("DELETE FROM allocations");
         $conn->query("DELETE FROM algorithm_audit_logs");
         $conn->query("DELETE FROM medical_records");
-        $conn->query("DELETE FROM notifications");
+        $conn->query("
+            DELETE n
+              FROM notifications n
+              JOIN users u ON u.user_id = n.user_id
+             WHERE u.role = 'student'
+        ");
         $conn->query("DELETE FROM payments");
         $conn->query("DELETE FROM student_profiles");
         $conn->query("DELETE FROM users WHERE role = 'student'");
         $conn->query("UPDATE rooms SET occupied_count = 0");
 
-        log_admin_action($conn, $admin_id, "Permanently deleted ALL imported student data");
+        log_admin_action(
+            $conn,
+            $admin_id,
+            sprintf(
+                'Permanently deleted ALL imported student data (%d students, %d profiles, %d medical records, %d payments, %d allocations, %d student notifications, %d audit logs)',
+                $counts['students'],
+                $counts['profiles'],
+                $counts['medical_records'],
+                $counts['payments'],
+                $counts['allocations'],
+                $counts['student_notifications'],
+                $counts['audit_logs']
+            )
+        );
         $conn->commit();
+        return $counts;
     } catch (Throwable $e) {
         $conn->rollback();
         throw $e;
@@ -87,14 +149,29 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     check_csrf();
 
     if (isset($_POST['delete_all_data'])) {
-        try {
-            deleteAllImportedData($conn, (int)$_SESSION['user_id']);
-            $msg = "All imported student data, medical records, and allocations have been permanently deleted.";
-            $msg_type = "success";
-        } catch (Throwable $e) {
-            $msg = "Unable to delete data. Please try again.";
+        $deleteConfirmation = strtoupper(trim((string)($_POST['delete_confirmation'] ?? '')));
+        if ($deleteConfirmation !== 'DELETE IMPORTED DATA') {
+            $msg = "Type DELETE IMPORTED DATA exactly to confirm permanent deletion.";
             $msg_type = "error";
-            error_log('[FairMedAlloc] Delete all data failed: ' . $e->getMessage());
+        } else {
+            try {
+                $deleted = deleteAllImportedData($conn, (int)$_SESSION['user_id']);
+                $msg = sprintf(
+                    'Permanently deleted %d students, %d profiles, %d medical records, %d payments, %d allocations, %d student notifications, and %d audit logs.',
+                    $deleted['students'],
+                    $deleted['profiles'],
+                    $deleted['medical_records'],
+                    $deleted['payments'],
+                    $deleted['allocations'],
+                    $deleted['student_notifications'],
+                    $deleted['audit_logs']
+                );
+                $msg_type = "success";
+            } catch (Throwable $e) {
+                $msg = "Unable to delete data. Please try again.";
+                $msg_type = "error";
+                error_log('[FairMedAlloc] Delete all data failed: ' . $e->getMessage());
+            }
         }
     } elseif (isset($_POST['clear_session_allocations'])) {
         $session_to_clear = sanitize_input($_POST['session_to_clear'] ?? '');
@@ -196,6 +273,7 @@ $cur_status = $settings['allocation_status'] ?? 'open';
 // HTML entities are present. Decoding would be a no-op at best and could corrupt
 // apostrophes on re-save (the '→&#039; number-display bug).
 $cur_general_notice = (string)($settings['general_notice'] ?? '');
+$student_data_counts = getImportedStudentDataCounts($conn);
 
 $page_title = "Settings | FairMedAlloc";
 require_once 'includes/header.php';
@@ -338,9 +416,24 @@ require_once 'includes/header.php';
                 <p class="text-muted mb-4">
                     <span style="color: var(--c-danger); font-weight: bold;">Developer / Testing Only:</span> This will permanently delete ALL students, medical records, payments, notifications, and allocations from the database. It is unrecoverable.
                 </p>
+                <div class="alert alert-danger mb-4">
+                    <i class="fa-solid fa-triangle-exclamation"></i>
+                    Current impact: <?php echo number_format($student_data_counts['students']); ?> student accounts, <?php echo number_format($student_data_counts['profiles']); ?> profiles, <?php echo number_format($student_data_counts['medical_records']); ?> medical records, <?php echo number_format($student_data_counts['payments']); ?> payments, <?php echo number_format($student_data_counts['allocations']); ?> allocations, <?php echo number_format($student_data_counts['student_notifications']); ?> student notifications, and <?php echo number_format($student_data_counts['audit_logs']); ?> algorithm audit rows.
+                </div>
                 <form method="post" onsubmit="return confirm('Are you absolutely sure you want to delete ALL imported student data? This cannot be undone!');">
                     <?php csrf_field(); ?>
                     <input type="hidden" name="delete_all_data" value="1">
+                    <div class="form-group mb-4">
+                        <label for="delete-confirmation">Type <strong>DELETE IMPORTED DATA</strong> to confirm</label>
+                        <input
+                            type="text"
+                            id="delete-confirmation"
+                            name="delete_confirmation"
+                            placeholder="DELETE IMPORTED DATA"
+                            autocomplete="off"
+                            required
+                        >
+                    </div>
                     <button type="submit" class="btn btn-primary" style="background-color: var(--c-danger); border-color: var(--c-danger);">
                         <i class="fa-solid fa-trash-can"></i> Delete All Imported Data
                     </button>
