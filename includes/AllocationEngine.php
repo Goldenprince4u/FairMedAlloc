@@ -94,7 +94,15 @@ class AllocationEngine {
                     FROM student_profiles p 
                     JOIN departments d ON p.department_id = d.department_id
                     JOIN faculties f ON d.faculty_id = f.faculty_id
-                    LEFT JOIN medical_records m ON p.user_id = m.student_id
+                    LEFT JOIN medical_records m
+                           ON p.user_id = m.student_id
+                          AND m.record_id = (
+                                SELECT record_id
+                                FROM medical_records
+                                WHERE student_id = p.user_id
+                                ORDER BY record_id DESC
+                                LIMIT 1
+                          )
                     WHERE p.allocation_status = 'Unallocated' 
                     AND (
                         p.is_paid = 1
