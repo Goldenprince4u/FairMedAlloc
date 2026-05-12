@@ -61,8 +61,7 @@ class Student {
 
     /**
      * Get allocation details.
-     * Returns the most-recent allocation (ORDER BY created_at DESC) in case
-     * re-allocations occur.
+     * Returns the most-recent allocation in case re-allocations occur.
      */
     public function getAllocation(): ?array {
         $stmt = $this->conn->prepare(
@@ -71,12 +70,19 @@ class Student {
              JOIN   rooms   r ON a.room_id  = r.room_id
              JOIN   hostels h ON r.hostel_id = h.hostel_id
              WHERE  a.student_id = ?
-             ORDER BY a.created_at DESC
+             ORDER BY a.allocated_at DESC, a.allocation_id DESC
              LIMIT 1"
         );
-        if (!$stmt) { return null; }
+        if (!$stmt) {
+            error_log('[FairMedAlloc] Student::getAllocation prepare failed: ' . $this->conn->error);
+            return null;
+        }
         $stmt->bind_param('i', $this->user_id);
-        $stmt->execute();
+        if (!$stmt->execute()) {
+            error_log('[FairMedAlloc] Student::getAllocation execute failed for user ' . $this->user_id . ': ' . $stmt->error);
+            $stmt->close();
+            return null;
+        }
         $row = $stmt->get_result()->fetch_assoc();
         $stmt->close();
         return $row;
