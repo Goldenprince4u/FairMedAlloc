@@ -10,8 +10,9 @@ RUN apt-get update && apt-get install -y \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 
-# Enable Apache rewrite module
-RUN a2enmod rewrite
+# Fix Apache MPM conflict: disable event/worker, enable prefork (required for mod_php)
+RUN a2dismod mpm_event mpm_worker 2>/dev/null || true \
+    && a2enmod mpm_prefork rewrite
 
 # Setup Python Virtual Environment and install packages
 RUN python3 -m venv /opt/venv

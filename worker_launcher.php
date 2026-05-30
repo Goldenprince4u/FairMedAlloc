@@ -55,11 +55,22 @@ function launcher_load_env(string $path): array {
 
 $env = launcher_load_env(__DIR__ . '/.env');
 
-$dbHost    = getenv('DB_HOST')    ?: ($env['DB_HOST']    ?? '127.0.0.1');
-$dbPort    = (int)(getenv('DB_PORT')    ?: ($env['DB_PORT']    ?? 3306));
-$dbUser    = getenv('DB_USER')    ?: ($env['DB_USER']    ?? 'root');
-$dbPass    = getenv('DB_PASS')    ?: ($env['DB_PASS']    ?? '');
-$dbName    = getenv('DB_NAME')    ?: ($env['DB_NAME']    ?? 'fairmedalloc');
+// Support Railway's MYSQL_URL / DATABASE_URL (a single connection string)
+$_dbUrl = getenv('MYSQL_URL') ?: getenv('DATABASE_URL');
+if ($_dbUrl) {
+    $_parsed = parse_url($_dbUrl);
+    $dbHost = $_parsed['host'] ?? '127.0.0.1';
+    $dbPort = isset($_parsed['port']) ? (int)$_parsed['port'] : 3306;
+    $dbUser = $_parsed['user'] ?? 'root';
+    $dbPass = $_parsed['pass'] ?? '';
+    $dbName = ltrim($_parsed['path'] ?? '/fairmedalloc', '/');
+} else {
+    $dbHost = getenv('MYSQL_HOST') ?: (getenv('DB_HOST') ?: ($env['DB_HOST'] ?? '127.0.0.1'));
+    $dbPort = (int)(getenv('MYSQL_PORT') ?: (getenv('DB_PORT') ?: ($env['DB_PORT'] ?? 3306)));
+    $dbUser = getenv('MYSQL_USER') ?: (getenv('DB_USER') ?: ($env['DB_USER'] ?? 'root'));
+    $dbPass = getenv('MYSQL_PASSWORD') ?: (getenv('MYSQL_PASS') ?: (getenv('DB_PASS') ?: ($env['DB_PASS'] ?? '')));
+    $dbName = getenv('MYSQL_DATABASE') ?: (getenv('DB_NAME') ?: ($env['DB_NAME'] ?? 'fairmedalloc'));
+}
 
 const DEFAULT_INTERVAL   = 2;    // seconds between poll cycles
 const DEFAULT_MAX_JOBS   = 1;    // one job at a time
