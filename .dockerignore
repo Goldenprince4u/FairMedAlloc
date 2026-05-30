@@ -20,7 +20,7 @@ __pycache__/
 *.pyc
 *.pyo
 
-# Environment file — credentials must come from Render env vars, not the image
+# Environment file — credentials must come from Railway env vars, not the image
 .env
 
 # Local DB dumps — large, sensitive, not needed at runtime

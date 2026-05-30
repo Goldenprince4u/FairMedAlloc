@@ -44,16 +44,11 @@ if ($mlEnabled) {
 
         $checks['ml'] = 'ok';
     } catch (Throwable $e) {
-        Logger::warning('Healthcheck failed: ML service unavailable - ' . $e->getMessage());
-        healthRespond(503, [
-            'status' => 'error',
-            'checks' => [
-                'app' => 'ok',
-                'db' => 'ok',
-                'ml' => 'error',
-            ],
-            'message' => 'ML service is unavailable.',
-        ]);
+        // ML service may still be warming up (loading XGBoost model takes ~5-10s).
+        // Return 200 with degraded status so Railway does not kill the container
+        // in a boot loop. Apache serving PHP is the critical health indicator.
+        Logger::warning('Healthcheck: ML service unavailable (may be warming up) - ' . $e->getMessage());
+        $checks['ml'] = 'warming_up';
     }
 } else {
     $checks['ml'] = 'disabled';

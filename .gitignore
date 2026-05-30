@@ -37,4 +37,5 @@ backup.sql
 backup_utf8.sql
 .pydeps/
 tmp/
+temp.css
 

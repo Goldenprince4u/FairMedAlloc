@@ -19,7 +19,7 @@ RUN python3 -m venv /opt/venv
 ENV PATH="/opt/venv/bin:$PATH"
 RUN pip install --no-cache-dir mysql-connector-python xgboost ortools joblib pandas scikit-learn
 ENV PYTHONUNBUFFERED=1
-RUN printf "upload_max_filesize=8M\npost_max_size=8M\nmemory_limit=512M\nmax_execution_time=300\nmax_input_time=300\nsession.cookie_secure=1\nsession.cookie_httponly=1\nsession.cookie_samesite=Strict\nexpose_php=Off\n" > /usr/local/etc/php/conf.d/fairmedalloc-upload.ini
+RUN printf "upload_max_filesize=8M\npost_max_size=8M\nmemory_limit=512M\nmax_execution_time=300\nmax_input_time=300\nsession.cookie_secure=1\nsession.cookie_httponly=1\nsession.cookie_samesite=Strict\nexpose_php=Off\ndisplay_errors=Off\nlog_errors=On\nerror_reporting=E_ALL\n" > /usr/local/etc/php/conf.d/fairmedalloc-upload.ini
 
 # Copy the entire codebase to Apache's folder
 COPY . /var/www/html/
