@@ -103,11 +103,21 @@ if (php_sapi_name() !== 'cli' && !headers_sent()) {
     header('Permissions-Policy: geolocation=(), camera=(), microphone=()');
 }
 
-define('DB_HOST', getenv('DB_HOST') ?: ($env['DB_HOST'] ?? '127.0.0.1'));
-define('DB_PORT', (int)(getenv('DB_PORT') ?: ($env['DB_PORT'] ?? 3306)));
-define('DB_USER', getenv('DB_USER') ?: ($env['DB_USER'] ?? 'root'));
-define('DB_PASS', getenv('DB_PASS') ?: ($env['DB_PASS'] ?? ''));
-define('DB_NAME', getenv('DB_NAME') ?: ($env['DB_NAME'] ?? 'fairmedalloc'));
+$dbUrl = getenv('MYSQL_URL') ?: getenv('DATABASE_URL');
+if ($dbUrl) {
+    $parsedUrl = parse_url($dbUrl);
+    define('DB_HOST', $parsedUrl['host'] ?? '127.0.0.1');
+    define('DB_PORT', isset($parsedUrl['port']) ? (int)$parsedUrl['port'] : 3306);
+    define('DB_USER', $parsedUrl['user'] ?? 'root');
+    define('DB_PASS', $parsedUrl['pass'] ?? '');
+    define('DB_NAME', ltrim($parsedUrl['path'] ?? '/fairmedalloc', '/'));
+} else {
+    define('DB_HOST', getenv('MYSQL_HOST') ?: (getenv('DB_HOST') ?: ($env['DB_HOST'] ?? '127.0.0.1')));
+    define('DB_PORT', (int)(getenv('MYSQL_PORT') ?: (getenv('DB_PORT') ?: ($env['DB_PORT'] ?? 3306))));
+    define('DB_USER', getenv('MYSQL_USER') ?: (getenv('DB_USER') ?: ($env['DB_USER'] ?? 'root')));
+    define('DB_PASS', getenv('MYSQL_PASSWORD') ?: (getenv('MYSQL_PASS') ?: (getenv('DB_PASS') ?: ($env['DB_PASS'] ?? ''))));
+    define('DB_NAME', getenv('MYSQL_DATABASE') ?: (getenv('DB_NAME') ?: ($env['DB_NAME'] ?? 'fairmedalloc')));
+}
 define('ML_SERVICE_URL', rtrim(getenv('ML_SERVICE_URL') ?: ($env['ML_SERVICE_URL'] ?? 'http://127.0.0.1:5051'), '/'));
 define('ML_SERVICE_TIMEOUT', (float)(getenv('ML_SERVICE_TIMEOUT') ?: ($env['ML_SERVICE_TIMEOUT'] ?? 120)));
 
