@@ -519,7 +519,7 @@ class AllocationEngine {
 
             // Log allocation completion statistics
             $this->monitor->logStatistics();
-            Logger::info("Allocation completed: {$allocated_count}/{$allocated_count} students processed, "
+            Logger::info("Allocation completed: {$allocated_count}/" . count($students) . " students processed, "
                 . "Solver: $solver_mode, Status: $solver_status");
 
             return [

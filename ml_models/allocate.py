@@ -3,8 +3,6 @@ import logging
 import random
 import sys
 
-from ortools.sat.python import cp_model
-
 logging.basicConfig(level=logging.ERROR)
 
 # ---------------------------------------------------------------------------
@@ -387,7 +385,7 @@ def allocate(students_csv, rooms_csv, output_csv):
         print("Missing students or rooms data")
         return
 
-    rng          = random.Random()
+    rng          = random.Random(20260604)
     first_blocks = build_first_blocks(rooms)
 
     total = len(students)

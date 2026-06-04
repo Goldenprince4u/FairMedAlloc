@@ -11,6 +11,7 @@ require_once '../db_config.php';
 require_once '../includes/security_helper.php';
 require_once '../includes/DbHelper.php';
 require_once '../includes/Logger.php';
+require_once '../includes/UrgencyScoreService.php';
 
 // All responses from this file will be JSON-formatted
 header('Content-Type: application/json');
@@ -692,6 +693,8 @@ function handleManualAssign($conn) {
             throw new Exception('Student gender does not match the selected hostel.');
         }
 
+        enforceManualAllocationPolicy($conn, $student, $target_room);
+
         $existing = fetchExistingAllocationForManualAllocation($conn, $student_id);
         if ($existing && (int)$existing['room_id'] === $room_id) {
             throw new Exception('Student is already assigned to that room.');
@@ -709,11 +712,7 @@ function handleManualAssign($conn) {
             $dec_stmt->execute();
         }
 
-        $is_mobility_issue = false;
-        $mobility_val = strtolower(trim($student['mobility'] ?? ($student['mobility_status'] ?? '')));
-        if ($mobility_val !== '' && $mobility_val !== 'normal mobility' && $mobility_val !== 'none') {
-            $is_mobility_issue = true;
-        }
+        $is_mobility_issue = studentHasManualMobilityPriority($student);
 
         $bed = determineAvailableBedForManualAllocation(
             $conn,
@@ -723,7 +722,10 @@ function handleManualAssign($conn) {
             $is_mobility_issue
         );
         if ($bed === null) {
-            throw new Exception('The selected room is already full.');
+            $message = $is_mobility_issue
+                ? 'The selected room has no mobility-accessible bed available.'
+                : 'The selected room is already full.';
+            throw new Exception($message);
         }
 
         if (DbHelper::supportsAlgorithmVersion($conn)) {
@@ -866,7 +868,21 @@ function handleHostelStats($conn) {
 }
 
 function fetchStudentForManualAllocation($conn, int $student_id): ?array {
-    $stmt = $conn->prepare("SELECT p.user_id, p.gender FROM student_profiles p WHERE p.user_id = ? LIMIT 1");
+    $stmt = $conn->prepare("
+        SELECT p.user_id,
+               p.gender,
+               p.level AS academic_level,
+               p.has_special_needs,
+               COALESCE(NULLIF(m.condition_category, ''), 'None') AS `condition`,
+               COALESCE(m.urgency_score, 0) AS score,
+               COALESCE(m.severity_level, 'Low') AS severity,
+               COALESCE(NULLIF(m.mobility_status, ''), 'Normal Mobility') AS mobility,
+               COALESCE(m.is_requested_mobility, 0) AS is_requested
+        FROM student_profiles p
+        LEFT JOIN medical_records m ON p.user_id = m.student_id
+        WHERE p.user_id = ?
+        LIMIT 1
+    ");
     $stmt->bind_param("i", $student_id);
     $stmt->execute();
     $row = $stmt->get_result()->fetch_assoc();
@@ -876,11 +892,17 @@ function fetchStudentForManualAllocation($conn, int $student_id): ?array {
 function fetchTargetRoomForManualAllocation($conn, int $room_id): ?array {
     $stmt = $conn->prepare("
         SELECT r.room_id, r.capacity, r.occupied_count, r.bed_config,
-               h.gender_allowed, h.is_postgrad, h.is_foundation
+               r.floor_level,
+               h.name AS hostel_name,
+               h.block_name,
+               h.gender_allowed,
+               h.is_postgrad,
+               h.is_foundation
         FROM rooms r
         JOIN hostels h ON r.hostel_id = h.hostel_id
         WHERE r.room_id = ?
         LIMIT 1
+        FOR UPDATE
     ");
     $stmt->bind_param("i", $room_id);
     $stmt->execute();
@@ -889,11 +911,99 @@ function fetchTargetRoomForManualAllocation($conn, int $room_id): ?array {
 }
 
 function fetchExistingAllocationForManualAllocation($conn, int $student_id): ?array {
-    $stmt = $conn->prepare("SELECT allocation_id, room_id FROM allocations WHERE student_id = ? LIMIT 1");
+    $stmt = $conn->prepare("SELECT allocation_id, room_id FROM allocations WHERE student_id = ? LIMIT 1 FOR UPDATE");
     $stmt->bind_param("i", $student_id);
     $stmt->execute();
     $row = $stmt->get_result()->fetch_assoc();
     return $row ?: null;
+}
+
+function enforceManualAllocationPolicy($conn, array $student, array $target_room): void {
+    $is_mobility = studentHasManualMobilityPriority($student);
+    if (!$is_mobility) {
+        return;
+    }
+
+    $has_medical = studentHasManualMedicalCondition($student);
+    if ($has_medical) {
+        if (!roomIsManualClinicProximity($target_room)) {
+            throw new Exception('Students with both medical and mobility needs must be assigned to a clinic-proximal room.');
+        }
+        return;
+    }
+
+    if ((int)($target_room['floor_level'] ?? -1) !== 0) {
+        throw new Exception('Students with mobility needs must be assigned to a ground-floor room.');
+    }
+
+    $score = manualAllocationPolicyScore($conn, $student);
+    $high_threshold = (float)getManualAllocationSettingValue($conn, 'urgency_threshold_proximal', 75);
+    $is_high = $score >= $high_threshold;
+    $hostel_name = (string)($target_room['hostel_name'] ?? '');
+
+    if (!$is_high && !in_array($hostel_name, ['Joshua Hall', 'Deborah Hall'], true)) {
+        throw new Exception('Mobility-priority students outside the High band must be assigned to a ground-floor room in Joshua Hall or Deborah Hall.');
+    }
+}
+
+function studentHasManualMobilityPriority(array $student): bool {
+    $mobility = normalizeManualPolicyValue($student['mobility'] ?? ($student['mobility_status'] ?? 'Normal Mobility'));
+    $condition = normalizeManualPolicyValue($student['condition'] ?? 'None');
+    return in_array($mobility, ['wheelchair user', 'crutches/walker', 'artificial limb'], true)
+        || in_array($condition, ['wheelchair user', 'crutches/walker', 'artificial limb'], true);
+}
+
+function studentHasManualMedicalCondition(array $student): bool {
+    $severity = normalizeManualPolicyValue($student['severity'] ?? 'Low');
+    return in_array($severity, ['medium', 'high', 'critical'], true);
+}
+
+function roomIsManualClinicProximity(array $room): bool {
+    $hostel = (string)($room['hostel_name'] ?? '');
+    $block = (string)($room['block_name'] ?? '');
+    $gender = (string)($room['gender_allowed'] ?? '');
+
+    return ($hostel === 'Prophet Moses Hall' && in_array($block, ['1', '2'], true) && $gender === 'Male')
+        || ($hostel === 'Queen Esther Extension Hall' && in_array($block, ['38', '39'], true) && $gender === 'Female');
+}
+
+function manualAllocationPolicyScore($conn, array $student): float {
+    $payload = [
+        'id' => (string)($student['user_id'] ?? 'manual'),
+        'condition' => $student['condition'] ?? 'None',
+        'mobility' => $student['mobility'] ?? 'Normal Mobility',
+        'severity' => $student['severity'] ?? 'Low',
+        'academic_level' => (int)($student['academic_level'] ?? 100),
+        'has_special_needs' => (int)($student['has_special_needs'] ?? 0),
+        'is_requested' => (bool)($student['is_requested'] ?? 0),
+        'urgency_score' => (float)($student['score'] ?? 0),
+    ];
+
+    try {
+        $service = new UrgencyScoreService();
+        $result = $service->scoreStudent($payload);
+        return (float)($result['score'] ?? 0);
+    } catch (Throwable $e) {
+        Logger::warning('Manual allocation scoring fell back to stored score: ' . $e->getMessage());
+        return (float)($student['score'] ?? 0);
+    }
+}
+
+function getManualAllocationSettingValue($conn, string $setting_key, $default_value) {
+    $stmt = $conn->prepare("SELECT setting_value FROM settings WHERE setting_key = ? LIMIT 1");
+    if (!$stmt) {
+        return $default_value;
+    }
+    $stmt->bind_param("s", $setting_key);
+    $stmt->execute();
+    $row = $stmt->get_result()->fetch_assoc();
+    $stmt->close();
+    return $row['setting_value'] ?? $default_value;
+}
+
+function normalizeManualPolicyValue($value): string {
+    $normalized = strtolower(trim(preg_replace('/\s+/', ' ', (string)$value)));
+    return str_replace(' / ', '/', $normalized);
 }
 
 function determineAvailableBedForManualAllocation($conn, int $room_id, int $capacity, string $bed_config, bool $is_mobility_issue = false): ?array {
@@ -905,7 +1015,7 @@ function determineAvailableBedForManualAllocation($conn, int $room_id, int $capa
         $config_arr = array_pad($config_arr, $capacity, 'LB');
     }
 
-    $stmt = $conn->prepare("SELECT bed_space FROM allocations WHERE room_id = ?");
+    $stmt = $conn->prepare("SELECT bed_space FROM allocations WHERE room_id = ? FOR UPDATE");
     $stmt->bind_param("i", $room_id);
     $stmt->execute();
     $res = $stmt->get_result();
@@ -925,7 +1035,7 @@ function determineAvailableBedForManualAllocation($conn, int $room_id, int $capa
         for ($i = 0; $i < $capacity; $i++) {
             if (!in_array($i, $occupied_indices, true)) {
                 $label = $config_arr[$i] ?? 'LB';
-                if (trim($label) === 'LB') {
+                if (bedLabelIsManualMobilityAccessible($label)) {
                     return [
                         'bed_space' => chr(65 + $i),
                         'bed_label' => $label
@@ -945,6 +1055,10 @@ function determineAvailableBedForManualAllocation($conn, int $room_id, int $capa
     }
 
     return null;
+}
+
+function bedLabelIsManualMobilityAccessible(string $label): bool {
+    return !in_array(strtoupper(trim($label)), ['SB', 'UB'], true);
 }
 
 /**

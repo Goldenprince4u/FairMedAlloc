@@ -133,6 +133,7 @@ CREATE TABLE allocations (
     algorithm_version VARCHAR(64) DEFAULT NULL,
     FOREIGN KEY (student_id) REFERENCES users(user_id) ON DELETE CASCADE,
     FOREIGN KEY (room_id) REFERENCES rooms(room_id),
+    UNIQUE KEY uniq_allocations_room_bed (room_id, bed_space),
     INDEX idx_room_id (room_id),
     INDEX idx_session (academic_session)
 );
@@ -144,7 +145,7 @@ CREATE TABLE algorithm_audit_logs (
     input_severity INT,
     input_proximity_need BOOLEAN,
     calculated_urgency_score FLOAT,
-    allocation_decision ENUM('Allocated','Waitlisted','No Bed'),
+    allocation_decision ENUM('Allocated','Waitlisted','No Bed','Constraint Violation'),
     assigned_hostel_id INT,
     FOREIGN KEY (student_id) REFERENCES users(user_id) ON DELETE CASCADE
 );
