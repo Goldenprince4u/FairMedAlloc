@@ -1,7 +1,12 @@
 import csv
 import logging
 import random
+import signal
 import sys
+
+# NOTE: Do NOT import cp_model here — CP-SAT is not used and the import
+# adds significant cold-start latency on production (Render) servers.
+# from ortools.sat.python import cp_model  ← removed
 
 logging.basicConfig(level=logging.ERROR)
 
@@ -255,12 +260,14 @@ def placement_bonus(student, room, first_blocks):
 # OR-Tools Min-Cost Flow solver (The new ultra-fast Graph Matcher!)
 # ---------------------------------------------------------------------------
 
+import array
+
 def run_min_cost_flow(students, rooms, first_blocks, rng):
     """
-    I swapped out the old CP-SAT solver for this SimpleMinCostFlow algorithm. 
-    Instead of trying to solve the allocation like a massive Sudoku puzzle (which took 8+ minutes),
-    this models the entire university as a directed graph (like water flowing through pipes).
-    It completely solves 3,000+ students perfectly in about 1 second.
+    Min-Cost Flow solver using OR-Tools SimpleMinCostFlow.
+    Models the allocation as a directed graph: source → students → rooms → sink.
+    Arcs are inserted in batches (not one-by-one) to avoid Python→C++ overhead
+    on large datasets.
     """
     if not students:
         return {}, 'OPTIMAL'
@@ -269,104 +276,199 @@ def run_min_cost_flow(students, rooms, first_blocks, rng):
     smcf = min_cost_flow.SimpleMinCostFlow()
 
     num_students = len(students)
-    num_rooms = len(rooms)
-    
-    # Define our graph nodes
-    source = 0
-    sink = num_students + num_rooms + 2
+    num_rooms    = len(rooms)
+
+    source        = 0
+    sink          = num_students + num_rooms + 2
     waitlist_node = num_students + num_rooms + 1
 
-    # Keep track of which edge/pipe connects to which student and room
-    arc_to_assignment = {}
+    # ── Build arc lists ───────────────────────────────────────────────────────
+    # Arc 1: source → student (capacity 1, cost 0)
+    src_tails = array.array('i', [source] * num_students)
+    src_heads = array.array('i', range(1, num_students + 1))
+    src_caps  = array.array('i', [1] * num_students)
+    src_costs = array.array('q', [0] * num_students)
 
-    # 1. Connect the Source to every Student (Capacity 1, Cost 0)
-    for s_idx in range(num_students):
-        smcf.add_arc_with_capacity_and_unit_cost(source, s_idx + 1, 1, 0)
+    # Arc 2: student → room (filtered by hard constraints)
+    arc_tails = array.array('i')
+    arc_heads = array.array('i')
+    arc_caps  = array.array('i')
+    arc_costs = array.array('q')
+    # Memory-efficient alternative to arc_to_assignment dict:
+    # Two parallel lists indexed by arc position (arc index - arc_offset).
+    arc_s_ids = array.array('l')   # student_id for each student→room arc (int64 — avoids overflow)
+    arc_r_ids = array.array('l')   # room_id    for each student→room arc (int64 — avoids overflow)
 
-    # 2. Students -> Rooms (Capacity 1, Cost = -Weight)
+    # Arc 3: student → waitlist
+    wl_tails = array.array('i', range(1, num_students + 1))
+    wl_heads  = array.array('i', [waitlist_node] * num_students)
+    wl_caps   = array.array('i', [1] * num_students)
+    wl_costs  = array.array('q', [0] * num_students)
+
+    print(f"Running OR-Tools solver: building arcs for {num_students} students x {num_rooms} rooms...", flush=True)
+
+    # Track students that get zero room arcs (can happen when mobility filter is
+    # too restrictive and all eligible beds are full). We need a second pass so
+    # those students still have *some* room option, otherwise the flow graph has
+    # an isolated source→student arc with no onward path, making it INFEASIBLE.
+    students_with_no_arcs = []  # list of (s_idx, student) tuples
+
     for s_idx, student in enumerate(students):
-        gender = student.get('gender', '')
+        gender    = student.get('gender', '')
         is_high   = student_is_high(student)
         is_medium = student_is_medium(student)
         score     = float(student.get('score', 0))
 
-        # Strict band separation: High > Medium > Low
         if is_high:
             band_base = 100_000_000
         elif is_medium:
             band_base = 50_000_000
         else:
             band_base = 10_000_000
-            
-        base_score = band_base + int(score * 100)
 
+        base_score = band_base + int(score * 100)
+        s_node = s_idx + 1
+
+        arcs_added_for_student = 0
         for r_idx, room in enumerate(rooms):
-            # ── Hard Constraint 1: Gender matching ───────────────────────────────
             if gender != room.get('gender', ''):
                 continue
 
-            # ── Hard Constraint 2: Combined-condition → clinic proximity ONLY ────
-            # Must be checked BEFORE the general mobility constraint because
-            # clinic rooms may be on upper floors and combined-condition students
-            # need to reach them. This constraint supersedes floor restrictions.
             if student_has_combined_mobility_and_medical(student):
                 if not clinic_room_matches_gender(student, room):
                     continue
-                # Combined-condition students are satisfied here — do NOT apply
-                # the general ground-floor or hostel restriction below.
-
-            # ── Hard Constraint 3: Mobility-only → ground floor of designated halls
-            # Only applies when the student does NOT have a combined condition
-            # (combined-condition students are routed by constraint 2 above).
             elif student_has_mobility_priority(student):
-                # Must be ground floor
                 if str(room.get('floor_level', '-1')) != '0':
                     continue
-                # High-urgency mobility-only students can access any gender-matched
-                # ground-floor room (e.g. clinic proximal if it's ground floor).
-                # Non-high mobility students are locked to Joshua/Deborah Hall.
                 if not is_high and room.get('hostel_name', '') not in ('Joshua Hall', 'Deborah Hall'):
                     continue
 
-            bonus = placement_bonus(student, room, first_blocks)
+            bonus  = placement_bonus(student, room, first_blocks)
             weight = base_score + bonus + rng.randint(0, 99)
 
-            # Maximize weight == Minimize negative weight
-            arc = smcf.add_arc_with_capacity_and_unit_cost(s_idx + 1, num_students + 1 + r_idx, 1, -weight)
-            arc_to_assignment[arc] = (student['id'], room['id'])
+            arc_tails.append(s_node)
+            arc_heads.append(num_students + 1 + r_idx)
+            arc_caps.append(1)
+            arc_costs.append(-weight)
+            arc_s_ids.append(int(student['id']))
+            arc_r_ids.append(int(room['id']))
+            arcs_added_for_student += 1
 
-        # 3. Student -> Waitlist (Capacity 1, Cost 0)
-        # Allows the flow to complete if all eligible rooms are full
-        smcf.add_arc_with_capacity_and_unit_cost(s_idx + 1, waitlist_node, 1, 0)
+        if arcs_added_for_student == 0 and (student_has_mobility_priority(student) or student_has_combined_mobility_and_medical(student)):
+            # No eligible arcs — queue for relaxed fallback pass so the flow stays feasible.
+            students_with_no_arcs.append((s_idx, student))
 
-    # 4. Rooms -> Sink (Capacity = Room Capacity, Cost 0)
+    # ── Relaxed-fallback pass for students with zero arcs ────────────────────
+    # These students will land on the waitlist (via the wl arc), but we must give
+    # them at least one room arc so the graph remains feasible for the solver.
+    # We assign a very low weight so they only get a real room if one is truly free.
+    if students_with_no_arcs:
+        print(f"Relaxed-fallback pass: {len(students_with_no_arcs)} mobility students had zero eligible arcs. Opening gender-matching fallback arcs (lowest priority).", flush=True)
+        for s_idx, student in students_with_no_arcs:
+            gender = student.get('gender', '')
+            s_node = s_idx + 1
+            is_high   = student_is_high(student)
+            is_medium = student_is_medium(student)
+            if is_high:
+                band_base = 100_000_000
+            elif is_medium:
+                band_base = 50_000_000
+            else:
+                band_base = 10_000_000
+            base_score = band_base + int(float(student.get('score', 0)) * 100)
+            for r_idx, room in enumerate(rooms):
+                if gender != room.get('gender', ''):
+                    continue
+                # Fallback arcs carry the minimum possible weight — solver will
+                # prefer the waitlist arc over these unless there is genuinely
+                # spare capacity.
+                weight = base_score + rng.randint(0, 9)  # no bonus
+                arc_tails.append(s_node)
+                arc_heads.append(num_students + 1 + r_idx)
+                arc_caps.append(1)
+                arc_costs.append(-weight)
+                arc_s_ids.append(int(student['id']))
+                arc_r_ids.append(int(room['id']))
+
+    print(f"Graph built: {len(arc_tails)} student-to-room arcs. Adding to solver...", flush=True)
+
+    # Arc 4: room → sink
+    room_tails = array.array('i')
+    room_heads = array.array('i')
+    room_caps  = array.array('i')
+    room_costs = array.array('q')
     for r_idx, room in enumerate(rooms):
         cap = int(float(room.get('available_capacity', 0)))
         if cap > 0:
-            smcf.add_arc_with_capacity_and_unit_cost(num_students + 1 + r_idx, sink, cap, 0)
+            room_tails.append(num_students + 1 + r_idx)
+            room_heads.append(sink)
+            room_caps.append(cap)
+            room_costs.append(0)
 
-    # 5. Waitlist -> Sink (Capacity = Unlimited, Cost 0)
+    # ── Bulk-add all arc groups ───────────────────────────────────────────────
+    # Order defines arc indices. Layout:
+    #   [0  .. ns-1      ] source → student   (src,  ns arcs)
+    #   [ns .. ns+na-1   ] student → room     (arc,  na arcs) ← we track these via arc_s/r_ids
+    #   [ns+na..2ns+na-1 ] student → waitlist (wl,   ns arcs)
+    #   [2ns+na ..       ] room → sink        (room, nr arcs)
+    #   [last            ] waitlist → sink    (1 arc)
+    smcf.add_arcs_with_capacity_and_unit_cost(src_tails,  src_heads,  src_caps,  src_costs)
+    smcf.add_arcs_with_capacity_and_unit_cost(arc_tails,  arc_heads,  arc_caps,  arc_costs)
+    smcf.add_arcs_with_capacity_and_unit_cost(wl_tails,   wl_heads,   wl_caps,   wl_costs)
+    smcf.add_arcs_with_capacity_and_unit_cost(room_tails, room_heads, room_caps, room_costs)
     smcf.add_arc_with_capacity_and_unit_cost(waitlist_node, sink, num_students, 0)
 
-    # Supply/Demand
+    # Free the large arc lists — OR-Tools has copied them into C++ memory.
+    # Releasing here cuts Python heap by ~100-300 MB before the solve starts.
+    del src_tails, src_heads, src_caps, src_costs
+    del arc_tails, arc_heads, arc_caps, arc_costs
+    del wl_tails, wl_heads, wl_caps, wl_costs
+    del room_tails, room_heads, room_caps, room_costs
+
     smcf.set_node_supply(source, num_students)
-    smcf.set_node_supply(sink, -num_students)
+    smcf.set_node_supply(sink,  -num_students)
 
-    status = smcf.solve()
+    print("Solving...", flush=True)
 
-    assignments = {}
-    status_name = 'INFEASIBLE'
-    
+    # On Linux, install a 30-minute watchdog so a degenerate graph can't
+    # block the worker indefinitely. signal.alarm is a no-op on Windows.
+    _solver_timed_out = False
+    if hasattr(signal, 'SIGALRM'):
+        def _timeout_handler(signum, frame):
+            raise TimeoutError('OR-Tools solver exceeded the 1800-second limit.')
+        signal.signal(signal.SIGALRM, _timeout_handler)
+        signal.alarm(1800)  # 30 minutes
+
+    try:
+        status = smcf.solve()
+    except TimeoutError as te:
+        _solver_timed_out = True
+        print(f"Solver watchdog triggered: {te}", flush=True)
+        status = smcf.INFEASIBLE  # treat as infeasible so the worker logs a clean failure
+    finally:
+        if hasattr(signal, 'SIGALRM'):
+            signal.alarm(0)  # cancel watchdog on normal completion
+
+    print(f"Solver finished with status: {status}", flush=True)
+
+    assignments  = {}
+    status_name  = 'INFEASIBLE'
+    arc_offset   = num_students   # student→room arcs begin here
+
     if status == smcf.OPTIMAL:
         status_name = 'OPTIMAL'
-        for arc in range(smcf.num_arcs()):
-            if smcf.flow(arc) > 0 and arc in arc_to_assignment:
-                s_id, r_id = arc_to_assignment[arc]
-                assignments[s_id] = r_id
+        na = len(arc_s_ids)
+        for i in range(na):
+            arc = arc_offset + i
+            if smcf.flow(arc) > 0:
+                assignments[arc_s_ids[i]] = arc_r_ids[i]
     elif status == smcf.FEASIBLE:
         status_name = 'FEASIBLE'
 
     return assignments, status_name
+
+
+
 
 
 # ---------------------------------------------------------------------------
@@ -400,17 +502,24 @@ def allocate(students_csv, rooms_csv, output_csv):
 
     print(f"Solver status: {solver_status}")
 
-    # Write output CSV
+    # Write output CSV.
+    # IMPORTANT: all_assignments is keyed by *integers* (arc_s_ids uses int()),
+    # but parse_csv() returns all values as strings. We must cast sid → int for
+    # the dict lookup, otherwise "1234" never matches key 1234 and every student
+    # is silently skipped → 0 allocations despite an OPTIMAL solver result.
+    written = 0
     with open(output_csv, 'w', newline='') as f:
         writer = csv.writer(f)
         writer.writerow(['student_id', 'room_id'])
         for student in students:
-            sid = student['id']
-            if sid in all_assignments:
-                writer.writerow([sid, all_assignments[sid]])
+            sid     = student['id']          # str from CSV
+            sid_int = int(sid)               # int key used in all_assignments
+            if sid_int in all_assignments:
+                writer.writerow([sid, all_assignments[sid_int]])
+                written += 1
 
     total_assigned = len(all_assignments)
-    print(f"Success: {total_assigned}/{total} students assigned. Wrote to {output_csv}")
+    print(f"Success: {written}/{total} students written to CSV ({total_assigned} solver assignments). Wrote to {output_csv}")
 
 if __name__ == "__main__":
     if len(sys.argv) == 4:

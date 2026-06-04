@@ -1,0 +1,941 @@
+/**
+ * FairMedAlloc — Mobile Stylesheet
+ * ==================================
+ * This file is the SINGLE SOURCE OF TRUTH for all mobile styles.
+ * It is loaded separately from main.css (desktop) and only applies
+ * on screens ≤ 768px wide.
+ *
+ * Screen breakpoints covered:
+ *   ≤ 768px  — Phones & small tablets (base mobile)
+ *   ≤ 600px  — Large phones (iPhone Plus, Pixel)
+ *   ≤ 480px  — Standard phones (iPhone 14, Galaxy S)
+ *   ≤ 390px  — Compact phones (iPhone 14 Pro, iPhone 12)
+ *   ≤ 320px  — Very small phones (iPhone SE 1st gen)
+ *
+ * Desktop styles: css/main.css
+ * Print styles:   css/print.css
+ */
+
+/* ============================================================
+   MOBILE BASE — applies to ALL phones ≤768px
+   ============================================================ */
+@media (max-width: 768px) {
+
+    /* =============================================
+       GLOBAL BODY & BOX MODEL
+       ============================================= */
+    html, body {
+        overflow-x: hidden;
+        -webkit-text-size-adjust: 100%;
+    }
+
+
+
+    /* =============================================
+       SIDEBAR — off-canvas drawer
+       ============================================= */
+    .sidebar {
+        position: fixed;
+        top: 0;
+        left: 0;
+        height: 100vh;
+        width: 82vw;
+        max-width: 290px;
+        transform: translateX(-100%);
+        z-index: 300;
+        box-shadow: none;
+        transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        overflow-y: auto;
+        padding-bottom: 5rem;
+    }
+
+    .sidebar-brand {
+        padding: 4.4rem 1rem 1.15rem !important;
+        margin-bottom: 1.1rem;
+    }
+
+    .sidebar-brand-row {
+        align-items: flex-start !important;
+        gap: 0.85rem !important;
+    }
+
+    .sidebar-brand-logo {
+        width: 52px !important;
+        height: 52px !important;
+        border-width: 3px !important;
+    }
+
+    .sidebar-brand-copy {
+        flex: 1;
+    }
+
+    .sidebar-brand-title {
+        font-size: 1.35rem !important;
+        line-height: 1 !important;
+    }
+
+    .sidebar-brand-kicker {
+        display: inline-block;
+        margin-top: 0.45rem !important;
+        font-size: 0.86rem !important;
+        letter-spacing: 0.08em !important;
+        color: rgba(255,255,255,0.9) !important;
+        text-transform: none !important;
+    }
+
+    .sidebar.open {
+        transform: translateX(0);
+        box-shadow: 6px 0 40px rgba(0, 0, 0, 0.25);
+    }
+
+    /* Overlay behind open sidebar */
+    .sidebar-overlay {
+        display: none;
+        position: fixed;
+        inset: 0;
+        background: rgba(0, 0, 0, 0.5);
+        z-index: 280;
+        backdrop-filter: blur(2px);
+    }
+
+    .sidebar-overlay.open { display: block; }
+
+    /* Hamburger button */
+    .sidebar-toggle {
+        display: flex;
+        position: fixed;
+        top: 0.875rem;
+        left: 0.875rem;
+        z-index: 310;
+        width: 44px;
+        height: 44px;
+        border-radius: 10px;
+        font-size: 1.1rem;
+    }
+
+    /* Nav items: larger tap targets */
+    .nav-item {
+        padding: 0.85rem 1rem;
+        font-size: 0.95rem;
+        min-height: 48px;
+        -webkit-tap-highlight-color: transparent;
+    }
+
+    .nav-section-title { margin-top: 1.25rem; }
+
+    /* =============================================
+       MAIN CONTENT — full width, clear of hamburger
+       ============================================= */
+    .main-content {
+        margin-left: 0 !important;
+        padding: 4.5rem 1rem 2.5rem !important;
+        min-height: 100vh;
+        width: 100%;
+        box-sizing: border-box;
+    }
+
+    /* Dark mode toggle: top-right corner */
+    .theme-toggle-floating {
+        top: 0.875rem;
+        right: 0.875rem;
+        width: 44px;
+        height: 44px;
+        font-size: 0.9rem;
+        z-index: 310;
+    }
+
+    /* =============================================
+       TYPOGRAPHY — proportional mobile scale
+       ============================================= */
+    h1 { font-size: 1.5rem; line-height: 1.25; margin-bottom: 0.6rem; }
+    h2 { font-size: 1.25rem; line-height: 1.3; }
+    h3 { font-size: 1.05rem; }
+    h4 { font-size: 0.95rem; }
+    p  { font-size: 0.9rem; line-height: 1.65; }
+
+    /* =============================================
+       PAGE HEADER — stack title + actions vertically
+       ============================================= */
+    .page-header {
+        flex-direction: column;
+        align-items: stretch;
+        gap: 0.75rem;
+        padding-bottom: 1rem;
+        margin-bottom: 1.25rem;
+    }
+
+    .page-header .flex {
+        flex-wrap: wrap;
+        gap: 0.5rem;
+    }
+
+    .page-header .btn {
+        flex: 1;
+        min-width: 130px;
+        justify-content: center;
+        font-size: 0.82rem;
+        padding: 0.6rem 0.875rem;
+    }
+
+    .page-header-info h1 { font-size: 1.25rem; margin-bottom: 0.2rem; }
+    .page-header-info p  { font-size: 0.82rem; }
+
+    /* =============================================
+       GRID LAYOUTS — all collapse to 1 column
+       ============================================= */
+    .grid-cols-2,
+    .grid-cols-3,
+    .grid-cols-4,
+    .grid-help,
+    .grid-dashboard-custom,
+    .grid-profile,
+    .mobile-form-grid,
+    .mobile-import-layout {
+        grid-template-columns: 1fr;
+    }
+
+    /* Stats grid: 2 columns (easier to scan) */
+    .stats-grid {
+        grid-template-columns: repeat(2, 1fr);
+        gap: 0.75rem;
+        margin-bottom: 1.5rem;
+    }
+
+    /* =============================================
+       STAT CARDS — compact, horizontal layout
+       ============================================= */
+    .stat-card {
+        padding: 0.875rem;
+        gap: 0.75rem;
+        flex-direction: row;
+        align-items: center;
+    }
+
+    .stat-icon {
+        width: 40px;
+        height: 40px;
+        min-width: 40px;
+        font-size: 1rem;
+        border-radius: 8px;
+    }
+
+    .stat-info h3 {
+        font-size: 1.35rem;
+        font-weight: 800;
+        margin-bottom: 0.1rem;
+        line-height: 1;
+    }
+
+    .stat-info p {
+        font-size: 0.68rem;
+        letter-spacing: 0.03em;
+        line-height: 1.3;
+        margin: 0;
+    }
+
+    /* =============================================
+       CARDS & PANELS
+       ============================================= */
+    .glass-card {
+        padding: 1.1rem;
+        border-radius: var(--radius-md);
+    }
+
+    .mobile-form-card,
+    .mobile-side-card {
+        padding: 1.15rem !important;
+    }
+
+    /* Management module cards on dashboard */
+    .card.flex.items-start {
+        flex-direction: row;
+        align-items: flex-start;
+        gap: 0.875rem;
+        padding: 1rem !important;
+    }
+
+    .card.flex.items-start .stat-icon {
+        width: 38px;
+        height: 38px;
+        min-width: 38px;
+        font-size: 0.9rem;
+    }
+
+    .card.flex.items-start > div:last-child { flex: 1; min-width: 0; }
+    .card.flex.items-start h4  { font-size: 0.9rem; margin-bottom: 0.3rem; }
+    .card.flex.items-start p   { font-size: 0.8rem; margin-bottom: 0.625rem; line-height: 1.5; }
+    .card.flex.items-start .btn-sm { font-size: 0.75rem; padding: 0.35rem 0.75rem; }
+
+    .glass-panel { border-radius: var(--radius-md); }
+
+    /* =============================================
+       TABLES — horizontal scroll on mobile
+       ============================================= */
+    .table-container {
+        overflow-x: auto;
+        -webkit-overflow-scrolling: touch;
+        border-radius: var(--radius-md);
+        margin-bottom: 1rem;
+    }
+
+    table {
+        min-width: 600px;
+        font-size: 0.82rem;
+    }
+
+    th {
+        font-size: 0.72rem;
+        padding: 0.625rem 0.75rem;
+        white-space: nowrap;
+    }
+
+    td {
+        font-size: 0.82rem;
+        padding: 0.625rem 0.75rem;
+        white-space: nowrap;
+    }
+
+    /* =============================================
+       BUTTONS
+       ============================================= */
+    .btn {
+        font-size: 0.82rem;
+        padding: 0.6rem 1rem;
+        min-height: 40px;
+    }
+
+    .btn-sm {
+        font-size: 0.76rem;
+        padding: 0.4rem 0.75rem;
+        min-height: 34px;
+    }
+
+    .btn-lg {
+        font-size: 0.95rem;
+        padding: 0.8rem 1.5rem;
+    }
+
+    /* =============================================
+       FORMS
+       ============================================= */
+    input,
+    select,
+    textarea {
+        font-size: 16px !important; /* Prevents iOS auto-zoom on focus */
+        padding: 0.7rem 0.875rem;
+    }
+
+    .input-auth {
+        font-size: 16px !important;
+        padding: 0.875rem 1rem;
+    }
+
+    .input-group input,
+    .input-group .input-auth {
+        padding-left: 2.75rem;
+    }
+
+    .form-group { margin-bottom: 0.875rem; }
+
+    label { font-size: 0.82rem; margin-bottom: 0.35rem; }
+
+    .form-section-title {
+        font-size: 0.85rem;
+        padding-bottom: 0.75rem;
+        margin-bottom: 1rem;
+    }
+
+    /* =============================================
+       AUTH PAGES — full-screen stacked layout
+       ============================================= */
+    /* =============================================
+       AUTH PAGES — tight logo strip + overlapping form
+       ============================================= */
+    .auth-container {
+        flex-direction: column;
+        height: auto;
+        min-height: 100vh;
+        overflow: visible;
+    }
+
+    /* Brand panel: compact logo strip, not a full half-page */
+    .auth-left {
+        width: 100%;
+        height: auto;
+        min-height: auto;
+        padding: 2rem 1.5rem 3rem;       /* extra bottom padding — form overlaps into it */
+        position: static;
+        overflow: visible;
+        background:
+            radial-gradient(circle at 80% 20%, rgba(201, 168, 76, 0.22), transparent 40%),
+            radial-gradient(circle at 10% 80%, rgba(0,93,168,0.15), transparent 50%),
+            linear-gradient(155deg, #001f45 0%, #023662 100%);
+        border-radius: 0 0 32px 32px;
+        box-shadow: 0 24px 48px rgba(0, 33, 71, 0.28);
+    }
+
+    /* Compact logo: smaller, inline with headline */
+    .auth-left img {
+        width: 52px !important;
+        height: 52px !important;
+        margin-bottom: 0.875rem !important;
+        border-width: 2px !important;
+    }
+
+    .brand-content { max-width: 100%; }
+
+    /* Hide the feature checklist — wastes vertical space on mobile */
+    .auth-feature-list { display: none; }
+
+    /* Keep the tagline quote but tighten it */
+    .brand-border {
+        margin-top: 0.625rem;
+        padding-left: 0.875rem;
+        border-left-width: 3px;
+    }
+    .brand-border p {
+        font-size: 0.82rem;
+        line-height: 1.55;
+        opacity: 0.8;
+    }
+
+    /* FIX 2: university name — readable, not buried */
+    .auth-subtitle {
+        font-size: 0.95rem !important;
+        font-weight: 600;
+        letter-spacing: 0.03em;
+        color: rgba(255, 255, 255, 0.88);
+        margin-bottom: 0.875rem;
+        text-transform: none;
+    }
+
+    .auth-headline {
+        font-size: 1.85rem;
+        line-height: 1.1;
+        margin-bottom: 0.35rem;
+    }
+
+    /* FIX 4: form panel slides UP to overlap brand panel — visual connector */
+    .auth-right {
+        width: 100%;
+        height: auto;
+        overflow: visible;
+        position: relative;
+        margin-top: -24px;              /* overlap the navy strip */
+        z-index: 2;
+        padding: 0 1rem 3rem;
+    }
+
+    /* FIX 3: form box — more breathing room, premium card feel */
+    .auth-box {
+        width: 100%;
+        max-width: 100%;
+        background:
+            radial-gradient(circle at 90% 5%, rgba(var(--c-accent-rgb), 0.12), transparent 40%),
+            linear-gradient(180deg, rgba(var(--c-primary-rgb), 0.03), transparent 70%),
+            var(--c-bg-surface);
+        border: 1px solid rgba(var(--c-primary-rgb), 0.09);
+        border-radius: 24px;
+        padding: 1.75rem 1.5rem 2rem !important;
+        box-shadow:
+            0 2px 0 rgba(255,255,255,0.7) inset,
+            0 24px 56px rgba(0, 33, 71, 0.12),
+            0 8px 24px rgba(0, 33, 71, 0.08);
+    }
+
+    .auth-box .badge {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.35rem;
+        padding: 0.45rem 0.875rem;
+        border-radius: 999px;
+        font-size: 0.68rem !important;
+        letter-spacing: 0.11em !important;
+    }
+
+    .auth-box form,
+    .mobile-form-card form {
+        display: flex;
+        flex-direction: column;
+        gap: 1rem;
+    }
+
+    .auth-box .form-group,
+    .mobile-form-card .form-group { margin-bottom: 0 !important; }
+
+    .auth-box .form-group label,
+    .mobile-form-card .form-group label {
+        display: block;
+        margin-bottom: 0.45rem;
+        font-size: 0.77rem;
+        font-weight: 800;
+        letter-spacing: 0.04em;
+        text-transform: uppercase;
+        color: var(--c-text-muted);
+    }
+
+    .auth-box .input-group,
+    .mobile-form-card .input-group { position: relative; }
+
+    .auth-box .input-auth,
+    .mobile-form-card .input-auth {
+        min-height: 52px;
+        border-radius: 16px;
+        border: 1px solid var(--c-border);
+        background: var(--c-bg-surface-2);
+        box-shadow: inset 0 1px 2px rgba(0,0,0,0.04);
+        padding-left: 1rem;
+        padding-right: 1rem;
+    }
+
+    .auth-box .input-group .input-auth,
+    .mobile-form-card .input-group .input-auth {
+        padding-left: 2.75rem;
+    }
+
+    .auth-box select.input-auth,
+    .mobile-form-card select.input-auth { padding-right: 2.75rem; }
+
+    .auth-box .text-xs.text-muted,
+    .mobile-form-card .text-xs.text-muted {
+        margin-top: 0.55rem !important;
+        padding: 0.7rem 0.8rem;
+        border-radius: 14px;
+        background: rgba(var(--c-primary-rgb), 0.05);
+        border: 1px solid rgba(var(--c-primary-rgb), 0.08);
+        font-size: 0.72rem;
+        line-height: 1.55;
+    }
+
+    .auth-box .alert { border-radius: 16px; margin-bottom: 1rem; }
+    .auth-box .grid.grid-cols-2 { gap: 0.85rem; }
+
+    .auth-box .btn.btn-primary,
+    .mobile-form-card .btn.btn-primary {
+        min-height: 54px;
+        border-radius: 16px;
+        font-weight: 800;
+        letter-spacing: 0.01em;
+        font-size: 0.95rem;
+        box-shadow: 0 16px 28px rgba(var(--c-primary-rgb), 0.22);
+    }
+
+    .auth-box .text-center.mt-4,
+    .auth-box .text-center.mt-6.pt-4.text-muted { margin-top: 1rem !important; }
+
+    .auth-box .mt-6.pt-4.text-muted {
+        border-top-style: dashed !important;
+        padding-top: 1rem !important;
+        line-height: 1.7;
+    }
+
+    #login-form > .flex.justify-between.mt-4 {
+        flex-direction: column;
+        align-items: stretch;
+        gap: 0.75rem;
+    }
+    #login-form > .flex.justify-between.mt-4 a {
+        display: block;
+        text-align: left;
+    }
+
+    /* Signup / other form pages */
+    .mobile-form-grid { gap: 1rem; }
+    .mobile-form-card,
+    .mobile-side-card {
+        border-radius: 20px;
+        background:
+            radial-gradient(circle at top right, rgba(var(--c-accent-rgb), 0.1), transparent 38%),
+            linear-gradient(180deg, rgba(var(--c-primary-rgb), 0.03), transparent 72%),
+            var(--c-bg-surface);
+        border: 1px solid rgba(var(--c-primary-rgb), 0.08);
+        box-shadow: 0 18px 36px rgba(0, 33, 71, 0.08);
+    }
+    .mobile-form-card > div:first-child { margin-bottom: 1rem !important; }
+    .mobile-form-card [style*="justify-content:flex-end"] { justify-content: stretch !important; }
+    .mobile-form-card [style*="justify-content:flex-end"] .btn { width: 100%; }
+    .mobile-side-card h3 { font-size: 1rem !important; margin-bottom: 0.85rem !important; }
+    .mobile-side-card .text-sm.text-body {
+        padding: 0.85rem 0.9rem;
+        border-radius: 14px;
+        background: rgba(var(--c-primary-rgb), 0.04);
+        border: 1px solid rgba(var(--c-primary-rgb), 0.07);
+        line-height: 1.55;
+    }
+
+    .auth-form-shell { grid-template-columns: 1fr; gap: 1rem; }
+    .auth-form-main  { border-radius: 20px; padding: 1.25rem; }
+    .auth-form-aside { gap: 0.85rem; }
+    .auth-aside-card { border-radius: 16px; padding: 1rem; }
+    .auth-aside-card h3 { font-size: 0.9rem; margin-bottom: 0.75rem; }
+    .auth-aside-list li { font-size: 0.82rem; gap: 0.65rem; }
+    .auth-links-row { flex-direction: column; align-items: stretch; gap: 0.75rem; }
+    .auth-links-row a { display: block; text-align: left; }
+
+    /* =============================================
+       PROFILE BANNER — stack avatar + info vertically
+       ============================================= */
+    .profile-banner {
+        flex-direction: column;
+        align-items: center;
+        text-align: center;
+        padding: 1.5rem 1rem 1.25rem;
+        gap: 0.75rem;
+    }
+
+    .profile-banner-avatar {
+        width: 68px;
+        height: 68px;
+    }
+
+    .profile-banner-info h2 { font-size: 1.1rem; margin-bottom: 0.2rem; }
+
+    .profile-banner-meta {
+        flex-wrap: wrap;
+        justify-content: center;
+        gap: 0.4rem;
+        font-size: 0.72rem;
+    }
+
+    /* =============================================
+       MODALS — slide up from bottom (iOS-style)
+       ============================================= */
+    .modal-overlay {
+        align-items: flex-end;
+        padding: 0;
+    }
+
+    .modal-overlay > div,
+    .modal-overlay > .glass-card,
+    .modal-overlay > .card {
+        width: 100% !important;
+        max-width: 100% !important;
+        border-radius: 16px 16px 0 0 !important;
+        max-height: 90vh;
+        overflow-y: auto;
+        margin: 0 !important;
+        padding: 1.25rem !important;
+    }
+
+    /* =============================================
+       ALERTS
+       ============================================= */
+    .alert {
+        font-size: 0.85rem;
+        padding: 0.75rem 1rem;
+    }
+
+    /* =============================================
+       UPLOAD ZONE
+       ============================================= */
+    .upload-zone {
+        padding: 2rem 1rem;
+    }
+
+    .mobile-import-layout .card:last-child {
+        order: 2;
+    }
+
+    /* =============================================
+       CONSOLE (allocation log)
+       ============================================= */
+    .card-console {
+        min-height: 200px;
+        padding: 1rem;
+        font-size: 0.78rem;
+    }
+
+    /* =============================================
+       SURFACE INSET
+       ============================================= */
+    .surface-inset { padding: 0.75rem; }
+
+    /* =============================================
+       SPACING UTILITIES — tighten on mobile
+       ============================================= */
+    .mb-8 { margin-bottom: 1.5rem !important; }
+    .mb-6 { margin-bottom: 1.25rem !important; }
+    .p-8  { padding: 1.25rem !important; }
+    .p-6  { padding: 1rem !important; }
+
+    /* =============================================
+       LANDING PAGE — hero, nav, features
+       ============================================= */
+    .hero {
+        padding: 5.5rem 1.25rem 3rem;
+        min-height: auto;
+    }
+
+    .hero h1 {
+        font-size: clamp(1.75rem, 7.5vw, 2.75rem);
+        margin-bottom: 1rem;
+    }
+
+    .hero p {
+        font-size: 0.95rem;
+        margin-bottom: 2rem;
+    }
+
+    .hero-blob { width: 220px; height: 220px; }
+
+    .nav-transparent {
+        padding: 1rem 1.25rem;
+        flex-wrap: wrap;
+        gap: 0.75rem;
+    }
+
+    .features {
+        padding: 3rem 1.25rem;
+    }
+
+    /* =============================================
+       PAGE FOOTER INFO BAR
+       ============================================= */
+    .mt-6.pt-4.text-muted {
+        font-size: 0.72rem;
+        flex-wrap: wrap;
+        gap: 0.25rem;
+        line-height: 1.8;
+    }
+
+    /* =============================================
+       HIDE DESKTOP-ONLY ELEMENTS
+       ============================================= */
+    .hide-mobile { display: none !important; }
+}
+
+/* ============================================================
+   600px — LARGE PHONES (Samsung Galaxy, iPhone Plus/Max)
+   ============================================================ */
+@media (max-width: 600px) {
+
+    .main-content {
+        padding: 4.5rem 0.875rem 2rem !important;
+    }
+
+    .stats-grid {
+        grid-template-columns: repeat(2, 1fr);
+        gap: 0.625rem;
+    }
+
+    .stat-card { padding: 0.75rem; gap: 0.6rem; }
+    .stat-info h3 { font-size: 1.25rem; }
+    .stat-info p  { font-size: 0.65rem; }
+
+    .auth-left  { padding: 1.75rem 1.25rem 2.75rem; }
+    .auth-right { padding: 0 0.875rem 2.5rem; }
+    .auth-headline { font-size: 1.75rem; }
+    .auth-subtitle { font-size: 0.9rem !important; }
+    .sidebar-brand-title { font-size: 1.28rem !important; }
+    .sidebar-brand-kicker { font-size: 0.8rem !important; }
+    .auth-box .input-auth,
+    .mobile-form-card .input-auth { min-height: 50px; }
+
+    .page-header-info h1 { font-size: 1.15rem; }
+}
+
+/* ============================================================
+   480px — STANDARD PHONES (iPhone 14, Galaxy S24)
+   ============================================================ */
+@media (max-width: 480px) {
+
+    .main-content {
+        padding: 4.5rem 0.75rem 1.75rem !important;
+    }
+
+    /* Single-column stats on mid-size phones */
+    .stats-grid {
+        grid-template-columns: 1fr 1fr;
+        gap: 0.6rem;
+    }
+
+    h1 { font-size: 1.3rem; }
+    h2 { font-size: 1.1rem; }
+    h3 { font-size: 0.95rem; }
+
+    /* Page header buttons go full width */
+    .page-header .flex { flex-direction: column; }
+    .page-header .btn  { width: 100% !important; min-width: unset; }
+
+    .glass-card { padding: 0.9rem; }
+    .glass-panel { padding: 0.9rem; }
+
+    th { font-size: 0.7rem; padding: 0.5rem 0.625rem; }
+    td { font-size: 0.78rem; padding: 0.5rem 0.625rem; }
+
+    .auth-left  { padding: 1.5rem 1rem 2.5rem; }
+    .auth-right { padding: 0 0.75rem 2rem; }
+    .auth-headline { font-size: 1.6rem; }
+    .auth-subtitle { font-size: 0.88rem !important; }
+    .brand-border p { font-size: 0.8rem; }
+    .auth-box { padding: 1.5rem 1.25rem 1.75rem !important; }
+    .auth-box .badge { width: 100%; justify-content: center; }
+    .auth-box .grid.grid-cols-2 { gap: 0.75rem; }
+    .auth-box .input-auth,
+    .mobile-form-card .input-auth { border-radius: 14px; }
+    .mobile-form-card,
+    .mobile-side-card { border-radius: 18px; }
+    .sidebar-brand { padding-top: 4.1rem; }
+    .sidebar-brand-title { font-size: 1.18rem !important; }
+    .sidebar-brand-kicker { font-size: 0.74rem !important; }
+
+    .profile-banner { padding: 1.25rem 0.75rem 1rem; }
+    .profile-banner-avatar { width: 60px; height: 60px; }
+    .profile-banner-info h2 { font-size: 1rem; }
+
+    .card.flex.items-start { padding: 0.875rem !important; }
+
+    .card-console { min-height: 180px; font-size: 0.75rem; }
+
+    .btn { min-height: 44px; }
+    .btn-sm { min-height: 36px; }
+
+    .stat-card { padding: 0.75rem; }
+    .stat-icon  { width: 36px; height: 36px; min-width: 36px; font-size: 0.9rem; }
+    .stat-info h3 { font-size: 1.15rem; }
+    .stat-info p  { font-size: 0.62rem; }
+}
+
+/* ============================================================
+   390px — COMPACT PHONES (iPhone 14 Pro, iPhone 12/13)
+   ============================================================ */
+@media (max-width: 390px) {
+
+    .main-content {
+        padding: 4.25rem 0.625rem 1.5rem !important;
+    }
+
+    h1 { font-size: 1.2rem; }
+    h2 { font-size: 1rem; }
+    h3 { font-size: 0.9rem; }
+
+    .stats-grid {
+        grid-template-columns: 1fr 1fr;
+        gap: 0.5rem;
+    }
+
+    .stat-card { padding: 0.625rem; gap: 0.5rem; }
+    .stat-icon  { width: 32px; height: 32px; min-width: 32px; font-size: 0.8rem; }
+    .stat-info h3 { font-size: 1rem; }
+    .stat-info p  { font-size: 0.6rem; letter-spacing: 0; }
+
+    th { font-size: 0.65rem; padding: 0.4rem 0.5rem; }
+    td { font-size: 0.72rem; padding: 0.4rem 0.5rem; }
+
+    .glass-card { padding: 0.75rem; }
+
+    .btn { font-size: 0.78rem; padding: 0.55rem 0.875rem; }
+    .btn-sm { font-size: 0.72rem; padding: 0.35rem 0.625rem; }
+
+    .auth-headline { font-size: 1.4rem; }
+    .auth-left  { padding: 1.35rem 0.875rem 2.25rem; }
+    .auth-right { padding: 0 0.625rem 2rem; }
+    .auth-subtitle { font-size: 0.82rem !important; }
+    .auth-box   { padding: 1.35rem 1rem 1.5rem !important; }
+    .mobile-form-card,
+    .mobile-side-card { padding: 0.95rem !important; }
+
+    input,
+    select,
+    textarea { font-size: 16px !important; }
+
+    .profile-banner-avatar { width: 54px; height: 54px; }
+    .profile-banner-info h2 { font-size: 0.95rem; }
+
+    .card.flex.items-start { padding: 0.75rem !important; gap: 0.625rem; }
+    .card.flex.items-start .stat-icon { width: 32px; height: 32px; min-width: 32px; }
+    .card.flex.items-start h4 { font-size: 0.85rem; }
+    .card.flex.items-start p  { font-size: 0.75rem; }
+
+    .sidebar-toggle { width: 40px; height: 40px; font-size: 1rem; }
+    .theme-toggle-floating { width: 40px; height: 40px; }
+    .sidebar-brand { padding-top: 3.95rem; }
+    .sidebar-brand-logo { width: 48px; height: 48px; }
+    .sidebar-brand-title { font-size: 1.08rem; }
+    .sidebar-brand-kicker { font-size: 0.68rem; }
+
+    .modal-overlay > div,
+    .modal-overlay > .glass-card,
+    .modal-overlay > .card {
+        padding: 1rem !important;
+    }
+
+    .upload-zone { padding: 1.5rem 0.75rem; }
+
+    .nav-item { padding: 0.75rem 0.875rem; font-size: 0.88rem; }
+
+    .alert { font-size: 0.8rem; padding: 0.625rem 0.875rem; }
+}
+
+/* ============================================================
+   320px — VERY SMALL PHONES (iPhone SE 1st gen, old Androids)
+   ============================================================ */
+@media (max-width: 320px) {
+
+    .main-content {
+        padding: 4rem 0.5rem 1.25rem !important;
+    }
+
+    h1 { font-size: 1.1rem; }
+    h2 { font-size: 0.95rem; }
+    h3 { font-size: 0.875rem; }
+
+    /* Single column for everything */
+    .stats-grid {
+        grid-template-columns: 1fr;
+        gap: 0.5rem;
+    }
+
+    .stat-card {
+        padding: 0.625rem 0.75rem;
+        gap: 0.625rem;
+    }
+
+    .stat-icon  { width: 30px; height: 30px; min-width: 30px; font-size: 0.75rem; }
+    .stat-info h3 { font-size: 1.1rem; }
+    .stat-info p  { font-size: 0.62rem; }
+
+    .glass-card { padding: 0.625rem; }
+
+    th { font-size: 0.62rem; padding: 0.375rem 0.5rem; }
+    td { font-size: 0.68rem; padding: 0.375rem 0.5rem; }
+
+    .btn { font-size: 0.75rem; padding: 0.5rem 0.75rem; min-height: 40px; }
+    .btn-sm { font-size: 0.68rem; padding: 0.3rem 0.5rem; }
+
+    .auth-left  { padding: 1.25rem 0.625rem 2rem; }
+    .auth-right { padding: 0 0.5rem 1.5rem; }
+    .auth-headline { font-size: 1.3rem; }
+    .auth-subtitle { font-size: 0.78rem !important; }
+    .auth-box   { padding: 1.25rem 0.875rem 1.35rem !important; }
+
+    .sidebar { max-width: 260px; }
+    .sidebar-toggle { width: 38px; height: 38px; top: 0.75rem; left: 0.75rem; }
+    .theme-toggle-floating { width: 38px; height: 38px; top: 0.75rem; right: 0.75rem; }
+    .sidebar-brand { padding-top: 3.7rem; }
+    .sidebar-brand-row { gap: 0.7rem; }
+    .sidebar-brand-logo { width: 44px; height: 44px; }
+    .sidebar-brand-title { font-size: 1rem; }
+    .sidebar-brand-kicker { font-size: 0.62rem; letter-spacing: 0.05em; }
+
+    .nav-item { padding: 0.7rem 0.75rem; font-size: 0.85rem; }
+
+    .profile-banner { padding: 1rem 0.5rem 0.875rem; }
+    .profile-banner-avatar { width: 48px; height: 48px; }
+    .profile-banner-info h2 { font-size: 0.875rem; }
+    .profile-banner-meta   { font-size: 0.65rem; }
+
+    .modal-overlay > div,
+    .modal-overlay > .glass-card,
+    .modal-overlay > .card {
+        padding: 0.875rem !important;
+        border-radius: 12px 12px 0 0 !important;
+    }
+
+    .card-console { font-size: 0.68rem; padding: 0.75rem; min-height: 150px; }
+
+    .badge { font-size: 0.62rem; padding: 0.2rem 0.5rem; }
+
+    .upload-zone { padding: 1.25rem 0.625rem; }
+    .upload-zone p { font-size: 0.8rem; }
+}

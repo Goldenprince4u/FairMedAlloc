@@ -28,9 +28,13 @@ if (!defined('FAIRMED_WORKER_LIBRARY_MODE') && php_sapi_name() !== 'cli') {
 
 // ── Constants ────────────────────────────────────────────────────────────────
 const WORKER_LOCK_NAME   = 'fairmedalloc_allocation_worker';
-const LOCK_WAIT_SECONDS  = 1;    // how long GET_LOCK waits before giving up
-const STALE_JOB_MINUTES  = 20;   // "running" jobs older than this are reset
+const LOCK_WAIT_SECONDS  = 1;     // how long GET_LOCK waits before giving up
+const STALE_JOB_MINUTES  = 45;   // "running" jobs older than this are reset.
+                                  // Raised from 20 → 45 because OR-Tools can
+                                  // run for 30+ min on large datasets with no
+                                  // progress update between 30% and completion.
 const PROGRESS_FLUSH_SEC = 3;    // minimum seconds between DB progress writes
+const HEARTBEAT_SEC      = 300;  // touch updated_at every 5 min during solver
 const RETRY_DELAY_SEC    = 10;   // seconds to wait before a retry attempt
 const JOB_CANCELLED_EXCEPTION = '__FAIRMED_JOB_CANCELLED__';
 
@@ -38,6 +42,7 @@ const JOB_CANCELLED_EXCEPTION = '__FAIRMED_JOB_CANCELLED__';
 require_once __DIR__ . '/db_config.php';
 // Note: db_config.php already pulls in includes/Logger.php and includes/DbHelper.php
 require_once __DIR__ . '/includes/AllocationEngine.php';
+require_once __DIR__ . '/includes/CsvImportService.php';
 
 // ── DB connection validation (Issue #6 fix) ───────────────────────────────────
 if (!isset($conn) || !($conn instanceof mysqli) || $conn->connect_error) {
@@ -214,6 +219,12 @@ function resetStaleRunningJobs(mysqli $conn): void
 
 function processAllocationJob(mysqli $conn, array $job): void
 {
+    $jobType = (string)($job['job_type'] ?? 'allocation');
+    if ($jobType === 'csv_import') {
+        processCsvImportJob($conn, $job);
+        return;
+    }
+
     $job_id     = (int)$job['job_id'];
     $retryCount = max(0, (int)($job['retry_count'] ?? 0));
     $maxRetries = (int)($job['max_retries'] ?? 3);
@@ -226,9 +237,19 @@ function processAllocationJob(mysqli $conn, array $job): void
             $engine->setJobId($job_id);  // enables total_students tracking in the DB
 
             // Rate-limited progress callback (Issue #4: already uses prepared statements)
-            $lastFlush = 0;
-            $progressCallback = function (array $progress) use ($conn, $job_id, &$lastFlush): void {
+            $lastFlush     = 0;
+            $lastHeartbeat = 0;
+            $progressCallback = function (array $progress) use ($conn, $job_id, &$lastFlush, &$lastHeartbeat): void {
                 $now = time();
+
+                // Heartbeat: touch updated_at every HEARTBEAT_SEC even when we
+                // skip the full progress write, so the stale-job detector never
+                // resets a legitimately running OR-Tools solve.
+                if ($now - $lastHeartbeat >= HEARTBEAT_SEC) {
+                    $lastHeartbeat = $now;
+                    $conn->query("UPDATE allocation_jobs SET updated_at = NOW() WHERE job_id = {$job_id}");
+                }
+
                 if ($now - $lastFlush < PROGRESS_FLUSH_SEC) {
                     return;
                 }
@@ -322,13 +343,160 @@ function processAllocationJob(mysqli $conn, array $job): void
             Logger::error("Worker: Job #$job_id threw exception — " . $e->getMessage());
             $errorMsg = substr(
                 $e->getMessage() . ' (' . basename($e->getFile()) . ':' . $e->getLine() . ')',
-                0, 500
+                0, 2000
             );
             if (!retryJobOrFail($conn, $job_id, $retryCount, $maxRetries, $errorMsg, null)) {
                 return;
             }
             $retryCount++;
         }
+    }
+}
+
+function processCsvImportJob(mysqli $conn, array $job): void
+{
+    $jobId = (int)$job['job_id'];
+    $payload = decodeImportJobPayload($job);
+    $filePath = (string)($payload['file_path'] ?? '');
+    $originalName = (string)($payload['original_name'] ?? basename($filePath));
+    $jobConn = openAuxJobConnection();
+
+    if ($filePath === '' || !is_file($filePath)) {
+        closeAuxJobConnection($jobConn);
+        markJobFailed($conn, $jobId, 'Queued import file could not be found on the server.', null);
+        return;
+    }
+
+    markJobRunning($conn, $jobId);
+
+    try {
+        $service = new CsvImportService($conn, $jobId);
+        $result = $service->processCsvFile($filePath, function (array $progress) use ($conn, $jobConn, $jobId): void {
+            $trackerConn = $jobConn instanceof mysqli ? $jobConn : $conn;
+            $statusCheck = $trackerConn->prepare("SELECT status FROM allocation_jobs WHERE job_id = ? LIMIT 1");
+            if ($statusCheck) {
+                $statusCheck->bind_param('i', $jobId);
+                $statusCheck->execute();
+                $statusRow = $statusCheck->get_result()->fetch_assoc();
+                $statusCheck->close();
+                if (($statusRow['status'] ?? '') === 'cancelled') {
+                    throw new RuntimeException(JOB_CANCELLED_EXCEPTION);
+                }
+            }
+
+            $stage = (string)($progress['stage'] ?? 'Processing import');
+            $percent = max(0, min(100, (int)($progress['percent'] ?? 0)));
+            $total = max(0, (int)($progress['total'] ?? 0));
+            $processed = max(0, (int)($progress['processed'] ?? 0));
+
+            $stmt = $trackerConn->prepare(
+                "UPDATE allocation_jobs
+                    SET status = 'running',
+                        progress_stage = ?,
+                        progress_percent = ?,
+                        total_students = ?,
+                        allocated_students = ?,
+                        updated_at = NOW()
+                  WHERE job_id = ?"
+            );
+            if ($stmt) {
+                $stmt->bind_param('siiii', $stage, $percent, $total, $processed, $jobId);
+                $stmt->execute();
+                $stmt->close();
+            }
+        });
+
+        $resultJson = json_encode([
+            'status' => 'success',
+            'job_type' => 'csv_import',
+            'file_name' => $originalName,
+            'imported' => (int)($result['imported'] ?? 0),
+            'duplicates' => (int)($result['duplicates'] ?? 0),
+            'total' => (int)($result['total'] ?? 0),
+            'duration_ms' => (float)($result['duration_ms'] ?? 0),
+            'message' => (string)($result['message'] ?? 'Import completed successfully.'),
+        ]);
+
+        $imported = (int)($result['imported'] ?? 0);
+        $total = (int)($result['total'] ?? 0);
+        $stmt = $conn->prepare(
+            "UPDATE allocation_jobs
+                SET status = 'completed',
+                    progress_stage = 'Completed',
+                    progress_percent = 100,
+                    allocated_students = ?,
+                    total_students = ?,
+                    result_data = ?,
+                    completed_at = NOW(),
+                    updated_at = NOW()
+              WHERE job_id = ?"
+        );
+        if ($stmt) {
+            $stmt->bind_param('iisi', $imported, $total, $resultJson, $jobId);
+            $stmt->execute();
+            $stmt->close();
+        }
+
+        cleanupImportFile($filePath);
+        Logger::info("Worker: CSV import job #$jobId completed - {$imported}/{$total} valid rows imported.");
+    } catch (Throwable $e) {
+        cleanupImportFile($filePath);
+        if ($e instanceof RuntimeException && $e->getMessage() === JOB_CANCELLED_EXCEPTION) {
+            markJobCancelled($conn, $jobId);
+            Logger::info("Worker: CSV import job #$jobId was cancelled by administrator.");
+            closeAuxJobConnection($jobConn);
+            return;
+        }
+
+        $errorMsg = substr(
+            $e->getMessage() . ' (' . basename($e->getFile()) . ':' . $e->getLine() . ')',
+            0,
+            2000
+        );
+        markJobFailed($conn, $jobId, $errorMsg, null);
+        Logger::error("Worker: CSV import job #$jobId failed - " . $e->getMessage());
+    }
+
+    closeAuxJobConnection($jobConn);
+}
+
+function decodeImportJobPayload(array $job): array
+{
+    $raw = $job['result_data'] ?? null;
+    if (!is_string($raw) || trim($raw) === '') {
+        return [];
+    }
+
+    $decoded = json_decode($raw, true);
+    return is_array($decoded) ? $decoded : [];
+}
+
+function cleanupImportFile(string $filePath): void
+{
+    if ($filePath !== '' && is_file($filePath)) {
+        @unlink($filePath);
+    }
+}
+
+function openAuxJobConnection(): ?mysqli
+{
+    try {
+        $jobConn = new mysqli(DB_HOST, DB_USER, DB_PASS, DB_NAME, DB_PORT);
+        if ($jobConn->connect_errno) {
+            return null;
+        }
+
+        return $jobConn;
+    } catch (Throwable $e) {
+        Logger::warning('Worker: unable to open auxiliary job tracker connection: ' . $e->getMessage());
+        return null;
+    }
+}
+
+function closeAuxJobConnection(?mysqli $jobConn): void
+{
+    if ($jobConn instanceof mysqli) {
+        @$jobConn->close();
     }
 }
 
@@ -369,6 +537,26 @@ function markJobCancelled(mysqli $conn, int $job_id): void
         return;
     }
     $stmt->bind_param('i', $job_id);
+    $stmt->execute();
+    $stmt->close();
+}
+
+function markJobFailed(mysqli $conn, int $job_id, string $errorMsg, ?string $resultJson): void
+{
+    $stmt = $conn->prepare(
+        "UPDATE allocation_jobs
+            SET status = 'failed',
+                error_message = ?,
+                result_data = ?,
+                completed_at = NOW(),
+                updated_at = NOW()
+          WHERE job_id = ?"
+    );
+    if (!$stmt) {
+        return;
+    }
+
+    $stmt->bind_param('ssi', $errorMsg, $resultJson, $job_id);
     $stmt->execute();
     $stmt->close();
 }

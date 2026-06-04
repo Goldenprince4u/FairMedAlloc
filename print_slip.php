@@ -26,7 +26,9 @@ $stmt = $conn->prepare("SELECT a.*, h.name as hostel_name, h.block_name, r.room_
                         JOIN users u ON a.student_id = u.user_id
                         JOIN departments d ON p.department_id = d.department_id
                         JOIN faculties f ON d.faculty_id = f.faculty_id
-                        WHERE a.student_id = ?");
+                        WHERE a.student_id = ?
+                        ORDER BY a.allocated_at DESC, a.allocation_id DESC
+                        LIMIT 1");
 $stmt->bind_param("i", $user_id);
 $stmt->execute();
 $data = $stmt->get_result()->fetch_assoc();

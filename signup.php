@@ -186,6 +186,41 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
 $page_title = "Create Account | FairMedAlloc";
 require_once 'includes/header.php';
 ?>
+<style>
+    /* Mobile-first responsive overrides for signup form */
+    @media (max-width: 768px) {
+        input[type="text"],
+        input[type="email"],
+        input[type="password"],
+        input[type="number"],
+        input[type="date"],
+        select,
+        textarea {
+            font-size: 1rem !important;
+            min-height: 48px;
+        }
+        .input-group {
+            position: relative;
+        }
+        .input-icon {
+            font-size: 1rem;
+            left: 12px;
+        }
+        .auth-headline {
+            font-size: clamp(1.25rem, 5vw, 1.75rem) !important;
+        }
+        .auth-subtitle {
+            font-size: 0.9rem !important;
+        }
+        .form-group {
+            margin-bottom: 1.25rem;
+        }
+        .form-group label {
+            font-size: 0.95rem;
+            font-weight: 600;
+        }
+    }
+</style>
 
 <div class="auth-container">
     <div class="auth-left">

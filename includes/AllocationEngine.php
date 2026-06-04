@@ -13,6 +13,7 @@ require_once __DIR__ . '/Logger.php';
 
 class AllocationEngine {
     private const ALGORITHM_VERSION = 'allocation_engine_v3';
+    private const JOB_CANCELLED_SIGNAL = '__FAIRMED_JOB_CANCELLED__';
 
     private $conn;
     private $allocationsHasAlgorithmVersion = null;
@@ -45,6 +46,11 @@ class AllocationEngine {
                     'percent' => max(0, min(100, $percent))
                 ]);
             } catch (Throwable $e) {
+                // The worker uses a dedicated runtime exception as a control signal
+                // when an administrator cancels a running allocation job.
+                if ($e instanceof RuntimeException && $e->getMessage() === self::JOB_CANCELLED_SIGNAL) {
+                    throw $e;
+                }
                 Logger::warning("Progress callback failed: " . $e->getMessage());
             }
         }
@@ -88,7 +94,15 @@ class AllocationEngine {
                     FROM student_profiles p 
                     JOIN departments d ON p.department_id = d.department_id
                     JOIN faculties f ON d.faculty_id = f.faculty_id
-                    LEFT JOIN medical_records m ON p.user_id = m.student_id
+                    LEFT JOIN medical_records m
+                           ON p.user_id = m.student_id
+                          AND m.record_id = (
+                                SELECT record_id
+                                FROM medical_records
+                                WHERE student_id = p.user_id
+                                ORDER BY record_id DESC
+                                LIMIT 1
+                          )
                     WHERE p.allocation_status = 'Unallocated' 
                     AND (
                         p.is_paid = 1
@@ -255,10 +269,14 @@ class AllocationEngine {
                 $solverBackend = strtolower((string)$this->getSettingValue('allocation_solver_backend', 'ortools'));
                 if ($solverBackend === 'ortools') {
                     $alloc_script = __DIR__ . '/../ml_models/allocate.py';
-                    $solver_output = $this->executeShellCommand(array_merge(
-                        $this->getPythonCommandParts(),
-                        [$alloc_script, $students_csv_file, $rooms_csv_file, $output_csv_file]
-                    ));
+                    $solver_output = $this->executeShellCommand(
+                        array_merge(
+                            $this->getPythonCommandParts(),
+                            [$alloc_script, $students_csv_file, $rooms_csv_file, $output_csv_file]
+                        ),
+                        $this->conn,
+                        $this->jobId
+                    );
 
                     if (is_string($solver_output) && preg_match('/Solver status:\s*([A-Z_]+)/', $solver_output, $matches) === 1) {
                         $solver_status = strtoupper((string)$matches[1]);
@@ -274,7 +292,7 @@ class AllocationEngine {
                         }
                         fclose($fp_out);
                     } else {
-                        throw new Exception("OR-Tools solver failed to produce valid assignments. Output: " . substr((string)$solver_output, 0, 500));
+                        throw new Exception("OR-Tools solver failed to produce valid assignments. Output: " . substr((string)$solver_output, 0, 3000));
                     }
                 } else {
                     throw new Exception("Only 'ortools' is supported. Found: " . $solverBackend);
@@ -691,6 +709,14 @@ class AllocationEngine {
     /**
      * Helper: Assign Bed based on configuration (LB/UB/SB)
      */
+    private function getWaitlistFallbackForMobility(int $student_id): array {
+        // Fallback: Assign to a dedicated 'Waitlist' category or specific pending status
+        // to ensure flow remains feasible when all prox-rooms are exhausted.
+        return [
+            'status' => 'waitlist',
+            'reason' => 'No eligible clinic-proximal arc available'
+        ];
+    }
 
     private function getSettingValue($setting_key, $default_value) {
         $stmt = $this->conn->prepare("SELECT setting_value FROM settings WHERE setting_key = ? LIMIT 1");
@@ -717,16 +743,81 @@ class AllocationEngine {
 
 
 
-    private function executeShellCommand(array $command_parts) {
+    /**
+     * Execute a shell command and return its combined stdout+stderr output.
+     *
+     * When $heartbeatConn and $heartbeatJobId are provided, the method uses
+     * proc_open instead of shell_exec so it can touch allocation_jobs.updated_at
+     * every 60 seconds while the process is running. This prevents the stale-job
+     * detector (STALE_JOB_MINUTES = 45) from incorrectly resetting a long OR-Tools
+     * solve that emits no progress callbacks between 30% and completion.
+     *
+     * Falls back to shell_exec if proc_open is unavailable.
+     */
+    private function executeShellCommand(array $command_parts, ?mysqli $heartbeatConn = null, ?int $heartbeatJobId = null): ?string
+    {
         $escaped_parts = array_map([$this, 'escapeCommandPart'], $command_parts);
-        $command = implode(' ', $escaped_parts);
-        $output = @shell_exec($command . ' 2>&1');
+        $command       = implode(' ', $escaped_parts);
 
-        if (!is_string($output)) {
-            return null;
+        // Use proc_open when heartbeat is needed so we can poll the process
+        // without blocking and periodically touch updated_at.
+        if ($heartbeatConn instanceof mysqli && $heartbeatJobId !== null && function_exists('proc_open')) {
+            $descriptors = [
+                0 => ['pipe', 'r'],
+                1 => ['pipe', 'w'],
+                2 => ['pipe', 'w'],
+            ];
+            $process = @proc_open($command, $descriptors, $pipes);
+            if (is_resource($process)) {
+                fclose($pipes[0]);
+                stream_set_blocking($pipes[1], false);
+                stream_set_blocking($pipes[2], false);
+
+                $output      = '';
+                $lastBeat    = time();
+                $beatInterval = 60; // touch updated_at every 60 s during solve
+
+                while (true) {
+                    $chunk = fread($pipes[1], 8192);
+                    if (is_string($chunk) && $chunk !== '') {
+                        $output .= $chunk;
+                    }
+                    $err = fread($pipes[2], 8192);
+                    if (is_string($err) && $err !== '') {
+                        $output .= $err;
+                    }
+
+                    $status = proc_get_status($process);
+                    if (!$status['running']) {
+                        // Drain remaining output
+                        $output .= stream_get_contents($pipes[1]);
+                        $output .= stream_get_contents($pipes[2]);
+                        break;
+                    }
+
+                    // Heartbeat: keep updated_at fresh so stale-job detector
+                    // does not reset this job while the solver is running.
+                    $now = time();
+                    if ($now - $lastBeat >= $beatInterval) {
+                        $lastBeat = $now;
+                        @$heartbeatConn->query(
+                            "UPDATE allocation_jobs SET updated_at = NOW() WHERE job_id = {$heartbeatJobId}"
+                        );
+                    }
+
+                    usleep(500000); // poll every 0.5 s
+                }
+
+                fclose($pipes[1]);
+                fclose($pipes[2]);
+                proc_close($process);
+                return trim($output);
+            }
+            // proc_open failed — fall through to shell_exec
         }
 
-        return trim($output);
+        $output = @shell_exec($command . ' 2>&1');
+        return is_string($output) ? trim($output) : null;
     }
 
     private function escapeCommandPart($value) {

@@ -12,7 +12,12 @@
  */
 
 if (session_status() === PHP_SESSION_NONE) {
-    session_start();
+    session_start([
+        'cookie_secure'   => 1,        // HTTPS only
+        'cookie_httponly' => 1,        // no JS access
+        'cookie_samesite' => 'Strict', // CSRF mitigation
+        'use_strict_mode' => 1,        // reject unrecognised session IDs
+    ]);
 }
 
 /**
@@ -154,7 +159,8 @@ function sanitize_input($data) {
         return array_map('sanitize_input', $data);
     }
     $data = trim((string)$data);
-    $data = stripslashes($data);
+    // Remove stripslashes() — deprecated in PHP 8.0+ and removed in 9.0
+    // Magic quotes have been off by default since PHP 5.4.0
     return htmlspecialchars($data, ENT_QUOTES, 'UTF-8');
 }
 

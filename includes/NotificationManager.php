@@ -10,39 +10,47 @@ class NotificationManager {
         $this->conn = $db;
     }
 
-    /**
-     * Create a new notification
-     */
-    public function send($user_id, $message) {
-        $check = $this->conn->prepare("
-            SELECT message
-            FROM notifications
-            WHERE user_id = ?
-            ORDER BY created_at DESC, id DESC
-            LIMIT 1
-        ");
-        $check->bind_param("i", $user_id);
+    public function send(int $user_id, string $message): bool {
+        $check = $this->conn->prepare(
+            "SELECT message
+             FROM notifications
+             WHERE user_id = ?
+             ORDER BY created_at DESC, id DESC
+             LIMIT 1"
+        );
+        if (!$check) { return false; }
+        $check->bind_param('i', $user_id);
         $check->execute();
         $latest = $check->get_result()->fetch_assoc();
         $check->close();
 
         if (($latest['message'] ?? null) === $message) {
-            return true;
+            return true; // De-duplicate identical back-to-back messages
         }
 
-        $stmt = $this->conn->prepare("INSERT INTO notifications (user_id, message) VALUES (?, ?)");
-        $stmt->bind_param("is", $user_id, $message);
-        return $stmt->execute();
+        $stmt = $this->conn->prepare(
+            "INSERT INTO notifications (user_id, message) VALUES (?, ?)"
+        );
+        if (!$stmt) { return false; }
+        $stmt->bind_param('is', $user_id, $message);
+        $result = $stmt->execute();
+        $stmt->close();
+        return $result;
     }
 
     /**
      * Get unread notifications for a user
      */
-    public function getUnread($user_id) {
-        $stmt = $this->conn->prepare("SELECT * FROM notifications WHERE user_id = ? AND is_read = 0 ORDER BY created_at DESC");
-        $stmt->bind_param("i", $user_id);
+    public function getUnread(int $user_id): array {
+        $stmt = $this->conn->prepare(
+            "SELECT * FROM notifications WHERE user_id = ? AND is_read = 0 ORDER BY created_at DESC"
+        );
+        if (!$stmt) { return []; }
+        $stmt->bind_param('i', $user_id);
         $stmt->execute();
-        return $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
+        $rows = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
+        $stmt->close();
+        return $rows;
     }
 
     /**
@@ -76,10 +84,15 @@ class NotificationManager {
     /**
      * Mark all as read
      */
-    public function markAllRead($user_id) {
-        $stmt = $this->conn->prepare("UPDATE notifications SET is_read = 1 WHERE user_id = ?");
-        $stmt->bind_param("i", $user_id);
-        return $stmt->execute();
+    public function markAllRead(int $user_id): bool {
+        $stmt = $this->conn->prepare(
+            "UPDATE notifications SET is_read = 1 WHERE user_id = ?"
+        );
+        if (!$stmt) { return false; }
+        $stmt->bind_param('i', $user_id);
+        $result = $stmt->execute();
+        $stmt->close();
+        return $result;
     }
 }
 ?>

@@ -12,6 +12,7 @@ require_once '../includes/security_helper.php';
 require_once '../includes/DbHelper.php';
 require_once '../includes/Logger.php';
 require_once '../includes/UrgencyScoreService.php';
+require_once '../includes/JobDispatcher.php';
 
 // All responses from this file will be JSON-formatted
 header('Content-Type: application/json');
@@ -37,58 +38,68 @@ if (!isset($_SESSION['logged_in']) || ($_SESSION['role'] ?? '') !== 'admin') {
 $action = $_GET['action'] ?? '';
 
 // --- 2. Action Router ---
-// Direct the request to the appropriate function block below
-switch ($action) {
-    case 'run_algorithm':
-        handleRunAlgorithm($conn);
-        break;
+// Wrapped in a top-level try/catch so any uncaught exception still returns
+// JSON instead of an HTML 500 page (which breaks the UI's JSON.parse()).
+try {
+    switch ($action) {
+        case 'run_algorithm':
+            handleRunAlgorithm($conn);
+            break;
 
-    // ── Async queue actions ───────────────────────────────────────────────────
-    case 'queue_allocation':
-        handleQueueAllocation($conn);
-        break;
+        // ── Async queue actions ───────────────────────────────────────────────────
+        case 'queue_allocation':
+            handleQueueAllocation($conn);
+            break;
 
-    case 'job_status':
-        handleJobStatus($conn);
-        break;
+        case 'job_status':
+            handleJobStatus($conn);
+            break;
 
-    case 'worker_health':
-        handleWorkerHealth($conn);
-        break;
+        case 'worker_health':
+            handleWorkerHealth($conn);
+            break;
 
-    case 'cancel_job':
-        handleCancelJob($conn);
-        break;
-    // ─────────────────────────────────────────────────────────────────────────
+        case 'cancel_job':
+            handleCancelJob($conn);
+            break;
+        // ─────────────────────────────────────────────────────────────────────────
 
-    case 'rescore_all':
-        handleRescoreAll($conn);
-        break;
+        case 'rescore_all':
+            handleRescoreAll($conn);
+            break;
 
-    case 'manual_assign':
-        handleManualAssign($conn);
-        break;
+        case 'manual_assign':
+            handleManualAssign($conn);
+            break;
 
-    case 'get_rooms':
-        handleGetRooms($conn);
-        break;
+        case 'get_rooms':
+            handleGetRooms($conn);
+            break;
 
-    case 'analytics':
-        handleAnalytics($conn);
-        break;
+        case 'analytics':
+            handleAnalytics($conn);
+            break;
 
-    case 'hostel_stats':
-        handleHostelStats($conn);
-        break;
+        case 'hostel_stats':
+            handleHostelStats($conn);
+            break;
 
-    case 'ml_status':
-        handleMlStatus();
-        break;
+        case 'ml_status':
+            handleMlStatus();
+            break;
 
-    default:
-        // Reject unknown or missing actions
-        sendJsonResponse(['status' => 'error', 'message' => 'Invalid action'], 400);
-        break;
+        default:
+            // Reject unknown or missing actions
+            sendJsonResponse(['status' => 'error', 'message' => 'Invalid action'], 400);
+            break;
+    }
+} catch (Throwable $topLevelErr) {
+    // Safety net: convert any uncaught fatal/exception into a JSON response.
+    // This prevents HTML error pages breaking the frontend JSON.parse().
+    sendJsonResponse([
+        'status'  => 'error',
+        'message' => 'An unexpected server error occurred. Please try again.',
+    ], 500);
 }
 
 function sendJsonResponse(array $payload, int $statusCode = 200): void {
@@ -157,43 +168,46 @@ function handleQueueAllocation($conn) {
                     completed_at  = NOW(),
                     updated_at    = NOW()
               WHERE status = 'queued'
-                AND created_at < DATE_SUB(NOW(), INTERVAL 5 MINUTE)"
+                AND (job_type = 'allocation' OR job_type IS NULL)
+                AND created_at < DATE_SUB(NOW(), INTERVAL 10 MINUTE)"
         );
     } catch (Throwable $ignored) { /* table may not exist yet */ }
 
     // Prevent duplicate jobs: if a job is already queued or running, return it.
+    // ATOMIC: Use transaction to prevent race condition
+    $conn->begin_transaction();
     try {
+        // Lock the read to prevent concurrent checks from slipping through
         $existing = $conn->query(
-            "SELECT job_id, status, progress_percent, progress_stage
+            "SELECT job_id, job_type, status, progress_percent, progress_stage
                FROM allocation_jobs
               WHERE status IN ('queued','running')
-              ORDER BY created_at DESC LIMIT 1"
+              ORDER BY created_at DESC LIMIT 1
+              FOR UPDATE"
         );
     } catch (Throwable $tableErr) {
+        $conn->rollback();
         sendJsonResponse([
             'status'  => 'error',
             'message' => 'The allocation_jobs table does not exist. Please run the database migrations (sql/run_migrations.php) first.'
         ], 500);
         return;
     }
-    if ($existing === false) {
-        sendJsonResponse([
-            'status'  => 'error',
-            'message' => 'Could not query allocation jobs: ' . $conn->error
-        ], 500);
-        return;
-    }
     if ($existing && $existing->num_rows > 0) {
         $row = $existing->fetch_assoc();
+        $jobType = (string)($row['job_type'] ?? 'allocation');
+        $jobLabel = $jobType === 'csv_import' ? 'data import' : 'allocation';
+        $conn->rollback();
         sendJsonResponse([
             'status'   => 'queued',
             'job_id'   => (int)$row['job_id'],
-            'message'  => 'A job is already in progress.',
-            'job_status' => $row['status']
+            'message'  => "A {$jobLabel} job is already in progress.",
+            'job_status' => $row['status'],
+            'job_type' => $jobType,
         ]);
         return;
     }
-
+    
     $admin_id = (int)$_SESSION['user_id'];
     $stmt = $conn->prepare(
         "INSERT INTO allocation_jobs (job_type, status, created_by_admin_id)
@@ -201,23 +215,53 @@ function handleQueueAllocation($conn) {
     );
     $stmt->bind_param('i', $admin_id);
     if (!$stmt->execute()) {
+        $conn->rollback();
         sendJsonResponse(['status' => 'error', 'message' => 'Could not create job record.'], 500);
         return;
     }
     $job_id = (int)$conn->insert_id;
     $stmt->close();
+    
+    $conn->commit();  // Commit the transaction after successful job creation
 
     log_admin_action($conn, $admin_id, "Queued allocation job #$job_id");
 
     // Fire the worker in the background (non-blocking).
-    $dispatch = dispatchWorker($job_id);
-    $shouldInlineFallback = false;
+    $dispatch = fairmedDispatchWorker($job_id);
+
+    // ── Hard launch failure: exec()/proc_open failed outright ─────────────────
+    // This is different from a slow claim (worker launched but hasn't picked
+    // up the job yet). A hard failure means PHP CLI is misconfigured, the
+    // script is missing, or the OS blocked the spawn entirely.
+    // Mark the job failed immediately so the duplicate-job guard doesn't block
+    // the next attempt, then return a clear error on ALL platforms.
     if (!($dispatch['launched'] ?? false)) {
-        $shouldInlineFallback = true;
+        $failMsg = $dispatch['message'] ?? 'The background worker process could not be started.';
+        // Use prepared statement instead of real_escape_string
+        $failStmt = $conn->prepare(
+            "UPDATE allocation_jobs
+                SET status        = 'failed',
+                    error_message = ?,
+                    completed_at  = NOW(),
+                    updated_at    = NOW()
+              WHERE job_id = ?"
+        );
+        if ($failStmt) {
+            $failStmt->bind_param('si', $failMsg, $job_id);
+            $failStmt->execute();
+            $failStmt->close();
+        }
+        sendJsonResponse([
+            'status'  => 'error',
+            'message' => $failMsg . ' Check server configuration (PHP CLI path, script permissions).',
+        ], 500);
+        return;
     }
 
+    // ── Slow claim check: give the worker 750ms to pick up the job ────────────
     usleep(750000);
-    $warning = null;
+    $warning   = null;
+    $slowClaim = false;
     $statusStmt = $conn->prepare(
         "SELECT status, error_message
            FROM allocation_jobs
@@ -237,8 +281,8 @@ function handleQueueAllocation($conn) {
             return;
         }
         if (($statusRow['status'] ?? 'queued') === 'queued') {
-            $warning = 'Background worker launch did not claim the job quickly; continuing with inline server-side processing.';
-            $shouldInlineFallback = true;
+            $slowClaim = true;
+            $warning   = 'Worker launched but has not claimed the job yet — polling will confirm when it starts.';
         }
     }
 
@@ -249,7 +293,21 @@ function handleQueueAllocation($conn) {
         'warning' => $warning
     ];
 
-    if ($shouldInlineFallback) {
+    if ($slowClaim) {
+        // Linux (Render): a slow claim is normal under a supervised process manager.
+        // Return job_id immediately so the UI can poll for the actual start.
+        // The 5-min stale-queued cleanup marks it failed if the worker never claims it.
+        if (DIRECTORY_SEPARATOR !== '\\') {
+            sendJsonResponse([
+                'status'  => 'queued',
+                'job_id'  => $job_id,
+                'message' => 'Allocation job queued. The background worker will process it shortly.',
+                'warning' => $warning,
+            ]);
+            return;
+        }
+
+        // Windows / local XAMPP — safe to run inline.
         flushJsonResponse($response);
         if (!defined('FAIRMED_WORKER_LIBRARY_MODE')) {
             define('FAIRMED_WORKER_LIBRARY_MODE', true);
@@ -261,6 +319,7 @@ function handleQueueAllocation($conn) {
 
     sendJsonResponse($response);
 }
+
 
 /**
  * Launch worker_allocation.php as a background process.
@@ -295,16 +354,17 @@ function dispatchWorker(int $job_id): array {
         );
         if (is_resource($proc)) {
             foreach ($pipes as $pipe) { @fclose($pipe); }
-            proc_close($proc);
+            // Do NOT call proc_close() — it blocks until the child exits.
+            // With create_process_group:true the worker is detached.
+            unset($proc);
             Logger::info("dispatchWorker: proc_open (detached) launched Job #$job_id");
             return ['launched' => true, 'message' => null];
         }
 
-        // Fallback: plain popen without "start" (works in interactive XAMPP sessions)
-        $cmd = escapeshellarg($php) . ' ' . escapeshellarg($script) . ' --job-id=' . (int)$job_id . ' > NUL 2>&1';
+        $cmd = 'start /b "" ' . escapeshellarg($php) . ' ' . escapeshellarg($script) . ' --job-id=' . (int)$job_id;
         $handle = @popen($cmd, 'r');
         if ($handle !== false) {
-            pclose($handle);
+            // Do NOT call pclose() — it blocks until the child exits.
             Logger::info("dispatchWorker: popen (fallback) launched Job #$job_id");
             return ['launched' => true, 'message' => null];
         }
@@ -325,9 +385,7 @@ function dispatchWorker(int $job_id): array {
             Logger::info("dispatchWorker: exec launched Job #$job_id");
             return ['launched' => true, 'message' => null];
         }
-        if ($rc !== 0) {
-            Logger::error("dispatchWorker: exec() returned code $rc for Job #$job_id — command: $cmd");
-        }
+        Logger::error("dispatchWorker: exec() returned code $rc for Job #$job_id — command: $cmd");
     }
     return [
         'launched' => false,
@@ -384,19 +442,33 @@ function handleJobStatus($conn) {
         return;
     }
 
-    $stmt = $conn->prepare(
-        "SELECT job_id, status, progress_stage, progress_percent,
-                total_students, allocated_students,
-                result_data, error_message,
-                created_at, started_at, completed_at
-           FROM allocation_jobs
-          WHERE job_id = ?
-          LIMIT 1"
-    );
-    $stmt->bind_param('i', $job_id);
-    $stmt->execute();
-    $row = $stmt->get_result()->fetch_assoc();
-    $stmt->close();
+    try {
+        $stmt = $conn->prepare(
+            "SELECT job_id, job_type, status, progress_stage, progress_percent,
+                    total_students, allocated_students,
+                    result_data, error_message,
+                    created_at, started_at, completed_at
+               FROM allocation_jobs
+              WHERE job_id = ?
+              LIMIT 1"
+        );
+        if (!$stmt) {
+            sendJsonResponse(['status' => 'error', 'message' => 'Database error: could not prepare status query.'], 500);
+            return;
+        }
+        $stmt->bind_param('i', $job_id);
+        $stmt->execute();
+        $row = $stmt->get_result()->fetch_assoc();
+        $stmt->close();
+    } catch (Throwable $e) {
+        // DB transient error — return JSON so the frontend poll loop doesn't
+        // crash on an unexpected token (HTML 500 page).
+        sendJsonResponse([
+            'status'  => 'error',
+            'message' => 'Unable to fetch job status. The database may be temporarily unavailable.',
+        ], 503);
+        return;
+    }
 
     if (!$row) {
         sendJsonResponse(['status' => 'error', 'message' => 'Job not found'], 404);
@@ -404,17 +476,18 @@ function handleJobStatus($conn) {
     }
 
     $payload = [
-        'status'           => 'success',
-        'job_id'           => (int)$row['job_id'],
-        'job_status'       => $row['status'],
-        'progress_stage'   => $row['progress_stage']   ?? '',
-        'progress_percent' => (int)$row['progress_percent'],
-        'total_students'   => (int)$row['total_students'],
+        'status'             => 'success',
+        'job_id'             => (int)$row['job_id'],
+        'job_type'           => (string)($row['job_type'] ?? 'allocation'),
+        'job_status'         => $row['status'],
+        'progress_stage'     => $row['progress_stage']   ?? '',
+        'progress_percent'   => (int)$row['progress_percent'],
+        'total_students'     => (int)$row['total_students'],
         'allocated_students' => (int)$row['allocated_students'],
-        'created_at'       => $row['created_at'],
-        'started_at'       => $row['started_at'],
-        'completed_at'     => $row['completed_at'],
-        'error_message'    => $row['error_message'] ?? '',
+        'created_at'         => $row['created_at'],
+        'started_at'         => $row['started_at'],
+        'completed_at'       => $row['completed_at'],
+        'error_message'      => $row['error_message'] ?? '',
     ];
 
     // Decode result_data for the frontend when the job finished
@@ -498,6 +571,17 @@ function handleCancelJob($conn) {
 
     // Cancel all active jobs (or a specific one if job_id provided)
     if ($job_id > 0) {
+        // Validate that the job exists before attempting to cancel
+        $verify_stmt = $conn->prepare("SELECT job_type FROM allocation_jobs WHERE job_id = ?");
+        $verify_stmt->bind_param('i', $job_id);
+        $verify_stmt->execute();
+        if ($verify_stmt->get_result()->num_rows === 0) {
+            $verify_stmt->close();
+            sendJsonResponse(['status' => 'error', 'message' => 'Job not found'], 404);
+            return;
+        }
+        $verify_stmt->close();
+        
         $sql    = "UPDATE allocation_jobs
                       SET status        = 'cancelled',
                           completed_at  = COALESCE(completed_at, NOW()),
@@ -512,7 +596,7 @@ function handleCancelJob($conn) {
         $stmt->close();
     } else {
         // No specific job_id — cancel everything active
-        $conn->query(
+        $cancel_stmt = $conn->prepare(
             "UPDATE allocation_jobs
                 SET status        = 'cancelled',
                     completed_at  = COALESCE(completed_at, NOW()),
@@ -520,63 +604,51 @@ function handleCancelJob($conn) {
                     error_message = 'Cancelled by administrator'
               WHERE status IN ('queued', 'running')"
         );
-        $affected = $conn->affected_rows;
+        $cancel_stmt->execute();
+        $affected = $cancel_stmt->affected_rows;
+        $cancel_stmt->close();
     }
 
-    // Always release the admin processing lock so a new job can start immediately
+    // Always release the admin-level processing lock so a new job can be queued.
     releaseProcessingLock($conn, 'admin_processing_lock');
 
-    // Release MySQL worker GET_LOCK in case the background worker is still holding it
-    $conn->query("SELECT RELEASE_LOCK('fairmedalloc_allocation_worker')");
+    // NOTE: We intentionally do NOT call RELEASE_LOCK('fairmedalloc_allocation_worker')
+    // here. MySQL user locks are connection-scoped — only the connection that acquired
+    // the lock can release it. Calling it from the API connection is a no-op if the
+    // worker process holds it, so the call would only mislead the log. The worker
+    // will release its own lock naturally when it reads the 'cancelled' status and
+    // exits at its next cancellation checkpoint (typically within a few seconds of
+    // the next progress flush).
 
     $admin_id = (int)$_SESSION['user_id'];
     if ($affected > 0) {
         log_admin_action($conn, $admin_id, $job_id > 0 ? "Cancelled allocation job #$job_id" : "Cancelled all active allocation jobs");
-        Logger::info("Admin cancelled " . ($job_id > 0 ? "Job #$job_id" : "all active jobs") . " and released all locks.");
+        Logger::info("Admin cancelled " . ($job_id > 0 ? "Job #$job_id" : "all active jobs") . ".");
         sendJsonResponse([
             'status'  => 'success',
-            'message' => $affected . ' job(s) cancelled. You can now start a new allocation.',
+            'message' => $affected . ' job(s) marked as cancelled. '
+                       . 'Any running worker will stop at its next checkpoint (usually within seconds).',
         ]);
     } else {
-        // Even if no jobs were found, still release locks — idempotent clean-up
         sendJsonResponse([
             'status'  => 'success',
-            'message' => 'No active jobs found. Locks released — ready to start a new allocation.',
+            'message' => 'No active jobs found. Ready to start a new allocation.',
         ]);
     }
 }
 
-
 /**
- * Invokes the core Allocation Engine to process mathematical hostel placements.
- * NOTE: This is the SYNCHRONOUS path. For bulk data use queue_allocation instead.
+ * run_algorithm — DEPRECATED synchronous path.
+ * Kept as a stub so existing bookmarks/scripts get a clear message rather
+ * than a 400 "Invalid action" error. Direct callers should use
+ * queue_allocation instead, which runs the engine in a background worker.
  */
 function handleRunAlgorithm($conn) {
-    if ($_SERVER["REQUEST_METHOD"] !== "POST") {
-        sendJsonResponse(['status' => 'error', 'message' => 'POST required'], 405);
-        return;
-    }
-
-    check_csrf();
-
-    require_once '../includes/AllocationEngine.php';
-    if (!acquireProcessingLock($conn, 'admin_processing_lock')) {
-        sendJsonResponse(['status' => 'error', 'message' => 'Another admin processing job is already running.'], 409);
-        return;
-    }
-
-    try {
-        $engine = new AllocationEngine($conn);
-        $result = $engine->run();
-        if (($result['status'] ?? '') === 'success') {
-            log_admin_action($conn, (int)$_SESSION['user_id'], 'Triggered allocation engine');
-        }
-        sendJsonResponse($result);
-    } catch (Throwable $e) {
-        sendJsonResponse(['status' => 'error', 'message' => $e->getMessage()], 500);
-    } finally {
-        releaseProcessingLock($conn, 'admin_processing_lock');
-    }
+    sendJsonResponse([
+        'status'  => 'error',
+        'message' => 'The synchronous run_algorithm action has been removed. '
+                   . 'Use action=queue_allocation (POST) to run the allocation engine via the background worker.'
+    ], 410); // 410 Gone
 }
 
 function handleRescoreAll($conn) {

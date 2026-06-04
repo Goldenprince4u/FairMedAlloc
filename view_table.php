@@ -41,12 +41,29 @@ if ($search !== '') {
     $search_types = "sss";
 }
 
+function fairmed_bind_params(mysqli_stmt $stmt, string $types, array $values): bool {
+    $args = [$types];
+    foreach (array_keys($values) as $index) {
+        $args[] = &$values[$index];
+    }
+
+    return $stmt->bind_param(...$args);
+}
+
 $base_joins = "
     FROM student_profiles p 
     JOIN users u ON p.user_id = u.user_id 
     JOIN departments d ON p.department_id = d.department_id
     JOIN faculties f ON d.faculty_id = f.faculty_id
-    LEFT JOIN medical_records m ON p.user_id = m.student_id 
+    LEFT JOIN medical_records m
+           ON p.user_id = m.student_id
+          AND m.record_id = (
+                SELECT record_id
+                FROM medical_records
+                WHERE student_id = p.user_id
+                ORDER BY record_id DESC
+                LIMIT 1
+          )
     LEFT JOIN allocations a ON p.user_id = a.student_id 
     LEFT JOIN rooms r ON a.room_id = r.room_id 
     LEFT JOIN hostels h ON r.hostel_id = h.hostel_id
@@ -61,8 +78,11 @@ if (isset($_GET['export']) && $_GET['export'] === 'csv') {
         $base_joins WHERE $search_cond ORDER BY m.urgency_score DESC, u.username ASC";
         
     $stmt = $conn->prepare($export_sql);
+    if (!$stmt) {
+        die('Export error: Could not prepare CSV export query.');
+    }
     if ($search !== '') {
-        $stmt->bind_param($search_types, ...$search_params);
+        fairmed_bind_params($stmt, $search_types, $search_params);
     }
     $stmt->execute();
     $res = $stmt->get_result();
@@ -103,14 +123,44 @@ $page = isset($_GET['page']) ? (int)$_GET['page'] : 1;
 $limit = 50;
 $offset = ($page - 1) * $limit;
 
-// Count Total Records
-$count_sql = "SELECT COUNT(*) as total FROM student_profiles p JOIN users u ON p.user_id = u.user_id";
-$total_result = $conn->query($count_sql);
+// Count Total Records (MUST include search condition for accurate pagination)
+$count_sql = "SELECT COUNT(*) as total $base_joins WHERE {$search_cond}";
+$count_stmt = $conn->prepare($count_sql);
+if ($search !== '') {
+    fairmed_bind_params($count_stmt, $search_types, $search_params);
+}
+$count_stmt->execute();
+$total_result = $count_stmt->get_result();
 $total_rows = (int)($total_result->fetch_assoc()['total'] ?? 0);
+$count_stmt->close();
 $total_pages = max(1, ceil($total_rows / $limit));
 // Clamp page to valid range
 $page = max(1, min($page, $total_pages));
 $offset = ($page - 1) * $limit;
+
+$buildMatrixUrl = static function (array $overrides = []) use ($search, $page): string {
+    $params = [];
+
+    if ($search !== '') {
+        $params['search'] = $search;
+    }
+
+    if ($page > 1) {
+        $params['page'] = $page;
+    }
+
+    foreach ($overrides as $key => $value) {
+        if ($value === null || $value === '') {
+            unset($params[$key]);
+            continue;
+        }
+
+        $params[$key] = $value;
+    }
+
+    $query = http_build_query($params);
+    return $query === '' ? 'view_table.php' : 'view_table.php?' . $query;
+};
 
 // Fetch Data with Limit
 $query_sql = "
@@ -121,19 +171,17 @@ $query_sql = "
         m.urgency_score, m.condition_category, m.mobility_status, m.severity_level,
         h.name as hostel_name, h.block_name, r.room_number,
         u.profile_pic, u.email
-    FROM student_profiles p 
-    JOIN users u ON p.user_id = u.user_id 
-    JOIN departments d ON p.department_id = d.department_id
-    JOIN faculties f ON d.faculty_id = f.faculty_id
-    LEFT JOIN medical_records m ON p.user_id = m.student_id 
-    LEFT JOIN allocations a ON p.user_id = a.student_id 
-    LEFT JOIN rooms r ON a.room_id = r.room_id 
-    LEFT JOIN hostels h ON r.hostel_id = h.hostel_id
+    $base_joins WHERE {$search_cond}
     ORDER BY m.urgency_score DESC, u.username ASC 
     LIMIT ? OFFSET ?
 ";
 $stmt = $conn->prepare($query_sql);
-$stmt->bind_param("ii", $limit, $offset);
+if ($search !== '') {
+    $query_params = array_merge($search_params, [$limit, $offset]);
+    fairmed_bind_params($stmt, $search_types . "ii", $query_params);
+} else {
+    $stmt->bind_param("ii", $limit, $offset);
+}
 $stmt->execute();
 $result = $stmt->get_result();
 
@@ -163,16 +211,31 @@ require_once 'includes/header.php';
                 <h1>Allocation Matrix</h1>
                 <p class="text-muted">Master list of all student records and allocation decisions.</p>
             </div>
-            <div style="display:flex;gap:0.75rem;align-items:center;">
+            <form method="get" action="view_table.php" style="display:flex;gap:0.75rem;align-items:center;flex-wrap:wrap;">
                 <div style="position:relative;">
                     <i class="fa-solid fa-search" style="position:absolute;left:0.75rem;top:50%;transform:translateY(-50%);color:var(--c-text-light);font-size:0.8rem;"></i>
-                    <input type="text" id="searchInput" placeholder="Search name, matric, hostel..."
-                           style="padding-left:2.25rem;width:260px;" class="input">
+                    <input
+                        type="text"
+                        id="searchInput"
+                        name="search"
+                        value="<?php echo htmlspecialchars($search, ENT_QUOTES, 'UTF-8'); ?>"
+                        placeholder="Search name, matric, hostel..."
+                        style="padding-left:2.25rem;width:260px;"
+                        class="input"
+                    >
                 </div>
-                <button id="exportBtn" class="btn btn-primary">
-                    <i class="fa-solid fa-download"></i> Export CSV
+                <button type="submit" class="btn btn-outline">
+                    <i class="fa-solid fa-filter"></i> Search
                 </button>
-            </div>
+                <?php if ($search !== ''): ?>
+                    <a href="view_table.php" class="btn btn-secondary">
+                        <i class="fa-solid fa-rotate-left"></i> Clear
+                    </a>
+                <?php endif; ?>
+                <a href="<?php echo htmlspecialchars($buildMatrixUrl(['export' => 'csv', 'page' => null]), ENT_QUOTES, 'UTF-8'); ?>" class="btn btn-primary">
+                    <i class="fa-solid fa-download"></i> Export CSV
+                </a>
+            </form>
         </div>
 
         <div class="card p-0 overflow-hidden">
@@ -264,11 +327,11 @@ require_once 'includes/header.php';
                     <?php endif; ?>
                 </div>
                 <div class="flex gap-2">
-                    <a href="?page=<?php echo max(1, $page - 1); ?>" class="btn btn-sm btn-secondary <?php echo ($page <= 1) ? 'opacity-50 pointer-events-none' : ''; ?>">
+                    <a href="<?php echo htmlspecialchars($buildMatrixUrl(['page' => max(1, $page - 1)]), ENT_QUOTES, 'UTF-8'); ?>" class="btn btn-sm btn-secondary <?php echo ($page <= 1) ? 'opacity-50 pointer-events-none' : ''; ?>">
                         Previous
                     </a>
                     <button class="btn btn-sm btn-primary"><?php echo $page; ?></button>
-                    <a href="?page=<?php echo min($total_pages, $page + 1); ?>" class="btn btn-sm btn-secondary <?php echo ($page >= $total_pages) ? 'opacity-50 pointer-events-none' : ''; ?>">
+                    <a href="<?php echo htmlspecialchars($buildMatrixUrl(['page' => min($total_pages, $page + 1)]), ENT_QUOTES, 'UTF-8'); ?>" class="btn btn-sm btn-secondary <?php echo ($page >= $total_pages) ? 'opacity-50 pointer-events-none' : ''; ?>">
                         Next
                     </a>
                 </div>

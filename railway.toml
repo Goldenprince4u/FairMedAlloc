@@ -1,0 +1,7 @@
+# Railway deployment configuration for FairMedAlloc
+# https://docs.railway.app/reference/config-as-code
+
+[deploy]
+healthcheckPath    = "/health.php"
+healthcheckTimeout = 120
+restartPolicyType  = "on_failure"

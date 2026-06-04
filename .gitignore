@@ -24,7 +24,6 @@ ml_models/label_encoders.json
 ml_models/xgboost_hostel_model.pkl
 .gemini/
 .codex_backups/
-db_config.php
 ml_models/site-packages/
 ml_models/venv/
 
@@ -35,4 +34,9 @@ fairmedalloc_export.sql
 scratch/
 
 .venv_solver/
+backup.sql
+backup_utf8.sql
+.pydeps/
+tmp/
+temp.css
 

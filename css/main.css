@@ -432,6 +432,42 @@ a:hover { color: var(--c-info); }
     flex-shrink: 0;
 }
 
+.sidebar-brand-row {
+    align-items: center;
+}
+
+.sidebar-brand-logo {
+    width: 40px;
+    height: 40px;
+    border-radius: 50%;
+    object-fit: cover;
+    flex-shrink: 0;
+    border: 2px solid rgba(255,255,255,0.25);
+}
+
+.sidebar-brand-copy {
+    min-width: 0;
+}
+
+.sidebar-brand-title {
+    margin: 0;
+    line-height: 1.05;
+    font-size: 1.15rem;
+    font-weight: 800;
+    color: #fff;
+    letter-spacing: -0.02em;
+}
+
+.sidebar-brand-kicker {
+    display: inline-block;
+    margin-top: 0.3rem;
+    font-size: 0.66rem;
+    color: rgba(255,255,255,0.62);
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    font-weight: 800;
+}
+
 /* Sidebar scrollbar */
 .sidebar::-webkit-scrollbar { width: 4px; }
 .sidebar::-webkit-scrollbar-thumb { background: var(--c-border); border-radius: 4px; }
@@ -846,17 +882,23 @@ textarea:focus {
 /* "input-auth" — larger styled inputs for auth pages */
 .input-auth {
     width: 100%;
-    padding: 0.875rem 1.125rem;
-    border: 1.5px solid var(--c-border);
+    padding: 1rem 1.25rem;
+    border: 2px solid var(--c-border);
     border-radius: var(--radius-sm);
     background: var(--c-bg-surface-2);
     font-family: var(--font-body);
-    font-size: 0.95rem;
+    font-size: 1.05rem;
     font-weight: 500;
     transition: all 0.2s var(--ease-smooth);
     color: var(--c-text-head);
     outline: none;
     display: block;
+}
+
+.input-auth::placeholder {
+    color: var(--c-text-light);
+    font-weight: 500;
+    opacity: 0.8;
 }
 
 .input-auth:focus {
@@ -1139,7 +1181,7 @@ tr:hover td { background: var(--c-bg-surface-2); }
 
 /* --- Left: Fixed Brand Panel --- */
 .auth-left {
-    width: 45%;
+    width: 35%;
     background: var(--c-primary);
     color: white;
     display: flex;
@@ -1157,7 +1199,7 @@ tr:hover td { background: var(--c-bg-surface-2); }
 
 /* --- Right: Scrollable Form Panel --- */
 .auth-right {
-    width: 55%;
+    width: 65%;
     display: flex;
     align-items: flex-start; /* Align to top so form doesn't jump while scrolling */
     justify-content: center;
@@ -1170,9 +1212,104 @@ tr:hover td { background: var(--c-bg-surface-2); }
 /* Inner auth form wrapper — centred with a readable max-width */
 .auth-box {
     width: 100%;
-    max-width: 440px;
+    max-width: 500px;
     padding-top: 2rem;       /* Top breathing room when user scrolls up */
     padding-bottom: 2rem;    /* Bottom breathing room */
+}
+
+.auth-form-shell {
+    display: grid;
+    grid-template-columns: minmax(0, 1.35fr) minmax(250px, 0.8fr);
+    gap: 1.5rem;
+    align-items: start;
+}
+
+.auth-form-main {
+    background:
+        radial-gradient(circle at top right, rgba(var(--c-accent-rgb), 0.14), transparent 38%),
+        linear-gradient(180deg, rgba(var(--c-primary-rgb), 0.02), transparent 60%),
+        var(--c-bg-surface);
+    border: 1px solid rgba(var(--c-primary-rgb), 0.08);
+    border-radius: 24px;
+    padding: 2rem;
+    box-shadow: 0 24px 60px rgba(0, 33, 71, 0.08);
+}
+
+.auth-form-aside {
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+}
+
+.auth-aside-card {
+    background:
+        linear-gradient(180deg, rgba(var(--c-primary-rgb), 0.04), rgba(var(--c-primary-rgb), 0.015)),
+        var(--c-bg-surface);
+    border: 1px solid rgba(var(--c-primary-rgb), 0.1);
+    border-radius: 20px;
+    padding: 1.4rem 1.35rem;
+    box-shadow: var(--shadow-sm);
+}
+
+.auth-aside-card h3 {
+    font-size: 0.98rem;
+    margin-bottom: 0.9rem;
+}
+
+.auth-aside-list {
+    list-style: none;
+    display: flex;
+    flex-direction: column;
+    gap: 0.85rem;
+}
+
+.auth-aside-list li {
+    display: flex;
+    gap: 0.75rem;
+    align-items: flex-start;
+    color: var(--c-text-body);
+    font-size: 0.9rem;
+    line-height: 1.55;
+}
+
+.auth-aside-list i {
+    width: 18px;
+    margin-top: 0.15rem;
+    color: var(--c-accent);
+    flex-shrink: 0;
+    text-align: center;
+}
+
+.auth-links-row {
+    display: flex;
+    justify-content: space-between;
+    gap: 1rem;
+    align-items: center;
+    font-size: 0.84rem;
+    flex-wrap: wrap;
+}
+
+.mobile-form-grid,
+.mobile-import-layout {
+    display: grid;
+    align-items: start;
+    gap: 1.5rem;
+}
+
+.mobile-form-grid {
+    grid-template-columns: minmax(0, 560px) minmax(260px, 320px);
+}
+
+.mobile-import-layout {
+    grid-template-columns: minmax(0, 1fr) 380px;
+}
+
+.mobile-form-card {
+    padding: 2rem;
+}
+
+.mobile-side-card {
+    padding: 1.75rem;
 }
 
 .brand-border {
@@ -1201,11 +1338,10 @@ tr:hover td { background: var(--c-bg-surface-2); }
 
 /* Subtitle / university name line */
 .auth-subtitle {
-    font-size: 0.78rem;
-    font-weight: 700;
-    letter-spacing: 0.14em;
-    text-transform: uppercase;
-    color: rgba(255, 255, 255, 0.55);
+    font-size: 1rem;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    color: rgba(255, 255, 255, 0.88);
     margin-bottom: 2.5rem;
     font-family: var(--font-body);
 }
@@ -1530,48 +1666,10 @@ tr:hover td { background: var(--c-bg-surface-2); }
     .main-content { padding: 2rem; }
 }
 
-/* ============================================================
-   RESPONSIVE — Mobile (≤768px)
-   ============================================================ */
-@media (max-width: 768px) {
-    .sidebar {
-        transform: translateX(-100%);
-    }
+/* Mobile styles are in css/mobile.css — loaded separately */
 
-    .sidebar.open {
-        transform: translateX(0);
-        box-shadow: 4px 0 24px rgba(0, 0, 0, 0.15);
-    }
 
-    .sidebar-overlay.open { display: block; }
-    .sidebar-toggle { display: flex; }
 
-    .main-content {
-        margin-left: 0;
-        padding: 4rem 1.25rem 1.5rem;
-    }
-
-    .auth-container { flex-direction: column; height: auto; min-height: 100vh; overflow: visible; }
-    .auth-left, .auth-right { width: 100%; height: auto; overflow: visible; position: static; }
-    .auth-left { padding: 3rem 2rem 2rem; min-height: auto; }
-    .auth-right { padding: 2rem 1.5rem 3rem; }
-
-    .grid-cols-2 { grid-template-columns: 1fr; }
-    .grid-cols-4 { grid-template-columns: 1fr; }
-    .grid-help   { grid-template-columns: 1fr; }
-    .grid-dashboard-custom { grid-template-columns: 1fr; }
-
-    h1 { font-size: 1.75rem; }
-    h2 { font-size: 1.5rem; }
-}
-
-@media (max-width: 640px) {
-    .hide-mobile { display: none; }
-    .main-content { padding: 4.5rem 1rem 1rem; }
-    .grid-cols-3 { grid-template-columns: 1fr; }
-}
-
-/* (theme-toggle-btn defined above) */
 
 /* ============================================================
    SIDEBAR — DARK MODE POLISH

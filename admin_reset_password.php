@@ -135,8 +135,8 @@ require_once 'includes/header.php';
             </div>
         <?php endif; ?>
 
-        <div class="grid" style="grid-template-columns:minmax(0, 560px) minmax(260px, 320px);gap:1.5rem;align-items:start;">
-            <div class="card" style="padding:2rem;">
+        <div class="mobile-form-grid">
+            <div class="card mobile-form-card">
                 <div style="display:flex;align-items:center;gap:0.75rem;margin-bottom:1.5rem;">
                     <span class="badge badge-warning"><i class="fa-solid fa-key"></i> ADMIN RESET</span>
                 </div>
@@ -179,7 +179,7 @@ require_once 'includes/header.php';
             </div>
 
             <div style="display:flex;flex-direction:column;gap:1rem;">
-                <div class="card" style="padding:1.75rem;">
+                <div class="card mobile-side-card">
                     <h3 style="font-size:1rem;margin-bottom:1rem;">How this works</h3>
                     <div style="display:flex;flex-direction:column;gap:0.875rem;">
                         <div class="text-sm text-body">
@@ -198,7 +198,7 @@ require_once 'includes/header.php';
                 </div>
 
                 <?php if ($issued_password && $target_account): ?>
-                    <div class="card" style="padding:1.75rem;border:1px solid rgba(37,99,235,0.2);">
+                    <div class="card mobile-side-card" style="border:1px solid rgba(37,99,235,0.2);">
                         <h3 style="font-size:1rem;margin-bottom:0.75rem;">Issued Password</h3>
                         <div class="text-xs text-muted mb-2">Account</div>
                         <div class="fw-700 text-head mb-4"><?php echo htmlspecialchars($target_account, ENT_QUOTES, 'UTF-8'); ?></div>

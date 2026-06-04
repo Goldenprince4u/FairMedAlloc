@@ -1,0 +1,48 @@
+# ── Files & directories that should NEVER go into the Docker image ────────────
+
+# Git metadata (huge, irrelevant to runtime)
+.git
+.gitignore
+
+# Local IDE / OS junk
+.vscode/
+.DS_Store
+Thumbs.db
+.gemini/
+.codex_backups/
+
+# Local Python virtual environments
+# (The Dockerfile builds its own venv in /opt/venv)
+.venv_solver/
+.venv/
+.pydeps/
+__pycache__/
+*.pyc
+*.pyo
+
+# Environment file — credentials must come from Railway env vars, not the image
+.env
+
+# Local DB dumps — large, sensitive, not needed at runtime
+backup.sql
+backup_utf8.sql
+fairmedalloc_export.sql
+
+# Windows-only helper scripts
+start_worker.bat
+
+# Local temp directory
+tmp/
+
+# Developer documentation
+docs/
+README.md
+
+# Scratch / one-off test scripts
+scratch/
+
+# ML training artifacts committed locally — model is loaded from /opt/venv at runtime
+# (keep ml_models/*.py and *.pkl; exclude the raw training dataset)
+ml_models/hostel_medical_dataset.csv
+ml_models/site-packages/
+ml_models/venv/

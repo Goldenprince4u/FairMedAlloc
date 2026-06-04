@@ -10,7 +10,10 @@
  */
 function updateDepartments() {
     const facultySelect = document.getElementById('facultySelect');
-    const deptSelect = document.getElementById('deptSelect');
+    const deptSelect    = document.getElementById('deptSelect');
+
+    if (!facultySelect || !deptSelect) return;
+
     const facultyId = facultySelect.value;
 
     // Clear current options and show loading state
@@ -23,11 +26,14 @@ function updateDepartments() {
     }
 
     // Asynchronously pull JSON department data
-    fetch(`api/get_departments.php?faculty_id=${facultyId}`)
-        .then(response => response.json())
+    fetch(`api/get_departments.php?faculty_id=${encodeURIComponent(facultyId)}`)
+        .then(response => {
+            if (!response.ok) throw new Error(`HTTP ${response.status}`);
+            return response.json();
+        })
         .then(data => {
-            if (data.error) {
-                console.error(data.error);
+            if (!Array.isArray(data)) {
+                console.error('Unexpected departments response:', data);
                 deptSelect.innerHTML = '<option value="">Error loading departments</option>';
                 return;
             }

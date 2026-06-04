@@ -73,6 +73,42 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
 $page_title = "Create Admin | FairMedAlloc";
 require_once 'includes/header.php';
 ?>
+<style>
+    /* Mobile-first responsive overrides for admin signup form */
+    @media (max-width: 768px) {
+        input[type="text"],
+        input[type="email"],
+        input[type="password"],
+        input[type="number"],
+        input[type="date"],
+        select,
+        textarea {
+            font-size: 1rem !important;
+            padding: 0.875rem 1rem !important;
+            min-height: 48px;
+        }
+        .input-group {
+            position: relative;
+        }
+        .input-icon {
+            font-size: 1rem;
+            left: 12px;
+        }
+        .form-group {
+            margin-bottom: 1.25rem;
+        }
+        .form-group label {
+            font-size: 0.95rem;
+            font-weight: 600;
+        }
+        .page-header {
+            flex-direction: column;
+        }
+        .page-header-info h1 {
+            font-size: clamp(1.25rem, 5vw, 1.75rem) !important;
+        }
+    }
+</style>
 
 <div class="app-shell">
     <?php require_once 'includes/nav.php'; ?>
@@ -95,8 +131,8 @@ require_once 'includes/header.php';
             </div>
         <?php endif; ?>
 
-        <div class="grid" style="grid-template-columns:minmax(0, 560px) minmax(260px, 320px);gap:1.5rem;align-items:start;">
-            <div class="card" style="padding:2rem;">
+        <div class="mobile-form-grid">
+            <div class="card mobile-form-card">
                 <div style="display:flex;align-items:center;gap:0.75rem;margin-bottom:1.5rem;">
                     <span class="badge badge-warning"><i class="fa-solid fa-user-shield"></i> INTERNAL ACCESS</span>
                 </div>
@@ -144,7 +180,7 @@ require_once 'includes/header.php';
                 </form>
             </div>
 
-            <div class="card" style="padding:1.75rem;">
+            <div class="card mobile-side-card">
                 <h3 style="font-size:1rem;margin-bottom:1rem;">Access Notes</h3>
                 <div style="display:flex;flex-direction:column;gap:0.875rem;">
                     <div class="text-sm text-body">

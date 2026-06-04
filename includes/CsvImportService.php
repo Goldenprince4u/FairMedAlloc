@@ -1,0 +1,411 @@
+<?php
+require_once __DIR__ . '/UrgencyScoreService.php';
+require_once __DIR__ . '/Logger.php';
+
+class CsvImportService
+{
+    private mysqli $conn;
+    private ?int $jobId;
+
+    public function __construct(mysqli $conn, ?int $jobId = null)
+    {
+        $this->conn = $conn;
+        $this->jobId = $jobId;
+    }
+
+    public function processCsvFile(string $filePath, ?callable $progressCallback = null): array
+    {
+        if (!is_readable($filePath)) {
+            throw new RuntimeException('Import file is missing or unreadable.');
+        }
+
+        $importStart  = microtime(true);
+        $parsed       = $this->parseCsvRows($filePath);
+        $parsedRows   = $parsed['rows'];
+        $parseSkipped = $parsed['parse_skipped'];
+        $totalRows    = count($parsedRows);    // valid rows — used for % calculations
+        $rawTotal     = $totalRows + $parseSkipped; // true CSV row count — shown in progress UI
+
+        if ($totalRows === 0) {
+            $parseNote = $parseSkipped > 0 ? " ({$parseSkipped} rows were dropped due to missing columns or blank required fields.)" : '';
+            throw new RuntimeException('No valid data rows were found in the uploaded CSV.' . $parseNote);
+        }
+
+        $this->persistJobTotals($rawTotal, 0, 'Validated CSV rows', 15);
+        $this->emitProgress($progressCallback, 'Validated CSV rows', 15, $rawTotal, 0);
+
+        $existingUsernames = $this->loadExistingUsernames();
+        $facultyCache      = $this->loadFacultyCache();
+        $departmentCache   = $this->loadDepartmentCache();
+
+        $this->persistJobTotals($rawTotal, 0, 'Loaded reference data', 25);
+        $this->emitProgress($progressCallback, 'Loaded reference data', 25, $rawTotal, 0);
+
+
+        $userInsertSql = FAIRMED_SUPPORTS_MUST_CHANGE_PASSWORD
+            ? "INSERT INTO users (username, full_name, password_hash, must_change_password, role) VALUES (?, ?, ?, 1, 'student')"
+            : "INSERT INTO users (username, full_name, password_hash, role) VALUES (?, ?, ?, 'student')";
+
+        $stmtUser = $this->conn->prepare($userInsertSql);
+        $stmtProfile = $this->conn->prepare("INSERT INTO student_profiles (user_id, level, department_id, gender, has_special_needs, is_paid) VALUES (?, ?, ?, ?, ?, ?)");
+        $stmtFaculty = $this->conn->prepare("INSERT INTO faculties (name) VALUES (?)");
+        $stmtDepartment = $this->conn->prepare("INSERT INTO departments (faculty_id, name) VALUES (?, ?)");
+
+        if (!$stmtUser || !$stmtProfile || !$stmtFaculty || !$stmtDepartment) {
+            throw new RuntimeException('Unable to prepare import statements.');
+        }
+
+        $count = 0;
+        $duplicates = 0;
+        $skipped = $parseSkipped;   // start from parse-level drops; add validation drops below
+        $processedRows = 0;
+        $pendingMedical = [];
+
+        // Valid domain values — checked before each INSERT to avoid silent DB errors.
+        $validGenders = ['male', 'female'];
+        $validLevels  = [100, 200, 300, 400, 500, 600];
+
+
+        $this->conn->begin_transaction();
+        try {
+            foreach ($parsedRows as $row) {
+                $processedRows++;
+                $matric = $row['matric'];
+                $name = $row['name'];
+                $level = (int)$row['level'];
+                $faculty = $row['faculty'];
+                $dept = $row['department'];
+                $gender = $row['gender'];
+                $condition = $row['condition'];
+                $severity = $row['severity'];
+                $mobility = $row['mobility'];
+                $isPaid = (int)$row['is_paid'];
+
+                $matricKey = strtolower($matric);
+                if (isset($existingUsernames[$matricKey])) {
+                    $duplicates++;
+                    $this->emitImportLoopProgress($progressCallback, $totalRows, $processedRows, $rawTotal);
+                    continue;
+                }
+
+                // Validate gender and level before touching the DB.
+                if (!in_array(strtolower($gender), $validGenders, true)) {
+                    $skipped++;
+                    $this->emitImportLoopProgress($progressCallback, $totalRows, $processedRows, $rawTotal);
+                    continue;
+                }
+
+                if (!in_array($level, $validLevels, true)) {
+                    $skipped++;
+                    $this->emitImportLoopProgress($progressCallback, $totalRows, $processedRows, $rawTotal);
+                    continue;
+                }
+
+                $hasMobilityNeed = $mobility !== 'Normal Mobility' ? 1 : 0;
+
+                // Each student's initial password is their own matric number (lowercased).
+                // This hash was pre-computed in parseCsvRows() before the transaction
+                // opened, so the CPU work does not extend the transaction window.
+                $stmtUser->bind_param('sss', $matric, $name, $row['password_hash']);
+                if (!$stmtUser->execute()) {
+                    throw new RuntimeException('Unable to create student user record.');
+                }
+
+                $uid = (int)$this->conn->insert_id;
+                $existingUsernames[$matricKey] = true;
+
+                $facultyKey = strtolower(trim($faculty));
+                if (isset($facultyCache[$facultyKey])) {
+                    $facultyId = $facultyCache[$facultyKey];
+                } else {
+                    $stmtFaculty->bind_param('s', $faculty);
+                    if (!$stmtFaculty->execute()) {
+                        throw new RuntimeException('Unable to create faculty record.');
+                    }
+                    $facultyId = (int)$this->conn->insert_id;
+                    $facultyCache[$facultyKey] = $facultyId;
+                }
+
+                $departmentKey = $facultyId . ':' . strtolower(trim($dept));
+                if (isset($departmentCache[$departmentKey])) {
+                    $departmentId = $departmentCache[$departmentKey];
+                } else {
+                    $stmtDepartment->bind_param('is', $facultyId, $dept);
+                    if (!$stmtDepartment->execute()) {
+                        throw new RuntimeException('Unable to create department record.');
+                    }
+                    $departmentId = (int)$this->conn->insert_id;
+                    $departmentCache[$departmentKey] = $departmentId;
+                }
+
+                $stmtProfile->bind_param('iiisii', $uid, $level, $departmentId, $gender, $hasMobilityNeed, $isPaid);
+                if (!$stmtProfile->execute()) {
+                    throw new RuntimeException('Unable to create student profile.');
+                }
+
+                if ($condition !== 'None' || $hasMobilityNeed === 1) {
+                    $pendingMedical[] = [
+                        'id' => $uid,
+                        'condition' => $condition,
+                        'severity' => $severity,
+                        'mobility' => $mobility,
+                        'academic_level' => $level,
+                        'has_special_needs' => $hasMobilityNeed,
+                        'is_requested' => $hasMobilityNeed,
+                    ];
+                }
+
+                $count++;
+                $this->emitImportLoopProgress($progressCallback, $totalRows, $processedRows, $rawTotal);
+            }
+
+            $this->emitProgress($progressCallback, 'Calculating import scores', 70, $rawTotal, $count);
+
+            // Keep imports fast and predictable by using deterministic PHP scoring here.
+            // The allocation engine recalculates urgency scores again during allocation runs.
+            $batchScores = [];
+            foreach ($pendingMedical as $student) {
+                $studentId = (int)($student['id'] ?? 0);
+                if ($studentId <= 0) {
+                    continue;
+                }
+                $batchScores[$studentId] = UrgencyScoreService::calculateFallbackScore([
+                    'condition' => $student['condition'] ?? 'None',
+                    'mobility' => $student['mobility'] ?? 'Normal Mobility',
+                    'severity' => $student['severity'] ?? 'Low',
+                    'academic_level' => (int)($student['academic_level'] ?? 100),
+                    'has_special_needs' => (int)($student['has_special_needs'] ?? 0),
+                    'is_requested' => (int)($student['is_requested'] ?? 0),
+                ]);
+            }
+
+            $stmtMed = $this->conn->prepare("INSERT INTO medical_records (student_id, condition_category, condition_details, severity_level, urgency_score, mobility_status, is_requested_mobility) VALUES (?, ?, ?, ?, ?, ?, ?)");
+            if (!$stmtMed) {
+                throw new RuntimeException('Unable to prepare medical record insert.');
+            }
+
+            foreach ($pendingMedical as $student) {
+                $uid = (int)$student['id'];
+                $condition = $student['condition'];
+                $severity = $student['severity'];
+                $mobility = $student['mobility'];
+                $isRequested = (int)($student['is_requested'] ?? 0);
+                $score = isset($batchScores[$uid])
+                    ? (float)$batchScores[$uid]
+                    : UrgencyScoreService::calculateFallbackScore([
+                        'condition' => $condition,
+                        'mobility' => $mobility,
+                        'severity' => $severity,
+                    ]);
+
+                $details = "{$condition} (Imported via CSV)";
+                $stmtMed->bind_param('isssdsi', $uid, $condition, $details, $severity, $score, $mobility, $isRequested);
+                if (!$stmtMed->execute()) {
+                    throw new RuntimeException('Unable to create medical record.');
+                }
+            }
+
+            $this->conn->commit();
+        } catch (Throwable $e) {
+            $this->conn->rollback();
+            throw $e;
+        }
+
+        $durationMs = round((microtime(true) - $importStart) * 1000, 2);
+        Logger::info("CSV import completed: {$count} imported, {$duplicates} duplicates, {$skipped} dropped out of {$rawTotal} CSV rows in {$durationMs}ms");
+
+        $this->persistJobTotals($rawTotal, $count, 'Completed', 100);
+        $this->emitProgress($progressCallback, 'Completed', 100, $rawTotal, $count);
+
+        $totalSkipped = $skipped;  // includes both parse-level and validation-level drops
+        $skipParts = [];
+        if ($duplicates > 0)     { $skipParts[] = "{$duplicates} duplicate(s)"; }
+        if ($parseSkipped > 0)   { $skipParts[] = "{$parseSkipped} malformed/incomplete row(s)"; }
+        $validationSkipped = $skipped - $parseSkipped;
+        if ($validationSkipped > 0) { $skipParts[] = "{$validationSkipped} row(s) with invalid gender or level"; }
+        $skipNote = !empty($skipParts) ? ' Skipped: ' . implode(', ', $skipParts) . '.' : '';
+
+        return [
+            'status'      => 'success',
+            'imported'    => $count,
+            'duplicates'  => $duplicates,
+            'skipped'     => $totalSkipped,
+            'total'       => $rawTotal,
+            'duration_ms' => $durationMs,
+            'message'     => "Processed: {$count} students registered.{$skipNote} Payment, mobility, and department data were preserved for allocation.",
+        ];
+    }
+
+    /**
+     * Parse the CSV file into valid rows.
+     *
+     * Returns an array with two keys:
+     *   'rows'          => array of valid, fully-populated row arrays
+     *   'parse_skipped' => count of rows dropped at parse time (short columns or blank required fields)
+     *
+     * This is deliberately separate from transaction-level validation so that
+     * ALL skip reasons can be reported to the admin in the completion message.
+     */
+    private function parseCsvRows(string $filePath): array
+    {
+        $file = fopen($filePath, 'r');
+        if (!is_resource($file)) {
+            throw new RuntimeException('Unable to open uploaded CSV file.');
+        }
+
+        fgetcsv($file);  // skip header row
+        $rows         = [];
+        $parseSkipped = 0;
+
+        while (($row = fgetcsv($file)) !== false) {
+            // Drop rows with fewer than 10 columns.
+            if (count($row) < 10) {
+                $parseSkipped++;
+                continue;
+            }
+
+            $matric    = trim($row[0]);
+            $name      = trim($row[1]);
+            $level     = (int)trim($row[2]);
+            $faculty   = trim($row[3]);
+            $dept      = trim($row[4]);
+            $gender    = trim($row[5]);
+            $condition = UrgencyScoreService::normalizeCondition(trim($row[6]));
+            $severity  = trim($row[7]);
+            $mobility  = UrgencyScoreService::normalizeMobility(trim($row[8]));
+            $paidStr   = trim($row[9]);
+
+            // Drop rows with any blank required field.
+            if (
+                $matric === '' || $name === '' || $faculty === '' || $dept === '' || $gender === ''
+                || $condition === '' || $severity === '' || $mobility === '' || $paidStr === ''
+            ) {
+                $parseSkipped++;
+                continue;
+            }
+
+            // Pre-compute the bcrypt hash here — before any DB transaction opens —
+            // so the CPU cost does not hold a connection open.
+            // Each student's initial password is their own matric number (lowercased).
+            $matricKey    = strtolower($matric);
+            $passwordHash = password_hash($matricKey, PASSWORD_BCRYPT, ['cost' => 8]);
+
+            $rows[] = [
+                'matric'        => $matric,
+                'name'          => $name,
+                'level'         => $level,
+                'faculty'       => $faculty,
+                'department'    => $dept,
+                'gender'        => $gender,
+                'condition'     => $condition,
+                'severity'      => $severity,
+                'mobility'      => $mobility,
+                'is_paid'       => ((int)$paidStr === 1) ? 1 : 0,
+                'password_hash' => $passwordHash,
+            ];
+        }
+
+        fclose($file);
+        return ['rows' => $rows, 'parse_skipped' => $parseSkipped];
+    }
+
+    private function loadExistingUsernames(): array
+    {
+        $cache = [];
+        $result = $this->conn->query("SELECT username FROM users WHERE role = 'student'");
+        if ($result instanceof mysqli_result) {
+            while ($row = $result->fetch_assoc()) {
+                $cache[strtolower((string)$row['username'])] = true;
+            }
+            $result->free();
+        }
+        return $cache;
+    }
+
+    private function loadFacultyCache(): array
+    {
+        $cache = [];
+        $result = $this->conn->query("SELECT faculty_id, name FROM faculties");
+        if ($result instanceof mysqli_result) {
+            while ($row = $result->fetch_assoc()) {
+                $cache[strtolower(trim((string)$row['name']))] = (int)$row['faculty_id'];
+            }
+            $result->free();
+        }
+        return $cache;
+    }
+
+    private function loadDepartmentCache(): array
+    {
+        $cache = [];
+        $result = $this->conn->query("SELECT department_id, faculty_id, name FROM departments");
+        if ($result instanceof mysqli_result) {
+            while ($row = $result->fetch_assoc()) {
+                $key = (int)$row['faculty_id'] . ':' . strtolower(trim((string)$row['name']));
+                $cache[$key] = (int)$row['department_id'];
+            }
+            $result->free();
+        }
+        return $cache;
+    }
+
+    private function persistJobTotals(int $totalRows, int $processedRows, string $stage, int $percent): void
+    {
+        if ($this->jobId === null) {
+            return;
+        }
+
+        $stmt = $this->conn->prepare(
+            "UPDATE allocation_jobs
+                SET total_students = ?,
+                    allocated_students = ?,
+                    progress_stage = ?,
+                    progress_percent = ?,
+                    updated_at = NOW()
+              WHERE job_id = ?"
+        );
+        if (!$stmt) {
+            return;
+        }
+
+        $stmt->bind_param('iisii', $totalRows, $processedRows, $stage, $percent, $this->jobId);
+        $stmt->execute();
+        $stmt->close();
+    }
+
+    private function emitProgress(?callable $progressCallback, string $stage, int $percent, int $totalRows, int $processedRows): void
+    {
+        if (!$progressCallback) {
+            return;
+        }
+
+        $progressCallback([
+            'stage' => $stage,
+            'percent' => $percent,
+            'total' => $totalRows,
+            'processed' => $processedRows,
+        ]);
+    }
+
+    private function emitImportLoopProgress(?callable $progressCallback, int $totalRows, int $processedRows, int $rawTotal): void
+    {
+        if ($progressCallback === null) {
+            return;
+        }
+
+        if ($processedRows !== $totalRows && ($processedRows % 100) !== 0) {
+            return;
+        }
+
+        // % progress is calculated against valid rows so the bar reaches completion correctly.
+        // The displayed total uses $rawTotal so it stays consistent with every other stage update.
+        $percent = 25 + (int)floor(($processedRows / max(1, $totalRows)) * 40);
+        $this->emitProgress(
+            $progressCallback,
+            'Importing student records',
+            min(69, $percent),
+            $rawTotal,
+            $processedRows
+        );
+    }
+}

@@ -100,6 +100,32 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 $page_title = 'Admin Login | FairMedAlloc';
 require_once 'includes/header.php';
 ?>
+<style>
+    /* Mobile-first responsive overrides for admin login */
+    @media (max-width: 768px) {
+        .input-auth {
+            font-size: 1rem !important;
+            min-height: 48px;
+        }
+        .input-group {
+            position: relative;
+        }
+        .input-icon {
+            font-size: 1rem;
+            left: 12px;
+        }
+        #togglePassword {
+            right: 12px !important;
+            font-size: 1rem !important;
+        }
+        .auth-headline {
+            font-size: clamp(1.25rem, 5vw, 1.75rem) !important;
+        }
+        .auth-subtitle {
+            font-size: 0.9rem !important;
+        }
+    }
+</style>
 
 <div class="auth-container">
     <div class="auth-left">

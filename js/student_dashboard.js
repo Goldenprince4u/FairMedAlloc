@@ -33,8 +33,8 @@ function payFees() {
     // Dispatch payment request to backend simulation API
     fetch('api/pay_simulation.php', {
         method:  'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body:    JSON.stringify({ csrf_token: csrf.value })
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body:    new URLSearchParams({ csrf_token: csrf.value })
     })
         .then(res => {
             if (!res.ok) {

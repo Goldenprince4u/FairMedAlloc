@@ -75,7 +75,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $upload_dir = __DIR__ . '/uploads/profile_pics/';
                 if (!is_dir($upload_dir)) mkdir($upload_dir, 0755, true);
 
-                $new_name = "admin_{$user_id}_" . time() . ".$ext";
+                // Use cryptographically random filename instead of predictable pattern
+                $random_name = bin2hex(random_bytes(16));
+                $new_name = "profile_{$random_name}.{$ext}";
                 $dest     = $upload_dir . $new_name;
 
                 if (move_uploaded_file($_FILES['profile_pic']['tmp_name'], $dest)) {
