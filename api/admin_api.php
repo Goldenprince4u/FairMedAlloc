@@ -707,6 +707,21 @@ function handleManualAssign($conn) {
     // Validate CSRF token to prevent cross-site request forgery
     check_csrf();
 
+    // ── Lock guard (H-2) ─────────────────────────────────────────────────────
+    // Reject manual assignments while the automated bulk engine is running.
+    // The engine snapshots all occupancy at the start of its transaction;
+    // a concurrent manual write against the same room could cause a duplicate
+    // bed_space insert that is silently rolled back, waitlisting the student
+    // even though capacity existed.
+    if (isProcessingLockHeld($conn, 'admin_processing_lock')) {
+        sendJsonResponse([
+            'status'  => 'error',
+            'message' => 'An automated allocation is currently running. Please wait for it to complete before making manual assignments.',
+        ], 409);
+        return;
+    }
+    // ─────────────────────────────────────────────────────────────────────────
+
     $student_id = (int)($_POST['student_id'] ?? 0);
     $room_id    = (int)($_POST['room_id'] ?? 0);
 
@@ -1027,7 +1042,7 @@ function studentHasManualMobilityPriority(array $student): bool {
 
 function studentHasManualMedicalCondition(array $student): bool {
     $severity = normalizeManualPolicyValue($student['severity'] ?? 'Low');
-    return in_array($severity, ['medium', 'high', 'critical'], true);
+    return in_array($severity, ['medium', 'high'], true);
 }
 
 function roomIsManualClinicProximity(array $room): bool {
@@ -1209,6 +1224,29 @@ function acquireProcessingLock($conn, string $lock_key): bool {
     }
 
     return $acquired;
+}
+
+/**
+ * isProcessingLockHeld
+ *
+ * Read-only check — returns true if the named processing lock is currently
+ * held (setting_value = '1' in the settings table). Does NOT acquire
+ * or release the lock; safe to call from any context.
+ *
+ * @param mysqli $conn
+ * @param string $lock_key  e.g. 'admin_processing_lock'
+ * @return bool
+ */
+function isProcessingLockHeld($conn, string $lock_key): bool {
+    $stmt = $conn->prepare("SELECT setting_value FROM settings WHERE setting_key = ? LIMIT 1");
+    if (!$stmt) {
+        return false; // Cannot determine — assume not held to avoid blocking the admin
+    }
+    $stmt->bind_param('s', $lock_key);
+    $stmt->execute();
+    $row = $stmt->get_result()->fetch_assoc();
+    $stmt->close();
+    return ($row['setting_value'] ?? '0') === '1';
 }
 
 function releaseProcessingLock($conn, string $lock_key): void {

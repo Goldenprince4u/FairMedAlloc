@@ -202,10 +202,27 @@ require_once 'includes/header.php';
                         <h3 style="font-size:1rem;margin-bottom:0.75rem;">Issued Password</h3>
                         <div class="text-xs text-muted mb-2">Account</div>
                         <div class="fw-700 text-head mb-4"><?php echo htmlspecialchars($target_account, ENT_QUOTES, 'UTF-8'); ?></div>
-                        <div class="text-xs text-muted mb-2">Temporary Password</div>
-                        <div style="font-family:var(--font-mono, monospace);font-size:1.05rem;font-weight:700;padding:0.875rem 1rem;border-radius:10px;background:var(--c-bg-subtle);border:1px dashed var(--c-border);">
-                            <?php echo htmlspecialchars($issued_password, ENT_QUOTES, 'UTF-8'); ?>
+                        <div class="text-xs text-muted mb-2">Temporary Password (clears in 30s)</div>
+                        <div style="display:flex;gap:0.5rem;align-items:center;">
+                            <input type="text" id="tempPassInput" readonly value="<?php echo htmlspecialchars($issued_password, ENT_QUOTES, 'UTF-8'); ?>"
+                                style="font-family:var(--font-mono, monospace);font-size:1.05rem;font-weight:700;padding:0.875rem 1rem;border-radius:10px;background:var(--c-bg-subtle);border:1px dashed var(--c-border);flex:1;outline:none;" />
+                            <button type="button" class="btn btn-secondary" onclick="copyTempPass()" style="padding:0.875rem 1rem;border-radius:10px;height:100%;">Copy</button>
                         </div>
+                        <script>
+                            function copyTempPass() {
+                                var copyText = document.getElementById("tempPassInput");
+                                copyText.select();
+                                copyText.setSelectionRange(0, 99999); // For mobile devices
+                                navigator.clipboard.writeText(copyText.value);
+                            }
+                            setTimeout(function() {
+                                var el = document.getElementById("tempPassInput");
+                                if (el) {
+                                    el.value = "Expired from screen";
+                                    el.type = "password";
+                                }
+                            }, 30000);
+                        </script>
                     </div>
                 <?php endif; ?>
             </div>

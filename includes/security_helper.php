@@ -148,20 +148,27 @@ function csrf_field(): void {
 
 /**
  * Sanitize Input
- * 
- * recursively sanitizes user input to prevent XSS attacks.
- * 
+ *
+ * Trims whitespace from user input before it is stored or processed.
+ * This function intentionally does NOT apply htmlspecialchars() — that is
+ * an output-encoding operation and is applied at render time in templates
+ * (e.g. echo htmlspecialchars($var, ENT_QUOTES, 'UTF-8')). Encoding here
+ * would cause double-escaping (e.g. O'Brien → O&#039;Brien in the DB, then
+ * O&amp;#039;Brien on screen) and would corrupt data in reports and exports.
+ *
+ * All callers pass the result directly into prepared statements, so no
+ * additional escaping is needed for SQL safety.
+ *
  * @param mixed $data The raw input data (string or array).
- * @return mixed The sanitized data.
+ * @return mixed The trimmed data, safe for storage.
  */
 function sanitize_input($data) {
     if (is_array($data)) {
         return array_map('sanitize_input', $data);
     }
-    $data = trim((string)$data);
-    // Remove stripslashes() — deprecated in PHP 8.0+ and removed in 9.0
-    // Magic quotes have been off by default since PHP 5.4.0
-    return htmlspecialchars($data, ENT_QUOTES, 'UTF-8');
+    // trim() removes leading/trailing whitespace.
+    // No htmlspecialchars() here — apply that only when echoing to HTML.
+    return trim((string)$data);
 }
 
 /**

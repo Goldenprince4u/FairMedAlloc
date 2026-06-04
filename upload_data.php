@@ -39,7 +39,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_FILES['csv_file'])) {
         $detected = $finfo->file($_FILES['csv_file']['tmp_name']);
         $ext = strtolower(pathinfo($_FILES['csv_file']['name'], PATHINFO_EXTENSION));
 
-        if (!in_array($detected, $allowed_mimes, true) && $ext !== 'csv') {
+        if (!in_array($detected, $allowed_mimes, true) || $ext !== 'csv') {
+            // Both conditions must pass: MIME type must be in the allowed list AND
+            // the file extension must be .csv. Using || ensures neither check can be
+            // bypassed independently (previously && allowed any .csv-named file through
+            // regardless of its actual MIME type).
             $msg = "Invalid file type. Please upload a valid CSV file (detected: {$detected}).";
             $msg_type = 'error';
         }

@@ -159,6 +159,17 @@ $renderDbUnavailable = static function (): void {
 
 mysqli_report(MYSQLI_REPORT_OFF);
 
+// L-1 Code Quality: Enforce mysqlnd availability early
+// The application heavily uses $result->fetch_all(MYSQLI_ASSOC) which is only
+// available when PHP is compiled with the mysqlnd native driver.
+if (!method_exists('mysqli_result', 'fetch_all')) {
+    die("
+        <h3>Configuration Error</h3>
+        <p>FairMedAlloc requires the PHP <strong>mysqlnd</strong> extension.</p>
+        <p>The standard libmysqlclient driver does not support <code>fetch_all()</code> which is required by this application.</p>
+        <p><small>On Debian/Ubuntu, run: <code>sudo apt-get install php-mysqlnd</code> and restart your web server.</small></p>
+    ");
+}
 try {
     $conn = new mysqli(DB_HOST, DB_USER, DB_PASS, DB_NAME, DB_PORT);
 } catch (mysqli_sql_exception $e) {

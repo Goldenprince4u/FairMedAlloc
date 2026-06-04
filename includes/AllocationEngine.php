@@ -414,6 +414,32 @@ class AllocationEngine {
                         }
                     }
 
+                    // L-3: Mobility Capacity Rescue
+                    // If the solver assigned a mobility student to a room, but all accessible
+                    // (ground-level/LB) beds are taken, do a best-effort scan across the
+                    // REST of the same hostel for a ground-floor room with an accessible bed
+                    // before giving up and waitlisting them.
+                    if ($slot_index === -1 && $is_mobility_issue) {
+                        $assigned_hostel_id = (int)$room['hostel_id'];
+                        foreach ($rooms_data as $alt_room_id => &$alt_room) {
+                            if ((int)$alt_room['hostel_id'] === $assigned_hostel_id && (int)($alt_room['floor_level'] ?? 0) === 0) {
+                                $alt_config_count = count($alt_room['config_arr']);
+                                for ($i = 0; $i < $alt_config_count; $i++) {
+                                    if (!in_array($i, $alt_room['occupied_indices'], true)) {
+                                        $label = trim($alt_room['config_arr'][$i] ?? 'LB');
+                                        if ($label !== 'SB' && $label !== 'UB') {
+                                            $slot_index = $i;
+                                            $room_id = $alt_room_id;
+                                            $room = &$alt_room;
+                                            break 2;
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                        unset($alt_room);
+                    }
+
                     if ($slot_index !== -1) {
                         $room['occupied_indices'][] = $slot_index;
                         $room['new_occupants']++;
@@ -444,14 +470,14 @@ class AllocationEngine {
                         $bulk_profiles[] = $student_id;
                         
                         $hid = (int)$room['hostel_id'];
-                        $bulk_audit[] = "($student_id, $sev_int, $prox_need, $final_score, 'Allocated', $hid)";
+                        $bulk_audit[] = "($student_id, $sev_int, $prox_need, $final_score, 'Allocated', $hid, '{$prediction_mode}')";
                         
                         $msg = $this->conn->real_escape_string("Congratulations! You have been allocated a room in {$room['hostel_name']}.");
                         $bulk_notifications[] = "($student_id, '$msg')";
                         
                         $allocated_count++;
                     } else {
-                        $bulk_audit[] = "($student_id, $sev_int, $prox_need, $final_score, 'No Bed', NULL)";
+                        $bulk_audit[] = "($student_id, $sev_int, $prox_need, $final_score, 'No Bed', NULL, '{$prediction_mode}')";
                         // Give combined-condition students a more specific waitlist message
                         if ($this->hasCombinedConditions($student)) {
                             $msg = $this->conn->real_escape_string("Your accommodation requires a clinic-proximal room with an accessible bed. No suitable beds are currently available in the designated blocks. Please contact Student Affairs immediately.");
@@ -461,7 +487,7 @@ class AllocationEngine {
                         $bulk_notifications[] = "($student_id, '$msg')";
                     }
                 } else {
-                    $bulk_audit[] = "($student_id, $sev_int, $prox_need, $final_score, 'No Bed', NULL)";
+                    $bulk_audit[] = "($student_id, $sev_int, $prox_need, $final_score, 'No Bed', NULL, '{$prediction_mode}')";
                     if ($this->hasCombinedConditions($student)) {
                         $msg = $this->conn->real_escape_string("Your accommodation requires a clinic-proximal room with an accessible bed. No suitable beds are currently available in the designated blocks. Please contact Student Affairs immediately.");
                     } else {
@@ -508,7 +534,7 @@ class AllocationEngine {
             }
             if (!empty($bulk_audit)) {
                 foreach (array_chunk($bulk_audit, 1000) as $chunk) {
-                    $this->conn->query("INSERT INTO algorithm_audit_logs (student_id, input_severity, input_proximity_need, calculated_urgency_score, allocation_decision, assigned_hostel_id) VALUES " . implode(',', $chunk));
+                    $this->conn->query("INSERT INTO algorithm_audit_logs (student_id, input_severity, input_proximity_need, calculated_urgency_score, allocation_decision, assigned_hostel_id, scoring_mode) VALUES " . implode(',', $chunk));
                 }
             }
             if (!empty($bulk_notifications)) {

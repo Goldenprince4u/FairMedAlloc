@@ -22,6 +22,14 @@ $msg_html = false; // True only when $message contains intentional safe HTML (e.
 $token = $_GET['token'] ?? '';
 $valid_token = false;
 
+// Guard: if no token is present, the email-reset flow is not in use.
+// Redirect to the admin-assisted recovery page rather than hashing an empty
+// string (which could match a null/empty row in password_resets).
+if ($token === '') {
+    header('Location: forgot_password.php');
+    exit();
+}
+
 // --- 1. Validate Token ---
 // The raw token from the URL is hashed before DB lookup.
 // This means even if the password_resets table were breached,
